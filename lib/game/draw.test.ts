@@ -45,4 +45,10 @@ describe('randomFortune', () => {
     const fortune = randomFortune(seededRng(3))
     expect(FORTUNES).toContainEqual(fortune)
   })
+
+  it('clamps to the last fortune when rng yields exactly 1', () => {
+    const fortune = randomFortune(() => 1)
+    expect(fortune).toBeDefined()
+    expect(FORTUNES).toContainEqual(fortune)
+  })
 })

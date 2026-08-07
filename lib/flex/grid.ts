@@ -1,3 +1,4 @@
+import { GRID_SIZE } from '../game/draw'
 import type { Fortune } from '../game/fortunes'
 import { encodeOpen } from '../game/postback'
 import { COLORS } from './theme'
@@ -8,6 +9,10 @@ export const GRID_ALT_TEXT = 'คุกกี้เสี่ยงทาย — 
 const COLUMNS = 3
 
 export function buildGridCard(fortunes: readonly Fortune[]): FlexMessage {
+  if (fortunes.length !== GRID_SIZE) {
+    throw new Error(`buildGridCard expects exactly ${GRID_SIZE} fortunes, got ${fortunes.length}`)
+  }
+
   const rows: FlexBox[] = []
   for (let row = 0; row < fortunes.length / COLUMNS; row += 1) {
     rows.push({

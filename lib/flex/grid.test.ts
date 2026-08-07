@@ -55,4 +55,9 @@ describe('buildGridCard', () => {
       expect(serialised).not.toContain(fortune.text)
     }
   })
+
+  it('rejects a fortune list that is not exactly a full grid', () => {
+    expect(() => buildGridCard([])).toThrow(/9/)
+    expect(() => buildGridCard(fortunes.slice(0, 5))).toThrow(/9/)
+  })
 })

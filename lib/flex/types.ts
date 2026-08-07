@@ -25,12 +25,6 @@ export interface FlexButton {
   height?: 'sm' | 'md'
 }
 
-export interface FlexSeparator {
-  type: 'separator'
-  margin?: string
-  color?: string
-}
-
 export interface FlexBox {
   type: 'box'
   layout: 'vertical' | 'horizontal'
@@ -38,8 +32,6 @@ export interface FlexBox {
   spacing?: string
   margin?: string
   paddingAll?: string
-  paddingTop?: string
-  paddingBottom?: string
   backgroundColor?: string
   cornerRadius?: string
   borderColor?: string
@@ -51,11 +43,10 @@ export interface FlexBox {
   action?: FlexAction
 }
 
-export type FlexComponent = FlexBox | FlexText | FlexButton | FlexSeparator
+export type FlexComponent = FlexBox | FlexText | FlexButton
 
 export interface FlexBubble {
   type: 'bubble'
-  size?: 'nano' | 'micro' | 'kilo' | 'mega' | 'giga'
   header?: FlexBox
   body?: FlexBox
   footer?: FlexBox

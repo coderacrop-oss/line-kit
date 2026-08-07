@@ -15,7 +15,8 @@ export function drawNine(rng: () => number = Math.random): Fortune[] {
 }
 
 export function randomFortune(rng: () => number = Math.random): Fortune {
-  return FORTUNES[Math.floor(rng() * FORTUNES.length)]
+  const index = Math.min(Math.floor(rng() * FORTUNES.length), FORTUNES.length - 1)
+  return FORTUNES[index]
 }
 
 function shuffle<T>(items: readonly T[], rng: () => number): T[] {
