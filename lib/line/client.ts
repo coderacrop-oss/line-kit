@@ -14,6 +14,7 @@ export function getAccessToken(): string {
 export async function replyMessage(replyToken: string, message: FlexMessage): Promise<void> {
   const response = await fetch(REPLY_ENDPOINT, {
     method: 'POST',
+    signal: AbortSignal.timeout(5000),
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${getAccessToken()}`,

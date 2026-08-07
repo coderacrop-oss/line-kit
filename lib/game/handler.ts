@@ -18,7 +18,11 @@ export function handleEvent(event: LineEvent, rng: () => number = Math.random): 
   if (event.type === 'message') {
     const text = event.message.text
     if (event.message.type !== 'text' || text === undefined) return null
-    return isTrigger(text) ? buildGridCard(drawNine(rng)) : buildHintCard()
+    if (isTrigger(text)) return buildGridCard(drawNine(rng))
+    // The hint card is only welcome in a 1:1 chat — sending it in a group for
+    // every non-trigger message would spam the group.
+    const isDirectChat = event.source === undefined || event.source.type === 'user'
+    return isDirectChat ? buildHintCard() : null
   }
 
   if (event.type === 'postback') {

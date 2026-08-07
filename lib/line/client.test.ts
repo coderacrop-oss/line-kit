@@ -49,4 +49,11 @@ describe('replyMessage', () => {
     fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => 'Invalid reply token' })
     await expect(replyMessage('stale-token', buildHintCard())).rejects.toThrow(/400/)
   })
+
+  it('passes an abort signal so a stalled LINE API call cannot hang forever', async () => {
+    await replyMessage('reply-token-123', buildHintCard())
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
 })

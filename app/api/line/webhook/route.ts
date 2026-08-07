@@ -6,6 +6,7 @@ import { verifySignature } from '@/lib/line/verify'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
+export const maxDuration = 10
 
 export async function POST(request: Request): Promise<Response> {
   const rawBody = await request.text()
