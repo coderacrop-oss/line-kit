@@ -1,6 +1,9 @@
 import { createHmac } from 'node:crypto'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import { fortuneAltText } from '@/lib/flex/fortune'
 import { GRID_ALT_TEXT } from '@/lib/flex/grid'
+import { findFortune } from '@/lib/game/fortunes'
+import { encodeOpen } from '@/lib/game/postback'
 
 const replyMessage = vi.fn()
 
@@ -111,6 +114,57 @@ describe('POST /api/line/webhook', () => {
 
   it('returns 200 when events is not an array', async () => {
     const response = await POST(signedRequest({ events: 5 }))
+    expect(response.status).toBe(200)
+    expect(replyMessage).not.toHaveBeenCalled()
+  })
+
+  it('replies with the tapped tile\'s exact fortune for a postback event', async () => {
+    const fortune = findFortune(42)!
+    const response = await POST(
+      signedRequest({
+        events: [
+          {
+            type: 'postback',
+            replyToken: 'reply-token',
+            postback: { data: encodeOpen(42) },
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(replyMessage).toHaveBeenCalledTimes(1)
+    const [token, message] = replyMessage.mock.calls[0]
+    expect(token).toBe('reply-token')
+    expect(message.altText).toBe(fortuneAltText(fortune))
+  })
+
+  it('replies to every event in a batch, not just the first', async () => {
+    const response = await POST(
+      signedRequest({
+        events: [
+          {
+            type: 'message',
+            replyToken: 'reply-token-1',
+            message: { type: 'text', text: 'เสี่ยงทาย' },
+          },
+          {
+            type: 'message',
+            replyToken: 'reply-token-2',
+            message: { type: 'text', text: 'เสี่ยงทาย' },
+          },
+        ],
+      }),
+    )
+
+    expect(response.status).toBe(200)
+    expect(replyMessage).toHaveBeenCalledTimes(2)
+    expect(replyMessage.mock.calls[0][0]).toBe('reply-token-1')
+    expect(replyMessage.mock.calls[1][0]).toBe('reply-token-2')
+  })
+
+  it('does not reply to an event with no reply token', async () => {
+    const response = await POST(signedRequest({ events: [{ type: 'unfollow' }] }))
     expect(response.status).toBe(200)
     expect(replyMessage).not.toHaveBeenCalled()
   })
