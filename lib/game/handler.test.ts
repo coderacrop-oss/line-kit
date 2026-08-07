@@ -4,6 +4,7 @@ import { fortuneAltText } from '../flex/fortune'
 import { HINT_ALT_TEXT, WELCOME_ALT_TEXT } from '../flex/prompt'
 import type { LineEvent } from '../line/types'
 import { seededRng } from '../test-utils/rng'
+import { randomFortune } from './draw'
 import { findFortune } from './fortunes'
 import { NEW_GAME_DATA, encodeOpen } from './postback'
 import { handleEvent } from './handler'
@@ -46,7 +47,7 @@ describe('handleEvent', () => {
 
   it('falls back to a random fortune when the id no longer exists', () => {
     const reply = handleEvent(postbackEvent(encodeOpen(9999)), seededRng(1))
-    expect(reply?.altText).toContain('คำทำนายของคุณ:')
+    expect(reply?.altText).toBe(fortuneAltText(randomFortune(seededRng(1))))
   })
 
   it('sends a fresh grid for the play-again postback', () => {
