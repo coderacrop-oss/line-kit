@@ -44,6 +44,7 @@ describe('POST /api/line/webhook', () => {
       body: JSON.stringify({ events: [] }),
     })
     expect((await POST(request)).status).toBe(401)
+    expect(replyMessage).not.toHaveBeenCalled()
   })
 
   it('accepts the empty verification payload LINE sends from the console', async () => {
@@ -100,5 +101,17 @@ describe('POST /api/line/webhook', () => {
       body: raw,
     })
     expect((await POST(request)).status).toBe(200)
+  })
+
+  it('returns 200 for a signed body of literal null', async () => {
+    const response = await POST(signedRequest(null))
+    expect(response.status).toBe(200)
+    expect(replyMessage).not.toHaveBeenCalled()
+  })
+
+  it('returns 200 when events is not an array', async () => {
+    const response = await POST(signedRequest({ events: 5 }))
+    expect(response.status).toBe(200)
+    expect(replyMessage).not.toHaveBeenCalled()
   })
 })

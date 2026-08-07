@@ -22,7 +22,8 @@ export async function POST(request: Request): Promise<Response> {
     return NextResponse.json({ ok: true })
   }
 
-  for (const event of body.events ?? []) {
+  const events = Array.isArray(body?.events) ? body.events : []
+  for (const event of events) {
     try {
       const message = handleEvent(event)
       if (message && 'replyToken' in event && event.replyToken) {
