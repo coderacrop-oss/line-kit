@@ -433,15 +433,125 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 }
 ```
 
-- [ ] **Step 7: รันเทสต์และ build**
+- [ ] **Step 7: ทางเข้าสำหรับเทสต์ · `lib/auth/devlogin.ts`**
 
-```bash
-npx vitest run lib/auth/session.test.ts && npm run build
+**bypass ตัวระบุตัวตน ไม่ใช่ bypass รายชื่อที่อนุญาต** — ยังต้องมีแถวใน `app_user` และ `is_active = true`
+ทางนี้ข้ามแค่ Google ไม่ได้ข้ามการตรวจสิทธิ์ · ถ้าข้ามทั้งสองอย่าง มันคือประตูหลัง ไม่ใช่เครื่องมือทดสอบ
+
+เทสต์ก่อน · `lib/auth/devlogin.test.ts`
+
+```ts
+import { afterEach, describe, expect, it } from 'vitest'
+import { devLoginAllowed } from './devlogin'
+
+const env = { ...process.env }
+afterEach(() => { process.env = { ...env } })
+
+describe('devLoginAllowed', () => {
+  it('ปิดไว้เป็นค่าเริ่มต้น', () => {
+    delete process.env.ALLOW_DEV_LOGIN
+    expect(devLoginAllowed({ nodeEnv: 'development' })).toBe(false)
+  })
+
+  it('เปิดได้เมื่อสั่งชัดเจนและไม่ใช่ production', () => {
+    process.env.ALLOW_DEV_LOGIN = '1'
+    expect(devLoginAllowed({ nodeEnv: 'development' })).toBe(true)
+    expect(devLoginAllowed({ nodeEnv: 'test' })).toBe(true)
+  })
+
+  it('production ปิดตายแม้ตั้ง env ไว้', () => {
+    process.env.ALLOW_DEV_LOGIN = '1'
+    expect(devLoginAllowed({ nodeEnv: 'production' })).toBe(false)
+  })
+
+  it('deploy จริงบน Vercel ปิดตายแม้ NODE_ENV จะเป็นอย่างอื่น', () => {
+    process.env.ALLOW_DEV_LOGIN = '1'
+    process.env.VERCEL_ENV = 'production'
+    expect(devLoginAllowed({ nodeEnv: 'development' })).toBe(false)
+  })
+
+  it('ค่าอื่นที่ไม่ใช่ 1 ไม่นับว่าเปิด', () => {
+    for (const value of ['true', 'yes', '0', '']) {
+      process.env.ALLOW_DEV_LOGIN = value
+      expect(devLoginAllowed({ nodeEnv: 'development' }), value).toBe(false)
+    }
+  })
+})
 ```
 
-Expected: PASS ทั้งคู่
+`lib/auth/devlogin.ts`
 
-- [ ] **Step 8: Commit**
+```ts
+/**
+ * A way in that skips Google, for tests and for a laptop with no OAuth client.
+ *
+ * It skips the identity provider and nothing else: the email still has to exist
+ * in app_user and still has to be active. Skipping both would make this a back
+ * door rather than a test fixture.
+ *
+ * Three locks, because one env var is one typo away from being set in the wrong
+ * place: it must be asked for explicitly, NODE_ENV must not be production, and a
+ * production deploy refuses regardless of what NODE_ENV says.
+ */
+export function devLoginAllowed(ctx: { nodeEnv: string | undefined }): boolean {
+  if (process.env.ALLOW_DEV_LOGIN !== '1') return false
+  if (ctx.nodeEnv === 'production') return false
+  if (process.env.VERCEL_ENV === 'production') return false
+  return true
+}
+```
+
+Server Action ของทางเข้านี้ · ใน `app/login/actions.ts`
+
+```ts
+'use server'
+import { cookies } from 'next/headers'
+import { redirect } from 'next/navigation'
+import { db } from '@/lib/db/client'
+import { devLoginAllowed } from '@/lib/auth/devlogin'
+import { resolveUser } from '@/lib/auth/session'
+
+export async function devLogin(formData: FormData): Promise<void> {
+  if (!devLoginAllowed({ nodeEnv: process.env.NODE_ENV })) {
+    throw new Error('ทางเข้าสำหรับทดสอบถูกปิดอยู่')
+  }
+
+  const email = String(formData.get('email') ?? '').trim()
+  const result = await resolveUser(email)
+
+  // ยังตรวจรายชื่อเหมือนทางปกติ — ทางนี้ข้ามแค่ Google
+  if (!('userId' in result)) {
+    throw new Error(result.reason === 'revoked'
+      ? 'บัญชีนี้ถูกถอนสิทธิ์แล้ว'
+      : 'อีเมลนี้ยังไม่อยู่ในรายชื่อที่อนุญาต')
+  }
+
+  // ใช้ทางนี้เข้ามาต้องมีร่องรอย เพราะไม่มี Google เป็นพยาน
+  await db()`
+    INSERT INTO token_access_log (channel_id, actor_type, app_user_id, purpose)
+    SELECT id, 'user', ${result.userId}, 'display_last4' FROM channel
+     WHERE channel_type = 'preview' LIMIT 1`
+
+  ;(await cookies()).set('fsb_email', result.email, {
+    httpOnly: true, sameSite: 'lax', path: '/',
+    secure: process.env.NODE_ENV === 'production',
+  })
+  redirect('/campaigns')
+}
+```
+
+**หน้าจอต้องแสดงทางนี้เฉพาะเมื่อเปิดอยู่จริง** และแสดงเป็นกล่อง `tone="warn"` ใต้ปุ่ม Google
+พร้อมข้อความ `ทางเข้าสำหรับทดสอบ · เปิดอยู่เพราะ ALLOW_DEV_LOGIN=1` — ถ้าเห็นกล่องนี้บนของจริงคือมีอะไรผิด
+
+- [ ] **Step 8: รันเทสต์และ build**
+
+```bash
+npx vitest run lib/auth/ && npm run build
+```
+
+Expected: PASS ทั้งหมด
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add -A
@@ -455,7 +565,14 @@ A revoked account gets a different message from an unknown one: that person has
 been here before and needs to know why they cannot get back in.
 
 requireRole() belongs at the top of every action, not only where the screen
-hides a button. A hidden button is a hint; the action is the door."
+hides a button. A hidden button is a hint; the action is the door.
+
+There is also a way in that skips Google, for tests and for a laptop with no
+OAuth client. It skips the identity provider and nothing else — the email still
+has to be on the allowlist and still has to be active. Three locks guard it,
+because one env var is one typo away from being set in the wrong place: it must
+be asked for explicitly, NODE_ENV must not be production, and a production
+deploy refuses regardless of what NODE_ENV claims."
 ```
 
 ---
@@ -2037,6 +2154,7 @@ nothing."
 
 **ที่ไม่อยู่ในแผนนี้โดยตั้งใจ** — M4-S01 ริชเมนู (P2) · M5 · M10 · M11 · M12 (8 จอที่ยังไม่มี spec) · ริชเมสเสจกับริชวิดีโอในขั้นเลือกชนิดการส่ง แสดงแต่ปิดไว้พร้อมเหตุผล
 
-**สิ่งที่ต้องตัดสินก่อนเริ่ม Task 2** — วิธีเข้าระบบจริง · แผนนี้เขียน `getSession` ให้อ่าน cookie `fsb_email`
-ซึ่ง **ใช้ได้แค่ตอนพัฒนา** · Google sign-in จริงต้องมี OAuth client และ callback ซึ่งเป็นงานตั้งค่านอกโค้ด
-ถ้ายังไม่มี ให้ทำ Task 2 ด้วย cookie ไปก่อนแล้วเปลี่ยนตัวหลังบ้านทีหลัง — `classify()` กับ `requireRole()` ไม่ต้องแก้
+**เรื่องเข้าระบบ** — Task 2 ทำสองทาง · Google sign-in เป็นทางหลัก และทางเข้าสำหรับทดสอบที่ข้ามแค่ Google
+ไม่ข้ามรายชื่อที่อนุญาต · ทางที่สองมีสามล็อก และหน้าจอจะประกาศตัวเองเมื่อเปิดอยู่
+**Google OAuth client กับ callback เป็นงานตั้งค่านอกโค้ด** ยังไม่ต้องมีก็เดินแผนได้ครบ
+เพราะ `classify()` กับ `requireRole()` ไม่ต้องแก้ตอนเสียบของจริง
