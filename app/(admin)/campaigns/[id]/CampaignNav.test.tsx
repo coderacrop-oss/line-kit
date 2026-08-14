@@ -85,6 +85,8 @@ describe('ปลายทางที่มีจริงกับที่ย�
       .toBe('/campaigns/c1/keywords')
     expect(screen.getByRole('link', { name: 'คลังภาพ' }).getAttribute('href'))
       .toBe('/campaigns/c1/assets')
+    expect(screen.getByRole('link', { name: 'ค่าสะสม' }).getAttribute('href'))
+      .toBe('/campaigns/c1/counters')
   })
 
   /**
@@ -114,7 +116,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     const links = Array.from(container.querySelectorAll('[data-nav-item] a, a[data-nav-item]'))
       .map((a) => a.textContent)
     // ทางกลับไม่ได้อยู่ในรายการ · เหลือแค่จอที่มีจริง
-    expect(links).toEqual(['ข้อมูลแคมเปญ', 'คลังภาพ', 'คีย์เวิร์ด', 'บัญชี LINE'])
+    expect(links).toEqual(['ข้อมูลแคมเปญ', 'คลังภาพ', 'ค่าสะสม', 'คีย์เวิร์ด', 'บัญชี LINE'])
   })
 
   it('ทุกจอที่ยังไม่มีติดป้ายรอบถัดไปไว้ทุกอัน', () => {
@@ -122,7 +124,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     const { container } = render(<CampaignNav campaignId="c1" />)
     const soon = Array.from(container.querySelectorAll('[data-nav-item]'))
       .filter((i) => i.querySelector('a, [href]') === null && i.tagName !== 'A')
-    expect(soon.length).toBe(8)
+    expect(soon.length).toBe(7)
     for (const item of soon) {
       expect(within(item as HTMLElement).getByText('รอบถัดไป'), item.textContent ?? '').toBeDefined()
       expect(item.getAttribute('aria-disabled')).toBe('true')
@@ -136,6 +138,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     expect(itemNamed('คีย์เวิร์ด').textContent).toBe('คีย์เวิร์ด')
     expect(itemNamed('บัญชี LINE').textContent).toBe('บัญชี LINE')
     expect(itemNamed('คลังภาพ').textContent).toBe('คลังภาพ')
+    expect(itemNamed('ค่าสะสม').textContent).toBe('ค่าสะสม')
   })
 
   it('ป้ายรอบถัดไปใช้ทรงเดียวกับต้นแบบ', () => {
@@ -152,7 +155,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     // รายการที่ยังไม่มีปลายทางคือรายการที่ไม่มี path — เติมบรรทัดเดียวก็เปิด
     const closed = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.path === undefined)
     expect(closed.map((i) => i.label)).toEqual([
-      'กิจกรรม', 'การ์ด', 'ค่าสะสม', 'รางวัล', 'ชุดเนื้อหา',
+      'กิจกรรม', 'การ์ด', 'รางวัล', 'ชุดเนื้อหา',
       'Rich Menu', 'ส่งขึ้น LINE', 'ทดลองเล่น',
     ])
   })
@@ -187,6 +190,12 @@ describe('รายการที่กำลังเปิดอยู่', (
     at('/campaigns/c1/assets/upload')
     render(<CampaignNav campaignId="c1" />)
     expect(itemNamed('คลังภาพ').style.background).toBe('var(--ink)')
+  })
+
+  it('จอแก้ค่าสะสมยังนับว่าอยู่ที่ค่าสะสม', () => {
+    at('/campaigns/c1/counters/ct-9')
+    render(<CampaignNav campaignId="c1" />)
+    expect(itemNamed('ค่าสะสม').style.background).toBe('var(--ink)')
   })
 
   it('จอลูกของรายการหนึ่งยังนับว่ารายการนั้นเปิดอยู่', () => {
