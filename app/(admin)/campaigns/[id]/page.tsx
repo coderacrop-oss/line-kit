@@ -1,6 +1,6 @@
 import { notFound, redirect } from 'next/navigation'
 import type { ReactNode } from 'react'
-import { Badge, Button, Field, PageHead, Panel, STATUS_TONES, type StatusTone } from '@/components/ui'
+import { Badge, Button, Field, Note, PageHead, Panel } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
 import { describeDayClock } from '@/lib/campaign/dayclock'
 import { loadCampaign, type CampaignDetail } from '@/lib/db/campaigns'
@@ -22,19 +22,6 @@ const STATUS_LABEL: Record<CampaignDetail['status'], string> = {
  * that agrees with it today.
  */
 const asDateInput = (at: Date, timezone: string) => periodKey(at, timezone, 86_400)
-
-function Note({ tone, children }: { tone: StatusTone; children: ReactNode }) {
-  return (
-    <div style={{
-      border: `1px solid ${STATUS_TONES[tone].border}`,
-      background: STATUS_TONES[tone].bg,
-      color: STATUS_TONES[tone].fg,
-      borderRadius: 'var(--r)', padding: '11px 13px', fontSize: 12, lineHeight: 1.6,
-    }}>
-      {children}
-    </div>
-  )
-}
 
 function SummaryStrip({ campaign }: { campaign: CampaignDetail }) {
   const cells: Array<[string, ReactNode]> = [
@@ -89,6 +76,10 @@ export default async function CampaignInfoPage({ params }: { params: Promise<{ i
         title="ข้อมูลแคมเปญ"
         actions={
           <>
+            {/* ทางเข้าจากภายนอกอยู่คนละจอ · จอนี้เป็นที่เดียวที่คนจะหามันเจอ */}
+            <a href={`/campaigns/${campaign.id}/keywords`} style={{ fontSize: 13, color: 'var(--ink-3)' }}>
+              คีย์เวิร์ดตอบกลับ →
+            </a>
             <Badge tone={campaign.status === 'published' ? 'ok' : 'mute'}>
               {STATUS_LABEL[campaign.status]}
             </Badge>

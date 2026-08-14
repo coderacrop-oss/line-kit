@@ -2,7 +2,7 @@
 import { readFileSync } from 'node:fs'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Badge, Button, Empty, Field, PageHead, Panel, Rows } from './index'
+import { Badge, Button, Empty, Field, Note, PageHead, Panel, Rows } from './index'
 import { STATUS_TONES } from './tokens'
 
 // vitest ไม่ได้เปิด globals ไว้ RTL จึงเก็บกวาดเองอัตโนมัติไม่ได้
@@ -327,9 +327,37 @@ describe('Empty', () => {
 describe('ทุกคอมโพเนนต์ไม่มีค่าสีเขียนตรงในไฟล์', () => {
   // สีเดียวที่อนุญาตให้เป็นตัวเลขคือใน tokens.ts ซึ่งเป็นที่ที่มันควรอยู่
   it('ไม่มี hex ในไฟล์คอมโพเนนต์', () => {
-    for (const file of ['Badge', 'Button', 'Empty', 'Field', 'PageHead', 'Panel', 'Rows']) {
+    for (const file of ['Badge', 'Button', 'Empty', 'Field', 'Note', 'PageHead', 'Panel', 'Rows']) {
       const source = readFileSync(`components/ui/${file}.tsx`, 'utf8')
       expect(source.match(/#[0-9A-Fa-f]{3,8}\b/g), file).toBeNull()
     }
+  })
+})
+
+/**
+ * กล่องอธิบายผลที่จะเกิดขึ้น · ใช้ทุกหน้าที่ต้องเตือนก่อนคนกดบันทึก
+ *
+ * It started as a local helper on the campaign settings screen and was copied to
+ * the keyword screen, which is one copy too many: two boxes carrying the same
+ * meaning have to keep the same colours by hand or start lying about severity.
+ */
+describe('Note', () => {
+  it('แสดงข้อความที่ให้มา', () => {
+    render(<Note tone="warn">ระวังตรงนี้</Note>)
+    expect(screen.getByText('ระวังตรงนี้')).toBeDefined()
+  })
+
+  it('สีมาจากโทนของสถานะ ไม่ใช่สีที่หน้าจอคิดเอง', () => {
+    const { container } = render(<Note tone="warn">x</Note>)
+    const box = container.firstElementChild as HTMLElement
+    expect(box.style.color).toBe(asCss(STATUS_TONES.warn.fg))
+    expect(box.style.borderColor).toBe(asCss(STATUS_TONES.warn.border))
+  })
+
+  it('คนละโทนคนละสี จึงแยกคำเตือนออกจากคำอธิบายได้', () => {
+    const { container } = render(<><Note tone="warn">a</Note><Note tone="info">b</Note></>)
+    const [warn, info] = Array.from(container.children) as HTMLElement[]
+    expect(warn.style.color).not.toBe(info.style.color)
+    expect(warn.style.background).not.toBe(info.style.background)
   })
 })
