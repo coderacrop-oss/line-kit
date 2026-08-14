@@ -14,10 +14,24 @@
 
 ```bash
 npm install
-npm test          # ชั้น unit — ไม่ต้องต่อเน็ต ไม่ต้องมีฐานข้อมูล
+npm test              # ชั้น unit — ไม่ต้องต่อเน็ต ไม่ต้องมีฐานข้อมูล
 npm run typecheck
 npm run dev
+
+# ต้องมี Postgres รันอยู่
+npm run db:reset          # สร้าง linekit_test ใหม่แล้วลง migration
+npm run db:check          # เทียบ schema กับ FLEX_AD_L2 §5.2
+npm run test:integration  # ธุรกรรม atomic · โควตา · ครบวงจร
+npm run test:all          # ทุกชั้น
 ```
+
+**สามชั้นของเทสต์**
+
+| ชั้น | ทดสอบอะไร | ต้องมีฐานข้อมูล |
+|---|---|---|
+| unit | engine · render · match · webhook branch tree | ❌ |
+| integration | ธุรกรรม atomic · โควตาเมื่อกดพร้อมกัน · ครบวงจร | ✅ |
+| regression | snapshot ของ JSON ที่ส่งเข้า LINE | ❌ |
 
 ตรรกะทั้งหมดใน `lib/engine/` และ `lib/render/` เป็น pure function
 **มีเทสต์บังคับไว้ว่าสองโฟลเดอร์นี้ห้ามแตะฐานข้อมูล เน็ต หรือ framework**

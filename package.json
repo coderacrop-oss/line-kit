@@ -6,12 +6,17 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"**/*.integration.test.ts\"",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:all": "vitest run",
+    "test:integration": "vitest run tests/*.integration.test.ts",
+    "db:reset": "psql -q postgres -c \"DROP DATABASE IF EXISTS linekit_test\" -c \"CREATE DATABASE linekit_test\" && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0001_init.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0002_play_and_apply.sql",
+    "db:check": "node scripts/check-schema-vs-doc.mjs"
   },
   "dependencies": {
     "next": "^15.5.0",
+    "postgres": "^3.4.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
