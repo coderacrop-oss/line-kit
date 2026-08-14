@@ -75,6 +75,10 @@ button, input, select, textarea {
 .panel-row { border-bottom: 1px solid var(--rule); }
 .panel-row:last-child { border-bottom: 0; }
 
+/* <summary> ที่ทำหน้าที่เป็นปุ่มเปิดฟอร์ม · การตั้ง display ทับ list-item ซ่อนสามเหลี่ยม
+   ได้เกือบทุกเบราว์เซอร์ แต่ Safari ยังวาดของตัวเองจนกว่าจะสั่งตรงนี้ */
+summary::-webkit-details-marker { display: none; }
+
 /* ตัวอักษรตัวเล็กแบบ mono ใช้กับรหัสและ id ที่คนต้องก๊อปไปใช้ */
 .code {
   font-family: var(--mono);

@@ -13,7 +13,18 @@ export type Seeded = {
 }
 
 let unique = 0
-const uid = () => `${Date.now().toString(36)}${(unique++).toString(36)}`
+
+/**
+ * A tag no other seed will pick, including one running in another process.
+ *
+ * The counter alone is not enough: vitest gives each test file its own worker
+ * and therefore its own copy of this module, so two files that seed in the same
+ * millisecond both start counting at zero and collide on app_user.email. The
+ * random suffix is what separates the workers; the counter is what separates
+ * calls inside one of them.
+ */
+const uid = () =>
+  `${Date.now().toString(36)}${(unique++).toString(36)}${Math.random().toString(36).slice(2, 6)}`
 
 /**
  * A minimal but complete campaign: one activity that draws one of two rewards,
