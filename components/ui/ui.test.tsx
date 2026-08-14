@@ -1,5 +1,6 @@
 // @vitest-environment jsdom
-import { readFileSync } from 'node:fs'
+import { readFileSync, readdirSync } from 'node:fs'
+import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { Badge, Button, Empty, Field, Note, PageHead, Panel, Rows } from './index'
@@ -324,13 +325,28 @@ describe('Empty', () => {
   })
 })
 
-describe('ทุกคอมโพเนนต์ไม่มีค่าสีเขียนตรงในไฟล์', () => {
+describe('ไม่มีค่าสีเขียนตรงในไฟล์ไหนเลย', () => {
   // สีเดียวที่อนุญาตให้เป็นตัวเลขคือใน tokens.ts ซึ่งเป็นที่ที่มันควรอยู่
-  it('ไม่มี hex ในไฟล์คอมโพเนนต์', () => {
-    for (const file of ['Badge', 'Button', 'Empty', 'Field', 'Note', 'PageHead', 'Panel', 'Rows']) {
-      const source = readFileSync(`components/ui/${file}.tsx`, 'utf8')
-      expect(source.match(/#[0-9A-Fa-f]{3,8}\b/g), file).toBeNull()
+  //
+  // เดิมเทสต์นี้ครอบแค่ components/ui จึงจับไม่ได้ตอนหน้า login เขียนสีลงไปตรงๆ
+  // สามที่ · ขยายให้ครอบหน้าจอด้วย เพราะที่ที่สีหลุดง่ายที่สุดคือที่ที่คนรีบ
+  const files = (dir: string): string[] =>
+    readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+      const path = join(dir, entry.name)
+      if (entry.isDirectory()) return files(path)
+      return entry.name.endsWith('.tsx') && !entry.name.endsWith('.test.tsx') ? [path] : []
+    })
+
+  it('ไม่มี hex ในคอมโพเนนต์และในหน้าจอ', () => {
+    const offenders: string[] = []
+    for (const file of [...files('components'), ...files('app')]) {
+      const source = readFileSync(file, 'utf8')
+      // ค่าเริ่มต้นของธีมแคมเปญเป็นข้อมูล ไม่ใช่สีของหน้าจอ
+      const stripped = source.replace(/const DEFAULT_CAMPAIGN_PRIMARY = '#[0-9A-Fa-f]{6}'/, '')
+      const hits = stripped.match(/#[0-9A-Fa-f]{3,8}\b/g)
+      if (hits) offenders.push(`${file}: ${hits.join(', ')}`)
     }
+    expect(offenders).toEqual([])
   })
 })
 

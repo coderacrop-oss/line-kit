@@ -8,6 +8,10 @@ import { db } from '@/lib/db/client'
 import { periodKey } from '@/lib/daykey'
 import { saveCampaignInfo } from './actions'
 
+/** สีตั้งต้นของการ์ด — เป็นค่าข้อมูลของแคมเปญ ไม่ใช่สีของหน้าจอ
+    ต้องตรงกับ DEFAULT_THEME ใน lib/db/queries.ts ที่ renderer อ่าน */
+const DEFAULT_CAMPAIGN_PRIMARY = '#17756A'
+
 const STATUS_LABEL: Record<CampaignDetail['status'], string> = {
   draft: 'ร่าง',
   published: 'ส่งขึ้นแล้ว',
@@ -189,7 +193,7 @@ export default async function CampaignInfoPage({ params }: { params: Promise<{ i
               <input
                 name="theme_primary"
                 type="color"
-                defaultValue={campaign.themePrimary ?? '#17756A'}
+                defaultValue={campaign.themePrimary ?? DEFAULT_CAMPAIGN_PRIMARY}
                 disabled={locked}
                 style={{ width: 96, padding: 4, height: 38 }}
               />

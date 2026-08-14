@@ -1,3 +1,4 @@
+import { STATUS_TONES } from '@/components/ui/tokens'
 import { devLoginAllowed } from '@/lib/auth/devlogin'
 import { devLogin } from './actions'
 
@@ -51,9 +52,9 @@ export default function LoginPage() {
         </div>
 
         {testEntranceOpen && (
-          <form action={devLogin} style={{ ...card, borderColor: 'var(--warn)', background: 'rgba(215,119,6,.08)' }}>
-            <div style={{ fontSize: 14, fontWeight: 600, color: '#5A3A00' }}>ทางเข้าสำหรับทดสอบ</div>
-            <div style={{ fontSize: 12, color: '#5A3A00', lineHeight: 1.65 }}>
+          <form action={devLogin} style={{ ...card, borderColor: STATUS_TONES.warn.border, background: STATUS_TONES.warn.bg }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: STATUS_TONES.warn.fg }}>ทางเข้าสำหรับทดสอบ</div>
+            <div style={{ fontSize: 12, color: STATUS_TONES.warn.fg, lineHeight: 1.65 }}>
               เปิดอยู่เพราะ <span className="code">ALLOW_DEV_LOGIN=1</span> ·
               ข้ามแค่ Google <b>ไม่ข้ามรายชื่อที่อนุญาต</b> —
               อีเมลยังต้องอยู่ในทีมและยังต้องเปิดใช้งานอยู่
