@@ -128,6 +128,12 @@ describe('saveCampaignInfo · แคมเปญที่ส่งขึ้น�
     expect(state.writes).toEqual([])
   })
 
+  it('แคมเปญที่ปิดแล้วก็แก้ไม่ได้ — เคยส่งขึ้นมาแล้วเหมือนกัน', async () => {
+    campaignIs({ status: 'closed' })
+    await expect(saveCampaignInfo('c1', validForm())).rejects.toThrow('ส่งขึ้นแล้ว')
+    expect(state.writes).toEqual([])
+  })
+
   it('ข้อความบอกทางออก ไม่ใช่บอกแค่ว่าไม่ได้', async () => {
     campaignIs({ status: 'published' })
     await expect(saveCampaignInfo('c1', validForm())).rejects.toThrow(/ถอน|ก๊อป/)

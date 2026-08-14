@@ -33,6 +33,9 @@ function given(formData: FormData, key: string): string | null {
  * บันทึกข้อมูลแคมเปญ · ตรวจสิทธิ์ ตรวจสถานะ แล้วค่อยเขียน
  *
  * A published campaign refuses edits here (BR-05) rather than only in the form.
+ * A closed one refuses too: it was published once, and campaign_stat has already
+ * snapshotted it, so editing the rules afterwards makes the statistics describe a
+ * configuration that no longer exists.
  * The screen disables its fields, but a disabled field is a drawing on a page
  * that whoever calls this function may never have loaded.
  *
@@ -51,7 +54,9 @@ export async function saveCampaignInfo(id: string, formData: FormData): Promise<
   if (!current) throw new Error('ไม่พบแคมเปญนี้')
 
   // BR-05 · กติกาที่ส่งขึ้นแล้วห้ามแก้ ต้องสร้าง version ใหม่
-  if (current.status === 'published') {
+  // ปิดแล้วก็เคยส่งขึ้นมาแล้ว จึงอยู่ใต้ BR-05 เหมือนกัน — และ campaign_stat
+  // ถ่ายภาพนิ่งไปแล้วตอนปิด แก้กติกาทีหลังจะทำให้สถิติเล่าคนละเรื่องกับ config
+  if (current.status === 'published' || current.status === 'closed') {
     throw new Error('แคมเปญนี้ส่งขึ้นแล้ว แก้กติกาไม่ได้ — ถอนก่อนแก้ หรือก๊อปเป็นแคมเปญใหม่')
   }
 
