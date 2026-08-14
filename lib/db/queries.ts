@@ -10,8 +10,18 @@ import { planEffects } from '../engine/effects'
  * Published config never changes (BR-05), so it is cached by config version id
  * and never invalidated. A new publish is a new version, which is a new key —
  * there is no stale entry to evict, and therefore no eviction to get wrong.
+ *
+ * Keyword rules are deliberately NOT in here. §5.2 lists what a config version
+ * snapshots — activity, card, counter, reward, rich_menu — and keyword_rule is
+ * not among them, because a keyword is a way in rather than a rule that decides
+ * an outcome: changing one cannot change what anybody already won. They are
+ * therefore editable on a live campaign, which means caching them would make
+ * the keyword screen appear to save while the running process kept answering
+ * with the old set.
  */
-const configCache = new Map<string, LiveCampaign>()
+type CachedConfig = Omit<LiveCampaign, 'keywordRules' | 'keywordTargets'>
+
+const configCache = new Map<string, CachedConfig>()
 
 export function clearConfigCache(): void {
   configCache.clear()
@@ -33,6 +43,31 @@ type CampaignRow = {
 
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
+}
+
+/** Read fresh every time — see the note on configCache. */
+async function loadKeywords(sql: postgres.Sql, campaignId: string) {
+  const rules = await sql<{
+    id: string; keyword: string; match_mode: 'exact' | 'contains'; sort_order: number
+    target_activity_id: string | null; target_card_id: string | null
+  }[]>`
+    SELECT id, keyword, match_mode, sort_order, target_activity_id, target_card_id
+      FROM keyword_rule WHERE campaign_id = ${campaignId} ORDER BY sort_order`
+
+  const keywordTargets: LiveCampaign['keywordTargets'] = {}
+  for (const r of rules) {
+    keywordTargets[r.id] = {
+      activityId: r.target_activity_id ?? undefined,
+      cardId: r.target_card_id ?? undefined,
+    }
+  }
+
+  return {
+    keywordRules: rules.map((r) => ({
+      id: r.id, keyword: r.keyword, matchMode: r.match_mode, sortOrder: r.sort_order,
+    })),
+    keywordTargets,
+  }
 }
 
 const DEFAULT_THEME = { primary: '#17756A', secondary: '#EFF3F1', text: '#151F1D' }
@@ -103,8 +138,11 @@ export function makePorts(sql: postgres.Sql, lineChannelIdOverride?: string): Po
 
       if (!row) return null
 
+      // Keywords are read on every request, cached config or not.
+      const { keywordRules, keywordTargets } = await loadKeywords(sql, row.campaign_id)
+
       const cached = configCache.get(row.config_version_id)
-      if (cached) return cached
+      if (cached) return { ...cached, keywordRules, keywordTargets }
 
       const activities = await sql<{
         id: string; code: string; input_type: LiveCampaign['activities'][number]['inputType']
@@ -120,22 +158,7 @@ export function makePorts(sql: postgres.Sql, lineChannelIdOverride?: string): Po
          WHERE campaign_id = ${row.campaign_id} AND is_enabled
          ORDER BY sort_order`
 
-      const rules = await sql<{
-        id: string; keyword: string; match_mode: 'exact' | 'contains'; sort_order: number
-        target_activity_id: string | null; target_card_id: string | null
-      }[]>`
-        SELECT id, keyword, match_mode, sort_order, target_activity_id, target_card_id
-          FROM keyword_rule WHERE campaign_id = ${row.campaign_id} ORDER BY sort_order`
-
-      const keywordTargets: LiveCampaign['keywordTargets'] = {}
-      for (const r of rules) {
-        keywordTargets[r.id] = {
-          activityId: r.target_activity_id ?? undefined,
-          cardId: r.target_card_id ?? undefined,
-        }
-      }
-
-      const live: LiveCampaign = {
+      const live: CachedConfig = {
         campaignId: row.campaign_id,
         code: row.code,
         timezone: row.timezone,
@@ -144,10 +167,6 @@ export function makePorts(sql: postgres.Sql, lineChannelIdOverride?: string): Po
         endAt: row.end_at,
         theme: { ...DEFAULT_THEME, ...row.theme },
         configVersionId: row.config_version_id,
-        keywordRules: rules.map((r) => ({
-          id: r.id, keyword: r.keyword, matchMode: r.match_mode, sortOrder: r.sort_order,
-        })),
-        keywordTargets,
         activities: activities.map((a) => ({
           id: a.id, code: a.code, inputType: a.input_type, resolveMethod: a.resolve_method,
           // JSONB columns are external input as far as this code is concerned.
@@ -166,7 +185,7 @@ export function makePorts(sql: postgres.Sql, lineChannelIdOverride?: string): Po
       }
 
       configCache.set(row.config_version_id, live)
-      return live
+      return { ...live, keywordRules, keywordTargets }
     },
 
     async ensureParticipant(lineChannelId, lineUid) {

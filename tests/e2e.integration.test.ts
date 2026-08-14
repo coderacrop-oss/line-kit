@@ -149,3 +149,38 @@ describe('ครบวงจรผ่านฐานข้อมูลจริ�
     expect(Number(count)).toBe(0)
   })
 })
+
+/**
+ * Keywords are editable while a campaign is live, so they must not be frozen in
+ * the config cache. §5.2 lists what a config version snapshots and keyword_rule
+ * is not in it — a keyword is a way in, not a rule that decides an outcome, so
+ * changing one cannot change what anybody already won.
+ */
+describe('คีย์เวิร์ดแก้ได้ทั้งที่แคมเปญเปิดอยู่', () => {
+  it('เพิ่มคีย์เวิร์ดใหม่แล้วใช้ได้ทันที โดยไม่ต้องล้างแคช', async () => {
+    const s = await seedLive(sql)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    // อ่านครั้งแรกเพื่อให้ config เข้าแคช
+    await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+
+    await sql`
+      INSERT INTO keyword_rule (campaign_id, keyword, match_mode, target_activity_id, sort_order)
+      VALUES (${s.campaignId}, 'สุ่มเลย', 'exact', ${s.activityId}, 2)`
+
+    // ไม่เรียก clearConfigCache เลย — ถ้าคีย์เวิร์ดอยู่ในแคช อันนี้จะตกไปที่การ์ดตั้งต้น
+    const out = await handleEvent(say('สุ่มเลย'), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(out?.message).toMatchObject({ type: 'flex' })
+  })
+
+  it('ลบคีย์เวิร์ดแล้วหยุดทำงานทันที', async () => {
+    const s = await seedLive(sql)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+    await sql`DELETE FROM keyword_rule WHERE campaign_id = ${s.campaignId}`
+
+    const out = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(out?.message).toEqual({ type: 'text', text: 'พิมพ์ว่า เล่น เพื่อเริ่ม' })
+  })
+})
