@@ -512,7 +512,6 @@ Server Action ของทางเข้านี้ · ใน `app/login/actio
 'use server'
 import { cookies } from 'next/headers'
 import { redirect } from 'next/navigation'
-import { db } from '@/lib/db/client'
 import { devLoginAllowed } from '@/lib/auth/devlogin'
 import { resolveUser } from '@/lib/auth/session'
 
@@ -532,10 +531,10 @@ export async function devLogin(formData: FormData): Promise<void> {
   }
 
   // ใช้ทางนี้เข้ามาต้องมีร่องรอย เพราะไม่มี Google เป็นพยาน
-  await db()`
-    INSERT INTO token_access_log (channel_id, actor_type, app_user_id, purpose)
-    SELECT id, 'user', ${result.userId}, 'display_last4' FROM channel
-     WHERE channel_type = 'preview' LIMIT 1`
+  // เขียนลง stderr ไม่ใช่ token_access_log — ตารางนั้นผูกกับ channel และ CHECK
+  // ของ purpose ไม่มีค่าไหนแปลว่า "มีคนเข้าระบบทางลัด" · ยัดค่าที่ใกล้เคียงลงไป
+  // จะทำให้ตารางตรวจสอบเก็บเหตุผลที่ไม่จริง ซึ่งแย่กว่าไม่เก็บ
+  console.warn(`[dev-login] ${result.email} เข้าระบบผ่านทางเข้าสำหรับทดสอบ`)
 
   ;(await cookies()).set('fsb_email', result.email, {
     httpOnly: true, sameSite: 'lax', path: '/',
@@ -909,7 +908,6 @@ export async function createCampaign(formData: FormData): Promise<void> {
   // บังคับมี (BR-29) — เป็นจุดเริ่มนับของสถิติและการลบข้อมูล
   if (!endAt) throw new Error('ต้องระบุวันจบ')
 
-  await db()`
     INSERT INTO campaign (name, code, start_at, end_at, created_by)
     VALUES (${name}, ${code}, now(), ${endAt}, ${session.userId})`
 

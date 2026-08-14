@@ -41,6 +41,12 @@ export async function devLogin(formData: FormData): Promise<void> {
     )
   }
 
+  // ไม่มี Google เป็นพยานว่าใครเข้ามา จึงต้องทิ้งร่องรอยเอง · ลง stderr ไม่ใช่
+  // token_access_log เพราะตารางนั้นผูกกับ channel และ CHECK ของ purpose ไม่มี
+  // ค่าไหนแปลว่า "มีคนเข้าทางลัด" — ยัดค่าที่ใกล้เคียงลงไปจะทำให้ตารางตรวจสอบ
+  // เก็บเหตุผลที่ไม่จริง ซึ่งแย่กว่าไม่เก็บ
+  console.warn(`[dev-login] ${result.email} เข้าระบบผ่านทางเข้าสำหรับทดสอบ`)
+
   await setSessionCookie(result.email)
   redirect('/campaigns')
 }
