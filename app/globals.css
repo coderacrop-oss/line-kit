@@ -88,3 +88,10 @@ summary::-webkit-details-marker { display: none; }
   border-radius: var(--r-sm);
   padding: 2px 6px;
 }
+
+/* แถบซ้ายของแคมเปญ — hover ต้องอยู่ใน CSS เพราะ inline style เขียน :hover ไม่ได้
+   .nav-item-on ต้องมาทับกฎ a:hover ข้างบน ไม่งั้นรายการที่เปิดอยู่จะเปลี่ยนเป็น
+   สีเน้นบนพื้นเข้ม ซึ่งอ่านไม่ออก */
+.nav-back:hover,
+.nav-item:hover { background: var(--ground); color: var(--ink); }
+.nav-item-on:hover { background: var(--ink); color: var(--panel); }

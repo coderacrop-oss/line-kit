@@ -14,9 +14,12 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
   return (
     <div style={{ minHeight: '100vh' }}>
+      {/* 56px คือความสูงของแถบนี้ในต้นแบบ · โครงของแคมเปญลบค่านี้ออกจาก 100vh
+          เพื่อให้แถบซ้ายสูงเต็มที่เหลือพอดี ไม่ใช่ล้นออกไปหนึ่งแถบ */}
       <header style={{
         borderBottom: '1px solid var(--rule)', background: 'var(--panel)',
-        padding: '12px var(--page-x)', display: 'flex', alignItems: 'center', gap: 12,
+        padding: '0 var(--page-x)', minHeight: 56,
+        display: 'flex', alignItems: 'center', gap: 12,
       }}>
         <span style={{
           width: 22, height: 22, background: 'var(--ink)',
