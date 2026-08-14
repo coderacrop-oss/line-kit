@@ -20,6 +20,11 @@
 - **ทุก Server Action ต้องตรวจสิทธิ์เองทุกครั้ง** ห้ามพึ่งว่าหน้าจอซ่อนปุ่มไว้แล้ว
 - **กุญแจของ LINE ต้องเข้ารหัสก่อนเก็บ และหน้าจอเห็นได้แค่ 4 ตัวท้าย** (BR-16 · DD-03)
 - **TypeScript strict · commit หลังทุก task · ข้อความ commit เป็นภาษาอังกฤษ อธิบายเหตุผล**
+- **สามข้อที่ต้องรู้ก่อนเขียนเทสต์ `.tsx`** — ค้นเจอตอนทำ Task 3 จริง ไม่ใช่ตอนอ่านเอกสาร
+  - `vitest.config.ts` ต้องมี `esbuild: { jsx: 'automatic' }` · เพราะ `tsconfig.json` ตั้ง `jsx: "preserve"` ไว้ให้ Next แปลง ถ้าไม่ตั้ง ทุกไฟล์ `.tsx` จะพังด้วย `ReferenceError: React is not defined`
+  - ใช้ docblock `// @vitest-environment jsdom` บนหัวไฟล์ **ไม่ใช่ `environmentMatchGlobs`** ซึ่ง deprecated ใน Vitest 3.2 และขึ้นแบนเนอร์ทุกครั้งที่รัน
+  - ต้องเรียก `afterEach(cleanup)` เอง เพราะรีโปนี้ปิด `globals` · ไม่เรียกแล้ว render ของเทสต์ก่อนหน้าจะค้าง และ `getBy*` จะเจอของซ้ำ
+- **`Field` สร้าง id จาก hash ของ label** — สองช่องที่ชื่อเหมือนกันในหน้าเดียวจะได้ id ชนกัน · ส่ง prop `id` เองเมื่อเจอเคสนั้น
 - **เอกสารอ้างอิง** `~/Downloads/FLEX_AD_L2_v0.32.html` §3 (สารบัญจอ) · §5.2 (ตาราง) · §5.3 (enum)
 
 ## Design Tokens
@@ -708,10 +713,11 @@ Panel      border 1px --rule · radius --r-lg · background --panel · overflow 
 Panel.Row  padding 18px 20px · border-bottom 1px --rule · แถวสุดท้ายไม่มีเส้น
 Button     primary  background --ink   color --panel  border 1px --ink
            ghost    background --panel color --ink    border 1px --rule  hover border --ink
-           danger   background --panel color #7A1A10  border 1px --danger
+           danger   background --panel · color และ border จาก STATUS_TONES.danger
            ทุกแบบ radius --r · padding 10px 18px · 13px/600 · disabled → opacity .5
 Field      label 11px/600 --ink-3 · input border 1px --rule radius --r padding 9px 12px
-           error → border --danger · ข้อความ 11px สี #7A1A10 · aria-invalid + aria-describedby
+           error → border จาก STATUS_TONES.danger.border · ข้อความ 11px สีจาก .fg
+           aria-invalid + aria-describedby
 Badge      radius --r-pill · padding 3px 9px · 10px/600 .06em uppercase --mono
            สีจาก STATUS_TONES · tone="mute" = border dashed --rule สี --ink-3
 Rows       loading → แถว skeleton พื้น --panel-2 มี data-skeleton
