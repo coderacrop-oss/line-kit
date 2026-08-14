@@ -70,6 +70,11 @@ button, input, select, textarea {
   color: var(--ink-3);
 }
 
+/* เส้นคั่นระหว่างแถวในแผง — อยู่ที่นี่ไม่ใช่ใน inline style เพราะแถวสุดท้าย
+   ต้องไม่ขีด และ inline style ถามไม่ได้ว่าตัวเองเป็นตัวสุดท้ายหรือเปล่า */
+.panel-row { border-bottom: 1px solid var(--rule); }
+.panel-row:last-child { border-bottom: 0; }
+
 /* ตัวอักษรตัวเล็กแบบ mono ใช้กับรหัสและ id ที่คนต้องก๊อปไปใช้ */
 .code {
   font-family: var(--mono);
