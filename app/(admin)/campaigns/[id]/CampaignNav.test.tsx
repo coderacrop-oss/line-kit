@@ -85,13 +85,34 @@ describe('ปลายทางที่มีจริงกับที่ย�
       .toBe('/campaigns/c1/keywords')
   })
 
+  /**
+   * บัญชี LINE อยู่นอกแคมเปญ · ที่อยู่จึงไม่มี id ของแคมเปญอยู่ในนั้น
+   *
+   * A channel belongs to the account, not to one campaign — campaign_channel is
+   * a join table precisely because several campaigns can point at the same OA.
+   * Filing the screen under one campaign's id would promise an ownership the
+   * table does not have, and would give the same screen a different address
+   * depending on which campaign you happened to be in when you clicked it.
+   */
+  it('บัญชี LINE พาออกไปนอกแคมเปญ ไม่ใช่เข้าไปในแคมเปญ', () => {
+    at('/campaigns/c1')
+    render(<CampaignNav campaignId="c1" />)
+    expect(screen.getByRole('link', { name: 'บัญชี LINE' }).getAttribute('href')).toBe('/channels')
+  })
+
+  it('อยู่แคมเปญไหนก็ไปที่เดียวกัน', () => {
+    at('/campaigns/c2')
+    render(<CampaignNav campaignId="c2" />)
+    expect(screen.getByRole('link', { name: 'บัญชี LINE' }).getAttribute('href')).toBe('/channels')
+  })
+
   it('จอที่ยังไม่มีไม่เป็นลิงก์ · ไม่มีทางกดไปเจอหน้า 404', () => {
     at('/campaigns/c1')
     const { container } = render(<CampaignNav campaignId="c1" />)
     const links = Array.from(container.querySelectorAll('[data-nav-item] a, a[data-nav-item]'))
       .map((a) => a.textContent)
-    // ทางกลับไม่ได้อยู่ในรายการ · เหลือแค่สองจอที่มีจริง
-    expect(links).toEqual(['ข้อมูลแคมเปญ', 'คีย์เวิร์ด'])
+    // ทางกลับไม่ได้อยู่ในรายการ · เหลือแค่สามจอที่มีจริง
+    expect(links).toEqual(['ข้อมูลแคมเปญ', 'คีย์เวิร์ด', 'บัญชี LINE'])
   })
 
   it('ทุกจอที่ยังไม่มีติดป้ายรอบถัดไปไว้ทุกอัน', () => {
@@ -99,7 +120,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     const { container } = render(<CampaignNav campaignId="c1" />)
     const soon = Array.from(container.querySelectorAll('[data-nav-item]'))
       .filter((i) => i.querySelector('a, [href]') === null && i.tagName !== 'A')
-    expect(soon.length).toBe(10)
+    expect(soon.length).toBe(9)
     for (const item of soon) {
       expect(within(item as HTMLElement).getByText('รอบถัดไป'), item.textContent ?? '').toBeDefined()
       expect(item.getAttribute('aria-disabled')).toBe('true')
@@ -111,6 +132,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     render(<CampaignNav campaignId="c1" />)
     expect(itemNamed('ข้อมูลแคมเปญ').textContent).toBe('ข้อมูลแคมเปญ')
     expect(itemNamed('คีย์เวิร์ด').textContent).toBe('คีย์เวิร์ด')
+    expect(itemNamed('บัญชี LINE').textContent).toBe('บัญชี LINE')
   })
 
   it('ป้ายรอบถัดไปใช้ทรงเดียวกับต้นแบบ', () => {
@@ -128,7 +150,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     const closed = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.path === undefined)
     expect(closed.map((i) => i.label)).toEqual([
       'กิจกรรม', 'การ์ด', 'คลังภาพ', 'ค่าสะสม', 'รางวัล', 'ชุดเนื้อหา',
-      'Rich Menu', 'บัญชี LINE', 'ส่งขึ้น LINE', 'ทดลองเล่น',
+      'Rich Menu', 'ส่งขึ้น LINE', 'ทดลองเล่น',
     ])
   })
 })

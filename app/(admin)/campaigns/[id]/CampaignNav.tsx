@@ -6,11 +6,16 @@ import type { CSSProperties, ReactNode } from 'react'
 export type NavItem = {
   label: string
   /**
-   * ทางเดินต่อจาก `/campaigns/[id]` · ไม่ใส่ = จอนั้นยังไม่มี
+   * ทางเดินต่อจาก `/campaigns/[id]` · ขึ้นต้นด้วย `/` = ที่อยู่เต็ม · ไม่ใส่ = จอนั้นยังไม่มี
    *
    * Absent means the screen does not exist yet, and the item renders as a
    * disabled row carrying the prototype's "รอบถัดไป" pill. Turning one on later
    * is adding `path` to its line here — the rendering already handles both.
+   *
+   * A leading slash means the screen is not inside this campaign at all. Only
+   * บัญชี LINE is like that today: a channel belongs to the account and can be
+   * shared by several campaigns, so filing it under one campaign's id would
+   * promise an ownership the table does not have.
    */
   path?: string
 }
@@ -47,7 +52,7 @@ export const NAV_GROUPS: NavGroup[] = [
     head: 'Channel · เชื่อมต่อ',
     items: [
       { label: 'Rich Menu' },
-      { label: 'บัญชี LINE' },
+      { label: 'บัญชี LINE', path: '/channels' },
       { label: 'ส่งขึ้น LINE' },
     ],
   },
@@ -93,8 +98,10 @@ const pillStyle: CSSProperties = {
   border: '1px solid var(--rule)', borderRadius: 'var(--r-pill)', padding: '2px 7px',
 }
 
-const hrefOf = (campaignId: string, path: string) =>
-  path === '' ? `/campaigns/${campaignId}` : `/campaigns/${campaignId}/${path}`
+const hrefOf = (campaignId: string, path: string) => {
+  if (path.startsWith('/')) return path
+  return path === '' ? `/campaigns/${campaignId}` : `/campaigns/${campaignId}/${path}`
+}
 
 /**
  * จอลูกยังนับว่ารายการแม่เปิดอยู่ ยกเว้นรายการที่เป็นรากของแคมเปญ
