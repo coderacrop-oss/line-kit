@@ -1,6 +1,18 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { getAccessToken, getChannelSecret, replyMessage } from './client'
 
+import type { FlexMessage } from '../flex/types'
+
+/** Smallest Flex message LINE accepts, for exercising the client itself. */
+function testMessage(): FlexMessage {
+  return {
+    type: 'flex',
+    altText: 'test',
+    contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } },
+  }
+}
+
+
 const fetchMock = vi.fn()
 
 beforeEach(() => {
@@ -30,7 +42,7 @@ describe('environment readers', () => {
 
 describe('replyMessage', () => {
   it('posts the message to the LINE reply endpoint', async () => {
-    const message = ({ type: 'flex', altText: 'test', contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } } })
+    const message = testMessage()
     await replyMessage('reply-token-123', message)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -46,11 +58,11 @@ describe('replyMessage', () => {
 
   it('throws when LINE rejects the reply', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => 'Invalid reply token' })
-    await expect(replyMessage('stale-token', ({ type: 'flex', altText: 'test', contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } } }))).rejects.toThrow(/400/)
+    await expect(replyMessage('stale-token', testMessage())).rejects.toThrow(/400/)
   })
 
   it('passes an abort signal so a stalled LINE API call cannot hang forever', async () => {
-    await replyMessage('reply-token-123', ({ type: 'flex', altText: 'test', contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } } }))
+    await replyMessage('reply-token-123', testMessage())
 
     const [, init] = fetchMock.mock.calls[0]
     expect(init.signal).toBeInstanceOf(AbortSignal)
