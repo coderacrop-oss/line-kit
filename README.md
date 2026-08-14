@@ -1,23 +1,26 @@
-# 🥠 LINE Fortune Cookie
+# Flex System Builder
 
-เกมคุกกี้เสี่ยงทายใน LINE Official Account เล่นจบในหน้าแชท
-ผู้ใช้ได้ตารางคุกกี้ 3×3 แตะเลือก 1 ชิ้น แล้วได้คำทำนายที่ผูกกับชิ้นนั้น
+แพลตฟอร์มตั้งค่ากิจกรรมบน LINE Official Account **โดยไม่ต้อง deploy**
+กติกาทั้งหมดอยู่ในฐานข้อมูล ไม่ได้อยู่ในโค้ด
 
-- **ไม่มี database** — คำทำนายทั้ง 9 ใบถูกฝัง id ไว้ในปุ่มตอนสร้างการ์ด
-- **ฟรีทั้งหมด** — Vercel Hobby + LINE reply message (ซึ่ง LINE ไม่คิดเงิน)
-- **ไม่ใช้ Push API** ทุกการตอบกลับใช้ `replyToken` เท่านั้น
+- **ตอบกลับอัตโนมัติ · ทักทายเพื่อนใหม่ · การ์ดเมสเสจ** — สไลซ์แรก
+- **เครื่องยนต์ตัดสินผล** — สุ่มรางวัลตามน้ำหนัก คิดคะแนน ตัดโควตาถูกต้องเมื่อคนกดพร้อมกัน
+- **ไม่ใช้ Push API** ทุกการตอบกลับใช้ `replyToken` เท่านั้น (BR-02)
+
+เอกสารออกแบบ `docs/superpowers/specs/2026-08-14-flex-system-builder-slice1-design.md`
+แผนลงมือ `docs/superpowers/plans/2026-08-14-flex-slice1-core.md`
 
 ## เริ่มพัฒนา
 
 ```bash
 npm install
-npm test          # รันเทสต์ทั้งหมด ไม่ต้องต่อเน็ต ไม่ต้องมี LINE account
+npm test          # ชั้น unit — ไม่ต้องต่อเน็ต ไม่ต้องมีฐานข้อมูล
 npm run typecheck
-npm run dev       # เปิด http://localhost:3000
+npm run dev
 ```
 
-ตรรกะเกมทั้งหมดเป็น pure function เทสต์ครอบคลุมโดยไม่ต้องยิง LINE จริง
-ดังนั้นแก้คำทำนายหรือหน้าตาการ์ดแล้วรัน `npm test` ได้ทันที
+ตรรกะทั้งหมดใน `lib/engine/` และ `lib/render/` เป็น pure function
+**มีเทสต์บังคับไว้ว่าสองโฟลเดอร์นี้ห้ามแตะฐานข้อมูล เน็ต หรือ framework**
 
 ## ตั้งค่า LINE OA ตั้งแต่ต้น
 
@@ -47,32 +50,15 @@ npm run dev       # เปิด http://localhost:3000
 ตอนพัฒนา ใช้ **preview deployment** ของ Vercel เป็น webhook URL ได้เลย (ฟรี อยู่ในบัญชีเดียวกัน)
 ไม่ต้องพึ่ง ngrok ซึ่งแผนฟรีมีข้อจำกัด
 
-## วิธีเล่น
-
-| ผู้ใช้ทำอะไร | บอทตอบอะไร |
-|---|---|
-| แอดเป็นเพื่อน | การ์ดต้อนรับ + ปุ่มเริ่มเล่น |
-| พิมพ์ `เสี่ยงทาย` `เสี่ยงโชค` `คุกกี้` `ดวง` `เล่น` `fortune` | ตารางคุกกี้ 3×3 |
-| แตะคุกกี้ 1 ชิ้น | คำทำนายของชิ้นนั้น + ปุ่มเสี่ยงใหม่ |
-| พิมพ์อย่างอื่น | การ์ดใบ้วิธีเล่น + ปุ่มเริ่มเล่น |
-
-การ์ดตารางเก่าที่ค้างอยู่ในแชทยังกดได้เสมอ เพราะระบบไม่มีสถานะให้หมดอายุ
-
-## แก้คำทำนาย
-
-แก้ที่ `lib/game/fortunes.ts` — **`id` ที่ปล่อยไปแล้วห้ามเปลี่ยนหรือนำกลับมาใช้ซ้ำ**
-เพราะการ์ดตารางที่ส่งไปหาผู้ใช้แล้วอ้างอิง id เดิมอยู่ ถ้าเปลี่ยน คุกกี้ใบเดิมจะเปลี่ยนคำทำนาย
-เพิ่มใบใหม่ให้ใช้ id ถัดจากตัวที่มากที่สุด และรัน `npm test` เพื่อยืนยันว่ายังครบโทนละ 20 ใบ
-
 ## โครงสร้าง
 
 ```
 app/api/line/webhook/route.ts   จุดรับ webhook — ตรวจลายเซ็นแล้วส่งต่อ
-lib/game/fortunes.ts            คลังคำทำนาย 60 ใบ
-lib/game/draw.ts                สุ่ม 9 ใบ โทนละ 3
-lib/game/postback.ts            เข้ารหัส/ถอดรหัส postback
-lib/game/handler.ts             event → ข้อความที่จะตอบ (pure)
-lib/flex/                       ตัวสร้างการ์ด Flex ทั้งหมด (pure)
+lib/engine/                     ตัดสินผล (pure) — entry · resolve · effects · decide
+lib/render/                     วาดการ์ด (pure) — groups · vars · flex · text
+lib/match/                      จับคู่คีย์เวิร์ดและถอด postback (pure)
+lib/state.ts                    PlayerState + ตัวประเมินเงื่อนไข (pure)
+lib/daykey.ts                   คำนวณ period_key (pure)
 lib/line/verify.ts              ตรวจ x-line-signature
 lib/line/client.ts              เรียก Reply API (จุดเดียวที่ออกเน็ต)
 scripts/probe-line-limits.mjs   วัดข้อจำกัดจริงของ LINE — ดูหัวข้อถัดไป
@@ -107,4 +93,3 @@ cloudflared tunnel --url http://localhost:8787
 สคริปต์รันในเครื่องไม่ใช่บน Vercel โดยเจตนา เพราะการวัดต้องค้าง request ไว้ได้
 นานถึงสองนาที ซึ่งไม่มี serverless timeout ไหนยอม
 
-เอกสารออกแบบอยู่ที่ `docs/superpowers/specs/2026-08-07-line-fortune-cookie-design.md`

@@ -1,41 +1,19 @@
-import { NextResponse } from 'next/server'
-import { handleEvent } from '@/lib/game/handler'
-import { getChannelSecret, replyMessage } from '@/lib/line/client'
-import type { LineWebhookBody } from '@/lib/line/types'
+import { getChannelSecret } from '@/lib/line/client'
 import { verifySignature } from '@/lib/line/verify'
 
-export const runtime = 'nodejs'
-export const dynamic = 'force-dynamic'
-export const maxDuration = 10
-
+/**
+ * The single entry point from LINE.
+ *
+ * Two things happen here and nowhere else: the signature is checked, and LINE
+ * gets its 200 before any work starts. LINE retries a non-200, and a retry
+ * after a reward has been granted would grant it twice.
+ */
 export async function POST(request: Request): Promise<Response> {
-  const rawBody = await request.text()
+  const raw = await request.text()
 
-  if (!verifySignature(rawBody, request.headers.get('x-line-signature'), getChannelSecret())) {
-    return new NextResponse('Invalid signature', { status: 401 })
+  if (!verifySignature(raw, request.headers.get('x-line-signature'), getChannelSecret())) {
+    return new Response('invalid signature', { status: 401 })
   }
 
-  let body: LineWebhookBody
-  try {
-    body = JSON.parse(rawBody) as LineWebhookBody
-  } catch {
-    // Signature checked out, so this came from LINE. Nothing to act on.
-    return NextResponse.json({ ok: true })
-  }
-
-  const events = Array.isArray(body?.events) ? body.events : []
-  for (const event of events) {
-    try {
-      const message = handleEvent(event)
-      if (message && 'replyToken' in event && event.replyToken) {
-        await replyMessage(event.replyToken, message)
-      }
-    } catch (error) {
-      // Never surface this as a non-200: LINE retries failed deliveries,
-      // which would send the player the same card twice.
-      console.error('[line-webhook] failed to handle event', error)
-    }
-  }
-
-  return NextResponse.json({ ok: true })
+  return Response.json({ ok: true })
 }
