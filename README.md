@@ -75,6 +75,36 @@ lib/game/handler.ts             event → ข้อความที่จะ�
 lib/flex/                       ตัวสร้างการ์ด Flex ทั้งหมด (pure)
 lib/line/verify.ts              ตรวจ x-line-signature
 lib/line/client.ts              เรียก Reply API (จุดเดียวที่ออกเน็ต)
+scripts/probe-line-limits.mjs   วัดข้อจำกัดจริงของ LINE — ดูหัวข้อถัดไป
 ```
+
+## วัดข้อจำกัดจริงของ LINE (OI-03)
+
+เอกสาร A&D ตั้ง OI-03 เป็น Blocker ไว้ตั้งแต่ v0.1 เพราะ **LINE ไม่ระบุอายุของ
+reply token ไว้ที่ไหน** และเอกสารบอกเองว่าต้องวัดเอง · ถ้าสั้นกว่าที่เดาไว้
+จะต้องเลิกใช้ serverless ซึ่งกระทบการออกแบบทั้งหมด
+
+```bash
+export LINE_CHANNEL_SECRET=...        # บัญชีทดสอบเท่านั้น
+export LINE_CHANNEL_ACCESS_TOKEN=...
+node scripts/probe-line-limits.mjs
+
+# อีกหน้าต่าง — เปิดพอร์ตให้ LINE เข้าถึงได้
+cloudflared tunnel --url http://localhost:8787
+```
+
+เอา URL ที่ได้ไปตั้งเป็น webhook ของ**บัญชีทดสอบ** แล้วพิมพ์คุยกับ OA:
+
+| พิมพ์ | ได้อะไร |
+|---|---|
+| `help` | รายการคำสั่ง |
+| `t 30` | หน่วง 30 วินาทีแล้วลองตอบ — token ยังใช้ได้ไหม |
+| `flex` | ไล่หาเพดานขนาด Flex (ต้องตั้ง `PROBE_ALLOW_PUSH=1` เพราะใช้ push) |
+
+ไล่ตามบันได `t 5` → `t 15` → `t 30` → … ทีละครั้ง เพราะ **reply token ใช้ได้
+ครั้งเดียว** จึงต้องพิมพ์หนึ่งครั้งต่อหนึ่งค่า · ผลลงที่ `docs/probes/`
+
+สคริปต์รันในเครื่องไม่ใช่บน Vercel โดยเจตนา เพราะการวัดต้องค้าง request ไว้ได้
+นานถึงสองนาที ซึ่งไม่มี serverless timeout ไหนยอม
 
 เอกสารออกแบบอยู่ที่ `docs/superpowers/specs/2026-08-07-line-fortune-cookie-design.md`
