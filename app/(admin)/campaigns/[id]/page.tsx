@@ -175,7 +175,7 @@ export default async function CampaignInfoPage({ params }: { params: Promise<{ i
 
             {/* ผลของสองช่องข้างบนเขียนออกมาเป็นประโยค เพราะไม่มีใครอ่านตัวเลขแล้วเดาผลได้ */}
             <Note tone="info">
-              <b>ตอนนี้แปลว่า:</b> {describeDayClock(campaign.timezone, campaign.dayLengthSec)}
+              <b>ตัวอย่าง:</b> {describeDayClock(campaign.timezone, campaign.dayLengthSec)}
             </Note>
 
             {campaign.hasPlays && (

@@ -33,17 +33,22 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <button
-          type="button"
-          disabled
-          style={{
-            background: 'var(--panel)', color: 'var(--ink-3)', border: '1px solid var(--rule)',
-            borderRadius: 'var(--r)', padding: '11px 16px', fontSize: 13, fontWeight: 600,
-            cursor: 'not-allowed',
-          }}
-        >
-          เข้าสู่ระบบด้วย Google · ยังไม่ได้ตั้งค่า
-        </button>
+        <div style={{ ...card, padding: 20, gap: 14 }}>
+          <div style={{ fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.65 }}>
+            ระบบไม่เก็บรหัสผ่าน — การยืนยันตัวอยู่ที่ Google ทั้งหมด
+          </div>
+          <button
+            type="button"
+            disabled
+            style={{
+              background: 'var(--panel)', color: 'var(--ink-3)', border: '1px solid var(--rule)',
+              borderRadius: 'var(--r)', padding: '11px 16px', fontSize: 13, fontWeight: 600,
+              cursor: 'not-allowed',
+            }}
+          >
+            เข้าสู่ระบบด้วย Google · ยังไม่ได้ตั้งค่า
+          </button>
+        </div>
 
         {testEntranceOpen && (
           <form action={devLogin} style={{ ...card, borderColor: 'var(--warn)', background: 'rgba(215,119,6,.08)' }}>
@@ -78,6 +83,12 @@ export default function LoginPage() {
             </button>
           </form>
         )}
+
+        {/* เหตุผลที่มีรายชื่อทีมเลยอยู่บนจอ ไม่ใช่อยู่ในหัวคนที่ตั้งค่า —
+            คนที่เข้าไม่ได้จะได้รู้ว่าไม่ใช่เพราะล็อกอินพลาด */}
+        <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.65, textAlign: 'center' }}>
+          ล็อกอิน Google สำเร็จไม่พอ — ต้องมีอีเมลอยู่ในรายชื่อทีมด้วย (BR-23) เพราะระบบนี้เก็บกุญแจ OA ของแบรนด์
+        </div>
       </div>
     </main>
   )
