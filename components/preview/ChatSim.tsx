@@ -208,8 +208,19 @@ export function ChatSim({ channelName, menu, canPlay, snapshot, play, reset }: C
   const nextId = () => Date.now() + Math.random()
   const append = (item: Item) => setItems((current) => [...current, item])
 
+  /**
+   * ระหว่างที่ครั้งก่อนยังไม่กลับมา กดซ้ำแล้วไม่ยิงซ้ำ
+   *
+   * There is no `canPlay` check here on purpose. A reporter has no input row
+   * and no enabled button to reach this with, and the door that actually
+   * refuses them is requireRole() inside the action — a second copy of that
+   * rule in the browser is a copy that can drift while looking reassuring.
+   * What this does guard is the one thing the browser can get wrong on its own:
+   * a card's buttons are not disabled while a play is in flight, because LINE's
+   * are not either, so three quick taps would send three plays.
+   */
   async function run(input: PreviewInput) {
-    if (!canPlay || busy) return
+    if (busy) return
     setBusy(true)
     if (input.kind === 'text') append({ id: nextId(), kind: 'said', text: input.text })
 

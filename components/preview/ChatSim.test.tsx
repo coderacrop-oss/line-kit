@@ -312,6 +312,80 @@ describe('สิทธิ์ผู้ดูรายงาน', () => {
     setup({ canPlay: false })
     expect(screen.getByText(/ดูได้อย่างเดียว/)).toBeDefined()
   })
+
+  it('ปุ่มในเมนูจำลองกดไม่ลง และกดแล้วไม่ยิงอะไร', () => {
+    const { play } = setup({ canPlay: false, menu: [{ label: 'เล่น', text: 'เล่น' }] })
+    const button = screen.getByRole('button', { name: 'เล่น' }) as HTMLButtonElement
+    expect(button.disabled).toBe(true)
+    fireEvent.click(button)
+    expect(play).not.toHaveBeenCalled()
+  })
+})
+
+/**
+ * กดสองครั้งก่อนคำตอบแรกจะกลับมา
+ *
+ * This is the one thing the browser can get wrong that the server cannot see:
+ * two taps in flight put the player's second message above the reply to their
+ * first, and the transcript stops being a record of what happened in order.
+ */
+describe('กันการกดซ้ำระหว่างรอคำตอบ', () => {
+  const withButton: PreviewReply = {
+    bubble: {
+      kind: 'card',
+      altText: 'ผลของคุณ',
+      card: {
+        hero: null,
+        parts: [{ kind: 'title', text: 'ผลของคุณ' }],
+        buttons: [{ label: 'เล่นอีกครั้ง', postback: 'c=x&a=draw', uri: null }],
+      },
+    },
+    snapshot: emptySnapshot,
+  }
+
+  // ปุ่มบนการ์ดไม่ได้ถูกปิดตอนรอ เพราะการ์ดของ LINE จริงก็ไม่ปิด · ตัวที่กัน
+  // การยิงซ้ำจึงเป็นด่านใน run() ไม่ใช่ attribute ของปุ่ม
+  it('กดปุ่มบนการ์ดรัวๆ ระหว่างรอคำตอบ ยิงแค่ครั้งเดียว', async () => {
+    let release: (() => void) | undefined
+    const play = vi.fn()
+      .mockResolvedValueOnce(withButton)
+      .mockImplementation(() => new Promise<PreviewReply>((resolve) => {
+        release = () => resolve(textReply('ตอบแล้ว'))
+      }))
+
+    render(
+      <ChatSim
+        channelName="ช่อง" menu={[]} canPlay snapshot={emptySnapshot}
+        play={play} reset={async () => ({ bubble: null, snapshot: emptySnapshot })}
+      />,
+    )
+
+    send('เล่น')
+    const button = await screen.findByRole('button', { name: 'เล่นอีกครั้ง' })
+
+    fireEvent.click(button)
+    fireEvent.click(button)
+    fireEvent.click(button)
+    expect(play).toHaveBeenCalledTimes(2)
+
+    release?.()
+    expect(await screen.findByText('ตอบแล้ว')).toBeDefined()
+  })
+
+  it('คำตอบกลับมาแล้วกดต่อได้', async () => {
+    const play = vi.fn(async () => withButton)
+    render(
+      <ChatSim
+        channelName="ช่อง" menu={[]} canPlay snapshot={emptySnapshot}
+        play={play} reset={async () => ({ bubble: null, snapshot: emptySnapshot })}
+      />,
+    )
+
+    send('เล่น')
+    fireEvent.click(await screen.findByRole('button', { name: 'เล่นอีกครั้ง' }))
+    await screen.findAllByRole('button', { name: 'เล่นอีกครั้ง' })
+    expect(play).toHaveBeenCalledTimes(2)
+  })
 })
 
 describe('สิ่งที่จอบอกออกมาตรงๆ', () => {
