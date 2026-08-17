@@ -38,8 +38,15 @@ function RoleOptions() {
  * leave somebody looking for a control that everybody else's row has and
  * concluding the screen is broken; a disabled control with a sentence beside it
  * answers the question it raises.
+ *
+ * Somebody who cannot manage users gets no controls at all rather than disabled
+ * ones. The difference matters: a disabled control on a locked row says "not
+ * this row", which is true and useful, while a control that would be refused on
+ * every row for every person teaches the reader that the screen is broken rather
+ * than that they are not an administrator. The role still shows, as text —
+ * knowing who can do what is the reason a reporter opens this screen.
  */
-function UserRowView({ user }: { user: UserView }) {
+function UserRowView({ user, canManage }: { user: UserView; canManage: boolean }) {
   const locked = user.lockedReason !== null
 
   return (
@@ -69,30 +76,36 @@ function UserRowView({ user }: { user: UserView }) {
 
       <Badge tone={user.isActive ? 'ok' : 'mute'}>{user.statusLabel}</Badge>
 
-      <form action={setUserRole} style={{ display: 'flex', gap: 6 }}>
-        <input type="hidden" name="id" value={user.id} />
-        <select
-          name="role"
-          defaultValue={user.role}
-          disabled={locked}
-          aria-label={`บทบาทของ ${user.email}`}
-          style={{
-            border: '1px solid var(--rule)', borderRadius: 'var(--r)',
-            padding: '7px 11px', fontSize: 12, background: 'var(--panel)', color: 'var(--ink)',
-          }}
-        >
-          <RoleOptions />
-        </select>
-        <Button type="submit" variant="ghost" disabled={locked}>เปลี่ยนบทบาท</Button>
-      </form>
+      {!canManage ? (
+        <span style={{ fontSize: 12, color: 'var(--ink-2)' }}>{user.roleLabel}</span>
+      ) : (
+        <>
+          <form action={setUserRole} style={{ display: 'flex', gap: 6 }}>
+            <input type="hidden" name="id" value={user.id} />
+            <select
+              name="role"
+              defaultValue={user.role}
+              disabled={locked}
+              aria-label={`บทบาทของ ${user.email}`}
+              style={{
+                border: '1px solid var(--rule)', borderRadius: 'var(--r)',
+                padding: '7px 11px', fontSize: 12, background: 'var(--panel)', color: 'var(--ink)',
+              }}
+            >
+              <RoleOptions />
+            </select>
+            <Button type="submit" variant="ghost" disabled={locked}>เปลี่ยนบทบาท</Button>
+          </form>
 
-      <form action={setUserActive}>
-        <input type="hidden" name="id" value={user.id} />
-        <input type="hidden" name="active" value={user.isActive ? 'false' : 'true'} />
-        <Button type="submit" variant={user.isActive ? 'danger' : 'ghost'} disabled={locked}>
-          {user.isActive ? 'ถอนสิทธิ์' : 'คืนสิทธิ์'}
-        </Button>
-      </form>
+          <form action={setUserActive}>
+            <input type="hidden" name="id" value={user.id} />
+            <input type="hidden" name="active" value={user.isActive ? 'false' : 'true'} />
+            <Button type="submit" variant={user.isActive ? 'danger' : 'ghost'} disabled={locked}>
+              {user.isActive ? 'ถอนสิทธิ์' : 'คืนสิทธิ์'}
+            </Button>
+          </form>
+        </>
+      )}
     </div>
   )
 }
@@ -142,8 +155,8 @@ export default async function UsersPage() {
 
       <Panel>
         {users.map((user) => (
-          <Panel.Row key={user.id} style={{ padding: '14px 18px' }}>
-            <UserRowView user={user} />
+          <Panel.Row key={user.id} data-user-row style={{ padding: '14px 18px' }}>
+            <UserRowView user={user} canManage={canManage} />
           </Panel.Row>
         ))}
       </Panel>

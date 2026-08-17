@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
-  TABLES_NEVER_COPIED, TABLES_TO_COPY,
+  COPIED_LABELS, REFUSED_LABELS, TABLES_NEVER_COPIED, TABLES_TO_COPY,
   describeCounts, rekeyStoragePath, validateDuplicate,
 } from './duplicate'
 
@@ -188,6 +188,90 @@ describe('validateDuplicate', () => {
   it('วันสิ้นสุดก่อนหรือเท่าวันเริ่ม ไม่ผ่าน · ตรงกับ CHECK (end_at > start_at)', () => {
     expect(validateDuplicate({ ...ok, endAt: '2026-08-01' })).toContain('วันสิ้นสุด')
     expect(validateDuplicate({ ...ok, endAt: ok.startAt })).toContain('วันสิ้นสุด')
+  })
+})
+
+/**
+ * ประโยคบนจอกับตารางที่ทำงานจริง ต้องพูดเรื่องเดียวกัน
+ *
+ * The two lists on M1-S03 are the whole point of the screen, and they are
+ * strings: nothing about a string fails when the table underneath it moves to
+ * the other list. Somebody adding `reward_code` to TABLES_TO_COPY for a
+ * plausible-sounding reason would leave the screen still promising, in red, that
+ * coupon codes are never copied — and the screen is the only thing anybody reads
+ * before pressing the button.
+ *
+ * ชื่อข้อห้ามถอดจากต้นแบบตรงๆ (`dupNo` ใน docs/design/flex-builder-prototype.html)
+ * ยกเว้น 'รหัสคูปองในคลัง' ที่จอจริงเพิ่มเข้ามา เพราะ 0003_reward_code_scope
+ * ย้ายความไม่ซ้ำของ `assigned_to` จากทั้งตารางมาอยู่ในรางวัลเดียว — ตารางจึงเลิก
+ * เป็นคนคัดค้านการที่ลูกค้าสองคนถือรหัสจริงใบเดียวกัน
+ */
+describe('รายการบนจอผูกกับตารางจริง', () => {
+  const REFUSAL_TABLES: Record<string, readonly string[]> = {
+    'บัญชี LINE และกุญแจทั้งหมด': ['channel', 'campaign_channel'],
+    'ผู้ร่วมสนุก': ['participant', 'participant_attribute', 'participant_activity'],
+    'ค่าสะสมของผู้เล่น': ['counter_value'],
+    'สิทธิ์รางวัลที่จ่ายไปแล้ว': ['entitlement'],
+    'รหัสคูปองในคลัง': ['reward_code'],
+    'ประวัติ version และสถิติ': ['config_version', 'campaign_stat'],
+  }
+
+  const COPY_TABLES: Record<string, readonly string[]> = {
+    'กิจกรรมและการตั้งค่าทั้งหมด': ['activity'],
+    'การ์ดและข้อความ': ['card', 'card_block'],
+    'ภาพในคลัง': ['asset'],
+    'นิยามค่าสะสมและรางวัล': ['counter', 'counter_milestone', 'reward', 'coupon'],
+    'คีย์เวิร์ดและ Rich Menu': ['keyword_rule', 'rich_menu'],
+  }
+
+  it('ข้อห้ามบนจอตรงกับต้นแบบ และครบทุกข้อ', () => {
+    expect(REFUSED_LABELS.map((refusal) => refusal.what)).toEqual(Object.keys(REFUSAL_TABLES))
+  })
+
+  it('ทุกข้อห้ามมีตารางจริงรองรับ และตารางนั้นอยู่ในรายการที่ไม่ก๊อป', () => {
+    for (const [what, tables] of Object.entries(REFUSAL_TABLES)) {
+      for (const table of tables) {
+        expect(TABLES_NEVER_COPIED, `"${what}" อ้าง ${table}`).toContain(table)
+        expect(TABLES_TO_COPY, `"${what}" อ้าง ${table}`).not.toContain(table)
+      }
+    }
+  })
+
+  it('ทุกข้อที่บอกว่าก๊อป มีตารางที่ถูกก๊อปจริงรองรับ', () => {
+    for (const [what, tables] of Object.entries(COPY_TABLES)) {
+      for (const table of tables) {
+        expect(TABLES_TO_COPY, `"${what}" อ้าง ${table}`).toContain(table)
+      }
+    }
+  })
+
+  it('ทุกข้อที่บอกว่าก๊อป มีข้อความบนจอของตัวเอง', () => {
+    for (const head of Object.keys(COPY_TABLES)) {
+      expect(COPIED_LABELS.some((label) => label.startsWith(head)), head).toBe(true)
+    }
+    expect(COPIED_LABELS).toHaveLength(Object.keys(COPY_TABLES).length)
+  })
+
+  /**
+   * ทุกตารางที่ห้ามก๊อป ต้องมีคนบนจอพูดถึง — ไม่งั้นคือข้อห้ามที่ไม่มีใครรู้
+   *
+   * บันทึกที่ไม่ได้อยู่ในสายตาของคนกด (log ต่างๆ) ถูกยกเว้นไว้ตรงนี้พร้อมชื่อ
+   * เพราะการยกเว้นแบบเงียบๆ คือรูที่ทำให้เทสต์นี้ค่อยๆ ไม่วัดอะไรเลย
+   */
+  it('ตารางต้องห้ามทุกตัวมีคนบนจอพูดถึง หรือถูกยกเว้นไว้อย่างมีชื่อ', () => {
+    const spokenFor = new Set(Object.values(REFUSAL_TABLES).flat())
+    const quiet = [
+      'campaign_channel_counter_target', 'play_lock', 'quiz_round', 'pending_input',
+      'event_log', 'effect_log', 'token_access_log', 'export_log', 'api_key',
+    ]
+    expect(TABLES_NEVER_COPIED.filter((table) =>
+      !spokenFor.has(table) && !quiet.includes(table))).toEqual([])
+  })
+
+  it('เหตุผลของทุกข้อห้ามเป็นประโยค ไม่ใช่คำเดียว', () => {
+    for (const refusal of REFUSED_LABELS) {
+      expect(refusal.why.length, refusal.what).toBeGreaterThan(20)
+    }
   })
 })
 

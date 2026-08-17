@@ -90,6 +90,12 @@ export async function setUserRole(formData: FormData): Promise<void> {
   if (target.id === session.userId) throw new Error(SELF_LOCK)
 
   // ย้ายคนอื่นขึ้นมาเป็นผู้ตั้งค่าไม่ทำให้ใครถูกล็อกออก · ด่านอยู่ที่ขาลง
+  //
+  // ด่านนี้ยังไม่มีทางทำงานวันนี้ และตั้งใจให้อยู่ต่อ: requireRole ข้างบนแปลว่าคนที่กด
+  // เป็นผู้ตั้งค่าที่ยังใช้งานได้ และ activeConfigurators นับจากทั้งตารางซึ่งรวมคนที่กด
+  // ด้วย · เป้าหมายที่เป็นผู้ตั้งค่าอีกคนจึงทำให้จำนวนเป็นสองเสมอ · มันจะกลายเป็นด่าน
+  // จริงทันทีที่มีบทบาทอื่นถูกอนุญาตให้เรียก action นี้ ซึ่งเป็นการแก้ที่ดูไม่มีพิษภัย
+  // และเป็นวันที่ไม่มีใครกลับมาอ่านบรรทัดนี้
   if (role !== 'configurator') {
     const locked = lockReason(target, session.userId, activeConfigurators)
     if (locked) throw new Error(locked)
@@ -122,6 +128,8 @@ export async function setUserActive(formData: FormData): Promise<void> {
   const { sql, target, activeConfigurators } = await loadTarget(id)
 
   // คืนสิทธิ์ไม่ทำให้ใครถูกล็อกออก · ด่านมีไว้กันการปิดประตูบานสุดท้าย
+  // ครึ่งที่ทำงานจริงคือล็อกตัวเอง · ครึ่งที่เป็นผู้ตั้งค่าคนสุดท้ายเข้าไม่ถึงด้วยเหตุผล
+  // เดียวกับที่เขียนไว้ใน setUserRole และอยู่ต่อด้วยเหตุผลเดียวกัน
   if (!active) {
     const locked = lockReason(target, session.userId, activeConfigurators)
     if (locked) throw new Error(locked)

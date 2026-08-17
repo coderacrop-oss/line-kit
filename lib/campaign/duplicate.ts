@@ -546,6 +546,12 @@ export async function duplicateCampaign(
   if (invalid) throw new Error(invalid)
 
   return sql.begin(async (tx) => {
+    // `code` เป็น UNIQUE ทั้งตาราง · ปล่อยให้ฐานข้อมูลเป็นคนพูด แล้วคนกดจะเจอ
+    // "duplicate key value violates unique constraint" ซึ่งไม่ได้บอกว่าต้องแก้ช่องไหน
+    const [taken] = await tx<{ id: string }[]>`
+      SELECT id FROM campaign WHERE code = ${input.code}`
+    if (taken) throw new Error(`รหัส "${input.code}" มีแคมเปญอื่นใช้อยู่แล้ว — ตั้งรหัสใหม่ที่ยังไม่มีใครใช้`)
+
     const [source] = await tx<{ timezone: string; day_length_sec: number; theme: unknown }[]>`
       SELECT timezone, day_length_sec, theme FROM campaign WHERE id = ${input.sourceId}`
     if (!source) throw new Error('ไม่พบแคมเปญต้นทาง')
@@ -630,8 +636,12 @@ export const REFUSED_LABELS: ReadonlyArray<{ what: string; why: string }> = [
     why: 'ก๊อปตามไปแล้วแคมเปญใหม่จะยิงเข้า OA ของลูกค้ารายเดิมทันทีที่ส่งขึ้น',
   },
   {
-    what: 'ผู้ร่วมสนุกและค่าสะสมของแต่ละคน',
+    what: 'ผู้ร่วมสนุก',
     why: 'คนคนเดียวจะกลายเป็นผู้เล่นของสองแคมเปญพร้อมกัน ตัวเลขของทั้งคู่จึงไม่ใช่ของใครเลย',
+  },
+  {
+    what: 'ค่าสะสมของผู้เล่น',
+    why: 'ยอดสะสมเป็นของคนที่เล่นจริง แคมเปญใหม่ยังไม่มีใครเล่น ยอดที่ก๊อปมาจึงเป็นของที่ไม่เคยเกิด',
   },
   {
     what: 'สิทธิ์รางวัลที่จ่ายไปแล้ว',
@@ -642,8 +652,8 @@ export const REFUSED_LABELS: ReadonlyArray<{ what: string; why: string }> = [
     why: 'เป็นรหัสที่ใช้ได้จริงนอกระบบ ก๊อปไปแล้วลูกค้าสองคนจะถือรหัสเดียวกัน และตารางไม่ห้าม',
   },
   {
-    what: 'ประวัติการส่งขึ้น สถิติ และบันทึกทั้งหมด',
-    why: 'แคมเปญใหม่ยังไม่เคยถูกส่งขึ้น ประวัติที่ก๊อปมาจะเป็นชื่อคนที่ไม่เคยเห็นมัน',
+    what: 'ประวัติ version และสถิติ',
+    why: 'แคมเปญใหม่ยังไม่เคยถูกส่งขึ้น ประวัติที่ก๊อปมาจะเป็นชื่อคนที่ไม่เคยเห็นมัน และบันทึกทั้งหมดก็ไม่ตามไปด้วยเหตุผลเดียวกัน',
   },
 ]
 

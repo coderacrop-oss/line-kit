@@ -37,7 +37,8 @@ vi.mock('next/headers', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 
-const { addUser, saveTestLineUid, setUserActive, setUserRole } = await import('./actions')
+const actions = await import('./actions')
+const { addUser, saveTestLineUid, setUserActive, setUserRole } = actions
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData()
@@ -212,46 +213,81 @@ describe('ล็อกที่กันไม่ให้ระบบเหล�
     expect(state.writes).toEqual([])
   })
 
-  it('ถอนสิทธิ์ผู้ตั้งค่าคนสุดท้ายไม่ได้', async () => {
-    // คนกดเป็นผู้ตั้งค่าคนที่สอง · เป้าหมายจึงไม่ใช่คนสุดท้าย จนกว่าคนกดจะถูกถอน
+  /**
+   * แถวของตัวเองถูกปฏิเสธทุกบทบาทที่เลือก ไม่ใช่เฉพาะขาลง
+   *
+   * The rule that catches a demotion lives in lockReason, and lockReason is only
+   * consulted when the new role is not 'configurator'. Choosing 'configurator'
+   * for your own row therefore slips past it — a write that changes nothing
+   * today, and the only thing standing between "this branch is fine" and a
+   * self-demotion the day somebody edits which roles the branch covers. The
+   * screen disables the picker on your own row; the action has to say the same
+   * thing for every value the picker could have held.
+   */
+  it('เปลี่ยนบทบาทตัวเองเป็นผู้ตั้งค่าก็ไม่ได้ · แถวของตัวเองถูกปฏิเสธทุกทาง', async () => {
+    alsoOnTheTeam({ id: 'spare', role: 'configurator' })
+    for (const role of ['configurator', 'content_editor', 'reporter']) {
+      state.writes = []
+      await expect(setUserRole(form({ id: 'me', role })), role).rejects.toThrow('ตัวเอง')
+      expect(state.writes, role).toEqual([])
+    }
+  })
+
+  /**
+   * ผู้ตั้งค่าคนสุดท้ายไม่มีทางเป็นคนอื่นในสายตาของคนที่กดได้ · และนั่นคือเหตุผล
+   * ที่ทั้งสองด่านนี้ยังอยู่แม้จะไม่มีทางเข้าถึงจากตัว action วันนี้
+   *
+   * `requireRole('configurator')` แปลว่าคนที่กดเป็นผู้ตั้งค่าที่ยังใช้งานได้ และ
+   * `loadTarget` นับผู้ตั้งค่าจากทั้งตารางซึ่งรวมคนที่กดอยู่ด้วย · ถ้าเป้าหมายเป็น
+   * ผู้ตั้งค่าที่ยังใช้งานได้อีกคน จำนวนย่อมเป็นสองขึ้นไปเสมอ ล็อกจึงไม่ทำงาน และ
+   * ถ้าเป้าหมายคือคนที่กดเอง ล็อกที่ทำงานคือล็อกตัวเองซึ่งอยู่คนละบรรทัด
+   *
+   * สามเทสต์ที่เคยอยู่ตรงนี้ตั้งชื่อว่าทดสอบกฎข้อนี้ทั้งสามตัว แต่ตัวหนึ่งวัดด่าน
+   * เข้าระบบ ตัวหนึ่งวัดล็อกตัวเอง และตัวสุดท้าย assert ว่า "ลดบทบาทได้" ทั้งที่
+   * ชื่อบอกว่าไม่ได้ · เทสต์ที่ชื่อไม่ตรงกับที่มันวัด แย่กว่าไม่มีเทสต์ เพราะมัน
+   * ทำให้ไม่มีใครไปเขียนตัวจริง — กฎตัวจริงถูกวัดที่ lockReason ใน
+   * lib/db/users.test.ts ซึ่งเรียกมันตรงๆ ได้โดยไม่ติดข้อจำกัดข้างบน
+   */
+  it('คนที่กดถูกนับรวมด้วย · ผู้ตั้งค่าอีกคนจึงไม่เคยเป็นคนสุดท้าย', async () => {
     state.users = [
-      { id: 'me', email: 'me@example.com', role: 'content_editor', is_active: true },
+      { id: 'me', email: 'me@example.com', role: 'configurator', is_active: true },
       { id: 'last', email: 'last@example.com', role: 'configurator', is_active: true },
     ]
     state.cookie = 'me@example.com'
-    // คนกดต้องเป็นผู้ตั้งค่าถึงจะเรียกได้ · ตั้งใหม่ให้เป็นสองคน แล้วถอนคนที่สอง
-    state.users[0].role = 'configurator'
-    state.users[0].is_active = false
 
-    await expect(setUserActive(form({ id: 'last', active: 'false' })))
-      .rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    await setUserActive(form({ id: 'last', active: 'false' }))
+    expect(lastWrite().text).toContain('UPDATE app_user')
+    expect(lastWrite().values).toContain('last')
   })
 
-  it('เหลือผู้ตั้งค่าคนเดียวที่ไม่ใช่ตัวเอง ถอนไม่ได้', async () => {
-    // คนกดเป็นผู้ดูแลระบบผ่าน role configurator แต่ทดสอบผ่านคนที่สาม
+  it('คนที่กดถูกถอนสิทธิ์ไปแล้ว ไม่ได้ผ่านด่านเข้าระบบตั้งแต่ต้น', async () => {
     state.users = [
       { id: 'me', email: 'me@example.com', role: 'configurator', is_active: false },
       { id: 'last', email: 'last@example.com', role: 'configurator', is_active: true },
     ]
+    state.cookie = 'me@example.com'
+
+    await expect(setUserActive(form({ id: 'last', active: 'false' })))
+      .rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    expect(state.writes).toEqual([])
+  })
+
+  it('ผู้ตั้งค่าคนเดียวที่เหลือ ถอนสิทธิ์ตัวเองไม่ได้', async () => {
+    state.users = [
+      { id: 'last', email: 'last@example.com', role: 'configurator', is_active: true },
+    ]
     state.cookie = 'last@example.com'
+
     await expect(setUserActive(form({ id: 'last', active: 'false' })))
       .rejects.toThrow('ตัวเอง')
     expect(state.writes).toEqual([])
   })
 
-  it('ลดบทบาทผู้ตั้งค่าคนสุดท้ายไม่ได้ · ปิดประตูบานเดียวกับการถอนสิทธิ์', async () => {
+  it('ลดบทบาทผู้ตั้งค่าอีกคนได้ · คนที่กดยังอยู่ ระบบจึงไม่เหลือศูนย์คน', async () => {
     alsoOnTheTeam({ id: 'last', role: 'configurator' })
-    // คนกดเป็นผู้ตั้งค่าอีกคน · ทำให้ 'last' ไม่ใช่คนสุดท้าย จึงต้องเอาคนกดออกจากการนับ
-    state.users = [
-      { id: 'me', email: 'me@example.com', role: 'configurator', is_active: false },
-      { id: 'last', email: 'last@example.com', role: 'configurator', is_active: true },
-      { id: 'other', email: 'other@example.com', role: 'content_editor', is_active: true },
-    ]
-    state.cookie = 'other@example.com'
-    state.users[2].role = 'configurator'
-
-    await expect(setUserRole(form({ id: 'last', role: 'reporter' })))
-      .resolves.toBeUndefined()
+    await setUserRole(form({ id: 'last', role: 'reporter' }))
+    expect(lastWrite().values).toContain('reporter')
+    expect(lastWrite().values).toContain('last')
   })
 
   it('มีผู้ตั้งค่าสองคน ถอนคนหนึ่งได้จริง', async () => {
@@ -305,6 +341,20 @@ describe('setUserActive · ไม่เคยลบแถว', () => {
   beforeEach(() => {
     signedInAs('configurator')
     alsoOnTheTeam({ id: 'other', role: 'configurator' })
+  })
+
+  /**
+   * ไม่มีทางลบผู้ใช้จากที่ไหนในโมดูลนี้เลย
+   *
+   * The rule is not "the revoke button does an UPDATE"; it is that deleting a
+   * user is not a thing this application can do. A second action added later —
+   * to tidy up somebody added by mistake, say — would be reasonable-looking and
+   * would erase the name attached to a published version, so the absence has to
+   * be measured rather than assumed from the one action that exists today.
+   */
+  it('โมดูลนี้ไม่มี action ที่ลบผู้ใช้เลย', () => {
+    expect(Object.keys(actions).filter((name) => /delete|remove|destroy|purge/i.test(name)))
+      .toEqual([])
   })
 
   it('ถอนสิทธิ์เขียน UPDATE ไม่ใช่ DELETE', async () => {
