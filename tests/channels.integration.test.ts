@@ -506,8 +506,13 @@ describe('findTestSendChannel · BR-62', () => {
   })
 
   it('บัญชีทดสอบที่ใช้ล่าสุด (ในกลุ่มที่สร้างเอง) ถูกเลือกก่อนบัญชีทดสอบที่เก่ากว่า', async () => {
-    await insert({ type: 'test', hasKey: true, lastUsedAt: '2020-01-01' })
-    const newestId = await insert({ type: 'test', hasKey: true, lastUsedAt: '9999-01-02' })
+    // เวลาต้องอิงนาฬิกาจริง ไม่ใช่ค่าคงที่ — ตารางไม่ถูกล้างระหว่างรอบทดสอบ
+    // แถวจากรอบก่อนที่ last_used_at เท่ากันเป๊ะจะ tie แล้ว ORDER BY ...,name
+    // เลือกผิดแถวแบบไม่แน่นอน ค่าที่อิงเวลาปัจจุบันของนาฬิกาจริงเดินหน้าเสมอ
+    // จึงชนะแถวเก่าได้ทุกรอบโดยไม่ต้องล้างตาราง
+    const now = Date.now()
+    await insert({ type: 'test', hasKey: true, lastUsedAt: new Date(now - 1000).toISOString() })
+    const newestId = await insert({ type: 'test', hasKey: true, lastUsedAt: new Date(now).toISOString() })
 
     const found = await findTestSendChannel(sql)
 
