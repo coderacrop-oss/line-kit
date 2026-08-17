@@ -2,7 +2,7 @@
 import { cleanup, render, screen, within } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { PublishChannel, PublishScreenData } from '@/lib/db/publish'
-import { CONFIRM_WORD } from '@/lib/publish/validate'
+import { CONFIRM_WORD, WHERE } from '@/lib/publish/validate'
 
 // vitest ไม่ได้เปิด globals ไว้ RTL จึงเก็บกวาดเองอัตโนมัติไม่ได้
 afterEach(cleanup)
@@ -220,6 +220,24 @@ describe('M1-S04 · ทุกปัญหาบนจอเป็นลิงก
     expect(warn!.querySelector('a')!.getAttribute('href')).toBe('/campaigns/camp-1/counters')
   })
 
+  /**
+   * คำเตือนไม่ใช่ตัวบล็อก และตัวนับต้องพูดตรงกับปุ่ม
+   *
+   * ตัวนับที่รวมคำเตือนเข้าไปด้วยจะเขียนว่า "1 ข้อต้องแก้" ข้างปุ่มที่กดได้ · คนอ่าน
+   * จะเรียนรู้ภายในสองครั้งว่าตัวเลขนั้นไม่ต้องเชื่อ แล้วจะไม่เชื่อมันอีกเลยตอนที่มัน
+   * นับของจริง
+   */
+  it('มีแต่คำเตือน ตัวนับยังบอกว่าผ่านทุกข้อ และปุ่มยังกดได้', async () => {
+    state.screen.base.counters = [{ id: 'ct1', code: 'stamp', name: 'แสตมป์', target: 7 }]
+    const { container } = await open({ channel: 'ch-test' })
+
+    expect(container.querySelector('[data-check="warn"]')).not.toBeNull()
+    expect(container.querySelector('[data-check="blocked"]')).toBeNull()
+    expect(screen.getByText('ผ่านทุกข้อ')).toBeDefined()
+    expect((screen.getByRole('button', { name: /ส่งขึ้น LINE/ }) as HTMLButtonElement).disabled)
+      .toBe(false)
+  })
+
   it('ปุ่มไปแก้ใช้ข้อความของต้นแบบ', async () => {
     brokenEverything()
     expect((await open()).container.textContent).toContain('ไปแก้ →')
@@ -358,6 +376,21 @@ describe('M1-S04 · บัญชีจริงของลูกค้า', () 
     await open({ channel: 'ch-prod' })
     expect(screen.getByText('ผ่านทุกข้อ')).toBeDefined()
   })
+
+  /**
+   * `where` ของ BR-18 คือ `publish#confirm` · จุดยึดนั้นต้องมีอยู่จริงบนจอ
+   *
+   * เทสต์เส้นทางที่ lib/publish/validate.test.ts พิสูจน์ได้แค่ว่ามีไฟล์จออยู่ ไม่ได้
+   * พิสูจน์ว่าในจอนั้นมี id ให้กระโดดไปถึง · ลิงก์ที่พาไปถูกหน้าแต่ไม่เลื่อนไปที่กล่อง
+   * ยืนยันคือลิงก์ที่ทำงานครึ่งเดียวบนจอที่ยาวที่สุดของระบบ
+   */
+  it('จุดยึดที่ where ของ BR-18 ชี้ไป มีอยู่จริงบนจอ', async () => {
+    state.screen = prodScreen()
+    const { container } = await open({ channel: 'ch-prod' })
+    const anchor = WHERE.confirm.split('#')[1]
+    expect(anchor).toBeTruthy()
+    expect(container.querySelector(`#${anchor}`)).not.toBeNull()
+  })
 })
 
 /**
@@ -410,6 +443,62 @@ describe('M1-S04 · บัญชีที่ยังไม่มีรหัส
   it('บัญชีที่มีรหัสช่องแล้วไม่ถูกเตือน', async () => {
     const { container } = await open({ channel: 'ch-test' })
     expect(container.textContent).not.toContain('ยังไม่มีรหัสช่องของ LINE')
+  })
+})
+
+/**
+ * BR-39 · การ์ดตั้งต้นเป็นของบัญชี ไม่ใช่ของแคมเปญ
+ *
+ * ด่านนี้เปลี่ยนคำตอบเมื่อเลือกบัญชีคนละใบ ซึ่งเป็นเหตุผลที่ configFor ต้องส่งค่า
+ * ของบัญชีที่เลือกต่อเข้าไปในตัวตรวจ · ถ้าส่งเป็น null ตายตัว แคมเปญที่ตั้งการ์ด
+ * ตั้งต้นไว้เรียบร้อยแล้วจะส่งขึ้นไม่ได้ตลอดกาล โดยที่จอชี้ไปหน้าที่ตั้งไว้ถูกแล้ว
+ */
+describe('M1-S04 · การ์ดตั้งต้นของบัญชีที่เลือก', () => {
+  const withTextInput = (defaultCardId: string | null) => aScreen({
+    base: {
+      ...goodBase(),
+      activities: [{
+        ...goodBase().activities[0], inputType: 'text',
+      }],
+    },
+    channels: [aChannel({ defaultCardId })],
+  })
+
+  it('บัญชีที่ยังไม่มีการ์ดตั้งต้น ทำให้ส่งขึ้นไม่ได้ และพาไปหน้าบัญชี LINE', async () => {
+    state.screen = withTextInput(null)
+    const { container } = await open({ channel: 'ch-test' })
+
+    const row = Array.from(container.querySelectorAll('[data-check="blocked"]'))
+      .find((node) => node.textContent?.includes('BR-39'))
+    expect(row, 'ต้องมีแถวของ BR-39').not.toBeUndefined()
+    expect(row!.querySelector('a')!.getAttribute('href')).toBe('/channels')
+    expect((screen.getByRole('button', { name: /ส่งขึ้น LINE/ }) as HTMLButtonElement).disabled)
+      .toBe(true)
+  })
+
+  it('บัญชีที่ตั้งการ์ดตั้งต้นไว้แล้ว ผ่าน', async () => {
+    state.screen = withTextInput('c1')
+    const { container } = await open({ channel: 'ch-test' })
+
+    expect(container.querySelector('[data-check="blocked"]')).toBeNull()
+    expect(screen.getByText('ผ่านทุกข้อ')).toBeDefined()
+  })
+
+  /**
+   * ยังไม่ได้เลือกบัญชี = ยังไม่มีการ์ดตั้งต้นให้ตอบ จอจึงอ่านแบบเข้มไว้ก่อน
+   *
+   * เขียนเป็นเทสต์ไว้เพราะมันเป็นการตัดสินใจ ไม่ใช่ผลข้างเคียง · การอ่านแบบผ่อน
+   * ก่อนเลือกบัญชีจะทำให้รายการเปลี่ยนจากเขียวเป็นแดงตอนคนเลือกบัญชี ซึ่งอ่านเหมือน
+   * จอเพิ่งพัง · และตอนนี้ยังไม่มีปุ่มส่งขึ้นให้กด ความเข้มจึงไม่ได้ปิดกั้นใคร
+   */
+  it('ยังไม่ได้เลือกบัญชี · BR-39 ยังค้างอยู่และยังไม่มีปุ่มให้กด', async () => {
+    state.screen = withTextInput('c1')
+    const { container } = await open()
+    const blocked = Array.from(container.querySelectorAll('[data-check="blocked"]'))
+      .map((node) => node.textContent ?? '')
+
+    expect(blocked.filter((text) => text.includes('BR-39'))).toHaveLength(1)
+    expect(screen.queryByRole('button', { name: /ส่งขึ้น LINE/ })).toBeNull()
   })
 })
 
