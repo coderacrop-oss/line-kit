@@ -35,7 +35,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'ข้อมูลแคมเปญ', path: '' },
       { label: 'กิจกรรม' },
-      { label: 'การ์ด' },
+      { label: 'การ์ด', path: 'cards' },
       { label: 'คลังภาพ', path: 'assets' },
     ],
   },
@@ -44,7 +44,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'ค่าสะสม', path: 'counters' },
       { label: 'รางวัล', path: 'rewards' },
-      { label: 'ชุดเนื้อหา' },
+      { label: 'ชุดเนื้อหา', path: 'selectors' },
       { label: 'คีย์เวิร์ด', path: 'keywords' },
     ],
   },
