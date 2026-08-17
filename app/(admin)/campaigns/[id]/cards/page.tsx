@@ -53,21 +53,20 @@ const previewStyle: CSSProperties = {
 }
 
 /**
- * แผ่นการ์ดหนึ่งใบ
+ * แผ่นการ์ดหนึ่งใบ · ลิงก์ไปจอแก้บล็อกทีละใบ
  *
- * ยังไม่ใช่ลิงก์ · จอ M3-S02 มีแล้วครึ่งหนึ่ง — ขั้นสร้าง (ชนิด × เทมเพลต) อยู่ที่
- * `cards/new` และปุ่ม "+ สร้างการ์ด" บนหัวจอพาไปที่นั่น แต่ปลายทางที่แผ่นการ์ดควรพา
- * ไปคือจอแก้บล็อกทีละใบ (`cards/[cardId]`) ซึ่งเป็น Task 13 และยังไม่มีใครเขียน
- * ลิงก์ไปยังที่อยู่ที่ยังไม่มีไฟล์รองรับคือหน้า 404 ที่กลับออกมาไม่ได้ หลักเดียวกับ
- * ที่แถบซ้ายใช้กับจอที่ยังไม่ได้ทำ
+ * จอ M3-S02 ตอนนี้มีไฟล์รองรับครบทั้งสองขั้นแล้ว — ขั้นสร้าง (ชนิด × เทมเพลต) อยู่ที่
+ * `cards/new` และปุ่ม "+ สร้างการ์ด" บนหัวจอพาไปที่นั่น ส่วนแผ่นการ์ดแต่ละใบพาไปจอแก้
+ * บล็อกทีละใบ (`cards/[cardId]`) ซึ่งเป็น Task 13 และเขียนเสร็จแล้ว
  *
  * The dashed edge and the pill say the same thing twice on purpose. Colour alone
  * is not a message, and this is the one state on the screen that means "nothing
  * can ever send this card" — the reason the screen is worth opening at all.
  */
-function CardTile({ card }: { card: CardView }) {
+function CardTile({ campaignId, card }: { campaignId: string; card: CardView }) {
   return (
-    <div
+    <a
+      href={`/campaigns/${campaignId}/cards/${card.id}`}
       data-card-tile={card.code}
       style={{
         borderRadius: 'var(--r-lg)', background: 'var(--panel)', overflow: 'hidden',
@@ -75,6 +74,7 @@ function CardTile({ card }: { card: CardView }) {
         borderWidth: 1,
         borderStyle: card.isOrphan ? 'dashed' : 'solid',
         borderColor: card.isOrphan ? STATUS_TONES.danger.border : 'var(--rule)',
+        textDecoration: 'none', color: 'inherit',
       }}
     >
       {card.hasImage && (
@@ -106,7 +106,7 @@ function CardTile({ card }: { card: CardView }) {
           ))}
         </div>
       </div>
-    </div>
+    </a>
   )
 }
 
@@ -202,7 +202,7 @@ export default async function CardsPage({ params, searchParams }: {
               gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))',
               gap: 14,
             }}>
-              {shown.map((card) => <CardTile key={card.id} card={card} />)}
+              {shown.map((card) => <CardTile key={card.id} campaignId={campaign.id} card={card} />)}
             </div>
           )}
         </>

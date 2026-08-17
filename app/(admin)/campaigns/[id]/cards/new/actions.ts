@@ -36,7 +36,7 @@ export async function createCard(formData: FormData): Promise<void> {
 
   const code = trimmed(formData, 'code')
 
-  await createCardFromTemplate(db(), {
+  const { id } = await createCardFromTemplate(db(), {
     campaignId,
     code,
     sendType,
@@ -45,18 +45,7 @@ export async function createCard(formData: FormData): Promise<void> {
 
   revalidatePath(`/campaigns/${campaignId}/cards`)
 
-  /*
-   * กลับไปจอรายการการ์ด ไม่ใช่เข้าบล็อกเอดิเตอร์
-   *
-   * บล็อกเอดิเตอร์ของ M3-S02 คือ Task 13 ซึ่งยังไม่มีใครเขียน · การพาไปที่อยู่ที่
-   * ยังไม่มีไฟล์รองรับคือหน้า 404 ที่โผล่มาทันทีหลังสร้างสำเร็จ ซึ่งคนอ่านว่า
-   * "สร้างไม่ผ่าน" แล้วกดสร้างซ้ำจนได้การ์ดซ้ำเต็มไปหมด
-   *
-   * `?created=` ทำให้จอรายการชี้ได้ว่าใบไหนเพิ่งเกิด · เมื่อ Task 13 มีไฟล์จริงแล้ว
-   * บรรทัดนี้เปลี่ยนเป็น `/cards/<id>` ได้ โดย `createCardFromTemplate` คืน `id`
-   * มาให้อยู่แล้ว
-   */
-  redirect(
-    `/campaigns/${encodeURIComponent(campaignId)}/cards?created=${encodeURIComponent(code)}`,
-  )
+  // บล็อกเอดิเตอร์ของ M3-S02 มีไฟล์จริงแล้ว (Task 13) — พาไปแก้บล็อกทันทีหลังสร้าง
+  // แทนที่จะกลับไปจอรายการแล้วให้คนกดเข้าไปเอง
+  redirect(`/campaigns/${encodeURIComponent(campaignId)}/cards/${id}`)
 }

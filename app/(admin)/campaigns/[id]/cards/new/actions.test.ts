@@ -204,25 +204,26 @@ describe('ค่าที่ยิงเข้ามาแล้วต้อง�
 /**
  * ปลายทางหลังสร้าง
  *
- * บล็อกเอดิเตอร์ (Task 13) ยังไม่มีใครเขียน · การพาไปที่นั่นคือหน้า 404 ที่กดกลับ
- * ออกมาไม่ได้ทันทีหลังสร้างของสำเร็จ ซึ่งอ่านเป็น "สร้างไม่ผ่าน"
+ * บล็อกเอดิเตอร์ (Task 13) มีไฟล์จริงแล้วที่ `cards/[cardId]/page.tsx` — พาไปแก้
+ * บล็อกทันที แทนที่จะกลับไปจอรายการแล้วให้คนกดเข้าไปเอง `createCardFromTemplate`
+ * คืน `id` ของการ์ดที่เพิ่งสร้างมาให้อยู่แล้ว
  */
 describe('พาไปไหนต่อ', () => {
-  it('กลับไปจอรายการการ์ด พร้อมบอกว่าใบไหนเพิ่งเกิด', async () => {
+  it('พาไปจอแก้บล็อกของการ์ดที่เพิ่งสร้างทันที', async () => {
     signedInAs('configurator')
     await runExpectingRedirect(validForm())
-    expect(state.redirectedTo).toBe('/campaigns/camp-1/cards?created=welcome')
+    expect(state.redirectedTo).toBe('/campaigns/camp-1/cards/card-1')
   })
 
-  it('รหัสที่มีอักขระพิเศษถูก encode ก่อนต่อเข้า URL', async () => {
+  it('รหัสแคมเปญที่มีอักขระพิเศษถูก encode ก่อนต่อเข้า URL', async () => {
     // รหัสถูกกรองด้วย pattern มาแล้ว แต่ URL ที่ประกอบเองโดยไม่ encode คือรูที่
     // เปิดไว้รอวันที่กติกาของรหัสผ่อนลง
     signedInAs('configurator')
     await runExpectingRedirect(validForm({ campaign_id: 'a b' }))
-    expect(state.redirectedTo).toBe('/campaigns/a%20b/cards?created=welcome')
+    expect(state.redirectedTo).toBe('/campaigns/a%20b/cards/card-1')
   })
 
-  it('บอก Next ให้โหลดจอรายการการ์ดใหม่ ไม่งั้นการ์ดใหม่จะไม่โผล่', async () => {
+  it('บอก Next ให้โหลดจอรายการการ์ดใหม่ ไม่งั้นการ์ดใหม่จะไม่โผล่ในรายการ', async () => {
     signedInAs('configurator')
     await runExpectingRedirect(validForm())
     expect(state.revalidated).toContain('/campaigns/camp-1/cards')

@@ -198,3 +198,20 @@ export async function listCards(sql: postgres.Sql, campaignId: string): Promise<
   const rows = await selectCards(sql, sql<CardRow[]>`WHERE c.campaign_id = ${campaignId}`)
   return rows.map(summarizeCard)
 }
+
+/**
+ * การ์ดใบเดียว อย่างที่จอ M3-S02 ขั้น 3 (บล็อกเอดิเตอร์) ต้องใช้
+ *
+ * ใช้ query เดียวกับ `listCards` ผ่าน `selectCards` เพื่อให้ "ใครใช้การ์ดนี้อยู่"
+ * กับ "ไม่มีใครใช้" ตอบเหมือนกันทั้งจอรายการและจอแก้ทีละใบ ไม่ใช่สองความจริงที่
+ * อาจไม่ตรงกัน
+ */
+export async function loadCard(
+  sql: postgres.Sql, campaignId: string, cardId: string,
+): Promise<CardView | null> {
+  const rows = await selectCards(
+    sql, sql<CardRow[]>`WHERE c.campaign_id = ${campaignId} AND c.id = ${cardId}`,
+  )
+  const [row] = rows
+  return row ? summarizeCard(row) : null
+}

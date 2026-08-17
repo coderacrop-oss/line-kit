@@ -317,8 +317,8 @@ describe('M3-S01 · สิ่งที่จอสัญญาไว้กับ
 /**
  * ทางเข้าจอสร้างการ์ด · ปลายทางมีไฟล์จริงแล้ว จึงเป็นลิงก์ได้
  *
- * แผ่นการ์ดยังไม่เป็นลิงก์ เพราะปลายทางของมันคือจอแก้บล็อกทีละใบ ซึ่งเป็น Task 13
- * และยังไม่มีไฟล์ · ลิงก์สองอันนี้จึงอยู่คนละสถานะกันโดยตั้งใจ
+ * แผ่นการ์ดเป็นลิงก์แล้วเช่นกัน (Task 13) — ปลายทางของมันคือจอแก้บล็อกทีละใบซึ่ง
+ * ตอนนี้มีไฟล์รองรับครบแล้วที่ cards/[cardId]
  */
 describe('M3-S01 · ทางเข้าจอสร้างการ์ด', () => {
   const createLink = (container: HTMLElement) =>
@@ -336,12 +336,12 @@ describe('M3-S01 · ทางเข้าจอสร้างการ์ด', 
     expect(createLink(container)).toBeNull()
   })
 
-  it('แผ่นการ์ดยังไม่ใช่ลิงก์ · จอแก้บล็อกยังไม่มีใครเขียน', async () => {
+  it('แผ่นการ์ดเป็นลิงก์ไปจอแก้บล็อกทีละใบของการ์ดนั้น', async () => {
+    state.cards = [row({ id: 'card-a', code: 'a' })]
     const { container } = await show()
-    for (const tile of tiles(container)) {
-      expect(tile.tagName).not.toBe('A')
-      expect(tile.querySelector('a')).toBeNull()
-    }
+    const [tile] = tiles(container)
+    expect(tile.tagName).toBe('A')
+    expect(tile.getAttribute('href')).toBe('/campaigns/c1/cards/card-a')
   })
 
   it('กลับมาจากการสร้างสำเร็จ จอบอกว่าใบไหนเพิ่งเกิด', async () => {

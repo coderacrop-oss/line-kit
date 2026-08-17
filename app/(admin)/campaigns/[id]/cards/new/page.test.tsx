@@ -325,9 +325,9 @@ describe('ฟอร์มสร้าง', () => {
     expect(container.textContent).not.toContain('BR-37')
   })
 
-  it('บอกไว้บนจอว่ากดแล้วไปไหน เพราะบล็อกเอดิเตอร์ยังไม่มี', async () => {
+  it('บอกไว้บนจอว่ากดแล้วไปไหน — บล็อกเอดิเตอร์มีไฟล์จริงแล้ว (Task 13)', async () => {
     const { container } = await show({ send: 'flex_bubble', tpl: 'line_buttons' })
-    expect(container.textContent).toContain('กลับไปที่จอรายการการ์ด')
+    expect(container.textContent).toContain('กดแล้วพาไปแก้บล็อกของการ์ดใบนี้ทันที')
   })
 
   it('เทมเพลตที่ยิงมาจาก URL แต่ไม่มีอยู่ ไม่ทำให้ฟอร์มโผล่', async () => {
