@@ -1,6 +1,16 @@
 import postgres from 'postgres'
 
 /**
+ * อะไรก็ได้ที่ยิงคำสั่งได้ · ตัวพูลเอง หรือธุรกรรมที่เปิดออกมาจากมัน
+ *
+ * postgres.js hands a transaction back as its own type, which is the pool's
+ * type minus begin() and end(). Widening the query helpers to accept either is
+ * what lets the preview screen run the webhook's own Ports inside a transaction
+ * instead of owning a second copy of them.
+ */
+export type Queryable = postgres.Sql | postgres.TransactionSql
+
+/**
  * The one connection to the database.
  *
  * Kept behind a lazy singleton because a Next.js route handler may be invoked

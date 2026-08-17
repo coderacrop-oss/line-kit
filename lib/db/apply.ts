@@ -1,4 +1,4 @@
-import type postgres from 'postgres'
+import type { Queryable } from './client'
 import type { Effect } from '../engine/effects'
 import type { Outcome } from '../engine/resolve'
 
@@ -48,7 +48,7 @@ export function buildRanked(
 }
 
 export async function playAndApply(
-  sql: postgres.Sql,
+  sql: Queryable,
   args: {
     participantId: string
     activityId: string

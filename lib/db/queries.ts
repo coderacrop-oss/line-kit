@@ -1,4 +1,5 @@
 import type postgres from 'postgres'
+import type { Queryable } from './client'
 import type { CardBlock } from '../render/groups'
 import type { RenderableCard } from '../render/card'
 import type { PlayerState } from '../state'
@@ -46,7 +47,7 @@ function asArray<T>(value: unknown): T[] {
 }
 
 /** Read fresh every time — see the note on configCache. */
-async function loadKeywords(sql: postgres.Sql, campaignId: string) {
+async function loadKeywords(sql: Queryable, campaignId: string) {
   const rules = await sql<{
     id: string; keyword: string; match_mode: 'exact' | 'contains'; sort_order: number
     target_activity_id: string | null; target_card_id: string | null
@@ -72,7 +73,7 @@ async function loadKeywords(sql: postgres.Sql, campaignId: string) {
 
 const DEFAULT_THEME = { primary: '#17756A', secondary: '#EFF3F1', text: '#151F1D' }
 
-async function loadCards(sql: postgres.Sql, campaignId: string) {
+async function loadCards(sql: Queryable, campaignId: string) {
   const cards = await sql<{
     id: string; code: string; render_as: RenderableCard['renderAs']
     parent_card_id: string | null; sort_in_parent: number | null
@@ -117,7 +118,7 @@ async function loadCards(sql: postgres.Sql, campaignId: string) {
   return cardsById
 }
 
-export function makePorts(sql: postgres.Sql, lineChannelIdOverride?: string): Ports {
+export function makePorts(sql: Queryable, lineChannelIdOverride?: string): Ports {
   return {
     async findLiveCampaign(lineChannelId) {
       const target = lineChannelIdOverride ?? lineChannelId

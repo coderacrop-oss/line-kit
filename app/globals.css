@@ -15,6 +15,11 @@
   --ok: #16A34A;
   --info: #2563EB;
 
+  /* สองสีนี้เป็นสีของแอป LINE ไม่ใช่สีของระบบเรา · อยู่ในชุด token เพราะจอ
+     ทดลองเล่นต้องวาดหน้าแชทให้เหมือนของจริง และค่าสีต้องไม่ไปนอนอยู่ใน .tsx */
+  --chat-ground: #CBD8E8;
+  --chat-mine: #9FE870;
+
   --sans: var(--font-noto-thai), var(--font-dm-sans), sans-serif;
   --mono: var(--font-dm-mono), ui-monospace, monospace;
 
