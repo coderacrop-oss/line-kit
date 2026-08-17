@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { getAccessToken, getChannelSecret, replyMessage } from './client'
+import { getAccessToken, getChannelSecret, replyMessage, setWebhookEndpoint } from './client'
 
 import type { FlexMessage } from '../flex/types'
 
@@ -63,6 +63,48 @@ describe('replyMessage', () => {
 
   it('passes an abort signal so a stalled LINE API call cannot hang forever', async () => {
     await replyMessage('reply-token-123', testMessage())
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+/**
+ * ขั้น 6 ของ §4.4 · ตั้ง webhook ให้บัญชีที่กำลังส่งขึ้น
+ */
+describe('setWebhookEndpoint', () => {
+  it('ตั้ง endpoint ที่ปลายทางของ LINE ด้วย PUT', async () => {
+    await setWebhookEndpoint('oa-token', 'https://example.com/api/line/webhook')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.line.me/v2/bot/channel/webhook/endpoint')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toEqual({ endpoint: 'https://example.com/api/line/webhook' })
+  })
+
+  /**
+   * โทเคนมาจากพารามิเตอร์ ไม่ใช่จาก env
+   *
+   * นี่คือความต่างทั้งหมดระหว่างระบบที่พูดแทน OA ได้ตัวเดียวกับระบบที่พูดแทนบัญชี
+   * ไหนก็ได้ · env ถูกตั้งไว้ในเทสต์นี้ด้วยค่าอื่น ถ้าวันหนึ่งมีคนเปลี่ยนไปอ่าน env
+   * เพื่อความสะดวก เทสต์นี้จะเป็นตัวที่ฟ้อง
+   */
+  it('ใช้โทเคนที่ส่งเข้ามา ไม่ใช่โทเคนใน env', async () => {
+    await setWebhookEndpoint('oa-token', 'https://example.com/api/line/webhook')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers.Authorization).toBe('Bearer oa-token')
+    expect(init.headers.Authorization).not.toContain('test-token')
+  })
+
+  it('LINE ปฏิเสธแล้วโยน พร้อมรหัสสถานะที่ตอบมา', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401, text: async () => 'Invalid token' })
+    await expect(setWebhookEndpoint('bad', 'https://example.com/hook')).rejects.toThrow(/401/)
+  })
+
+  it('มี abort signal เหมือนกัน — LINE ที่ไม่ตอบต้องไม่ค้างธุรกรรมไว้ตลอดกาล', async () => {
+    await setWebhookEndpoint('oa-token', 'https://example.com/hook')
 
     const [, init] = fetchMock.mock.calls[0]
     expect(init.signal).toBeInstanceOf(AbortSignal)

@@ -53,7 +53,7 @@ export const NAV_GROUPS: NavGroup[] = [
     items: [
       { label: 'Rich Menu' },
       { label: 'บัญชี LINE', path: '/channels' },
-      { label: 'ส่งขึ้น LINE' },
+      { label: 'ส่งขึ้น LINE', path: 'publish' },
     ],
   },
   {
