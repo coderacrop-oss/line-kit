@@ -109,6 +109,14 @@ const summaryStyle = {
   fontSize: 13, fontWeight: 600, cursor: 'pointer', width: 'fit-content',
 } as const
 
+/** ทางไป M1-S03 · ปุ่มรองข้างปุ่มสร้าง ไม่ใช่ปุ่มหลักที่สอง */
+const secondaryLinkStyle = {
+  display: 'inline-block',
+  background: 'var(--panel)', color: 'var(--ink)', border: '1px solid var(--rule)',
+  borderRadius: 'var(--r)', padding: '10px 18px',
+  fontSize: 13, fontWeight: 600, width: 'fit-content', marginBottom: 14,
+} as const
+
 function CreateCampaign() {
   return (
     <details style={{ marginBottom: 14 }}>
@@ -170,6 +178,12 @@ export default async function CampaignsPage() {
       />
 
       {canCreate && <CreateCampaign />}
+
+      {/* ปุ่มนี้เคยไม่มี เพราะจอปลายทางยังไม่มีใครสร้าง · M1-S03 มีแล้ว จึงต่อได้จริง
+          ซ่อนจากคนที่ก๊อปไม่ได้ ไม่ใช่แสดงไว้ให้กดแล้วโดนปฏิเสธที่ปลายทาง */}
+      {canCreate && (
+        <a href="/campaigns/duplicate" style={secondaryLinkStyle}>ก๊อปจากแคมเปญเดิม</a>
+      )}
 
       <Rows
         items={campaigns}
