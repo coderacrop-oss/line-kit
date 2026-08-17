@@ -70,6 +70,35 @@ supabase/migrations/  37 ตาราง + RPC ธุรกรรม atomic
 
 ---
 
+## 4b · งานค้างบน branch แยก — อย่าเริ่มสามตัวนี้จากศูนย์
+
+รอบที่แล้วยิง agent ขนานสามตัวแล้วต้องหยุดกลางทางเพราะ session หมด
+**ชั้นข้อมูลกับเทสต์เขียนเสร็จแล้ว ขาดแต่หน้าจอ** · commit ไว้บน branch ของตัวเอง
+
+```
+worktree-agent-a51b52a4bb575435b   4546832   Task 11  lib/db/cards.ts · selectors.ts + เทสต์
+worktree-agent-a181634f1b7a80b99   ecd39c1   Task 15  lib/activities/ · lib/db/activities.ts + เทสต์
+worktree-agent-ad2873e8f9119f5f2   fc3d3bf   Task 18  lib/campaign/duplicate.ts · lib/db/users.ts + เทสต์
+```
+
+รวมราว 4,200 บรรทัด · 8 ไฟล์เทสต์ · **ยังไม่เคยรันครบ typecheck กับ build จะแดงจนกว่าหน้าจอจะมา**
+
+ดูของก่อนตัดสินใจ
+
+```bash
+git diff a8473a8 worktree-agent-a51b52a4bb575435b --stat
+```
+
+เอาเข้ามาทำต่อ
+
+```bash
+git cherry-pick 4546832        # แล้วเขียนหน้าจอต่อ
+```
+
+ถ้าอ่านแล้วเห็นว่าเขียนใหม่ถูกกว่า ก็ทิ้งได้ — **แต่ให้อ่านก่อน อย่าเดา**
+
+---
+
 ## 5 · เริ่มทำงานยังไง
 
 ```bash
