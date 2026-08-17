@@ -83,6 +83,8 @@ describe('ปลายทางที่มีจริงกับที่ย�
       .toBe('/campaigns/c1')
     expect(screen.getByRole('link', { name: 'คีย์เวิร์ด' }).getAttribute('href'))
       .toBe('/campaigns/c1/keywords')
+    expect(screen.getByRole('link', { name: 'กิจกรรม' }).getAttribute('href'))
+      .toBe('/campaigns/c1/activities')
     expect(screen.getByRole('link', { name: 'คลังภาพ' }).getAttribute('href'))
       .toBe('/campaigns/c1/assets')
     expect(screen.getByRole('link', { name: 'ค่าสะสม' }).getAttribute('href'))
@@ -123,7 +125,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
       .map((a) => a.textContent)
     // ทางกลับไม่ได้อยู่ในรายการ · เหลือแค่จอที่มีจริง
     expect(links).toEqual([
-      'ข้อมูลแคมเปญ', 'การ์ด', 'คลังภาพ',
+      'ข้อมูลแคมเปญ', 'กิจกรรม', 'การ์ด', 'คลังภาพ',
       'ค่าสะสม', 'รางวัล', 'ชุดเนื้อหา', 'คีย์เวิร์ด',
       'บัญชี LINE',
     ])
@@ -134,7 +136,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     const { container } = render(<CampaignNav campaignId="c1" />)
     const soon = Array.from(container.querySelectorAll('[data-nav-item]'))
       .filter((i) => i.querySelector('a, [href]') === null && i.tagName !== 'A')
-    expect(soon.length).toBe(4)
+    expect(soon.length).toBe(3)
     for (const item of soon) {
       expect(within(item as HTMLElement).getByText('รอบถัดไป'), item.textContent ?? '').toBeDefined()
       expect(item.getAttribute('aria-disabled')).toBe('true')
@@ -152,6 +154,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     expect(itemNamed('รางวัล').textContent).toBe('รางวัล')
     expect(itemNamed('การ์ด').textContent).toBe('การ์ด')
     expect(itemNamed('ชุดเนื้อหา').textContent).toBe('ชุดเนื้อหา')
+    expect(itemNamed('กิจกรรม').textContent).toBe('กิจกรรม')
   })
 
   it('ป้ายรอบถัดไปใช้ทรงเดียวกับต้นแบบ', () => {
@@ -168,7 +171,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     // รายการที่ยังไม่มีปลายทางคือรายการที่ไม่มี path — เติมบรรทัดเดียวก็เปิด
     const closed = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.path === undefined)
     expect(closed.map((i) => i.label)).toEqual([
-      'กิจกรรม', 'Rich Menu', 'ส่งขึ้น LINE', 'ทดลองเล่น',
+      'Rich Menu', 'ส่งขึ้น LINE', 'ทดลองเล่น',
     ])
   })
 })
@@ -221,6 +224,12 @@ describe('รายการที่กำลังเปิดอยู่', (
     render(<CampaignNav campaignId="c1" />)
     expect(itemNamed('การ์ด').style.background).toBe('var(--ink)')
     expect(itemNamed('ชุดเนื้อหา').style.background).not.toBe('var(--ink)')
+  })
+
+  it('จอตั้งค่ากิจกรรมยังนับว่าอยู่ที่กิจกรรม', () => {
+    at('/campaigns/c1/activities/act-9')
+    render(<CampaignNav campaignId="c1" />)
+    expect(itemNamed('กิจกรรม').style.background).toBe('var(--ink)')
   })
 
   it('จอแก้รางวัลยังนับว่าอยู่ที่รางวัล', () => {
