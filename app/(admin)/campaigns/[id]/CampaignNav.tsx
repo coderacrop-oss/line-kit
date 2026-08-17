@@ -58,7 +58,7 @@ export const NAV_GROUPS: NavGroup[] = [
   },
   {
     head: 'Test · ตรวจ',
-    items: [{ label: 'ทดลองเล่น' }],
+    items: [{ label: 'ทดลองเล่น', path: 'preview' }],
   },
 ]
 

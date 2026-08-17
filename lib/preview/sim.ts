@@ -97,6 +97,25 @@ export type PreviewSnapshot = {
   entitlements: Array<{ code: string; status: string }>
 }
 
+/**
+ * เหตุผลที่แคมเปญนี้ยังทดลองเล่นไม่ได้ · ว่างคือเล่นได้
+ *
+ * An enabled activity is the whole requirement, because queries.ts only loads
+ * enabled ones into the config: with none, every tap resolves to the fallback
+ * and the screen would look broken rather than unconfigured. Saying which of
+ * the two it is costs one sentence and saves the reader a trip through the
+ * activity list to find out there is nothing in it.
+ */
+export function playBlockers(activities: { isEnabled: boolean }[]): string[] {
+  if (activities.length === 0) {
+    return ['ยังไม่มีกิจกรรม — เพิ่มกิจกรรมแรกก่อนถึงจะทดลองเล่นได้']
+  }
+  if (!activities.some((activity) => activity.isEnabled)) {
+    return ['กิจกรรมทั้งหมดปิดอยู่ — เปิดอย่างน้อย 1 กิจกรรม']
+  }
+  return []
+}
+
 /** สภาพของคลังรางวัลที่จะจำลอง (BR-83) */
 export type PreviewStock = 'as_configured' | 'sold_out'
 

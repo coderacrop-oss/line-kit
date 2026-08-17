@@ -127,7 +127,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     expect(links).toEqual([
       'ข้อมูลแคมเปญ', 'กิจกรรม', 'การ์ด', 'คลังภาพ',
       'ค่าสะสม', 'รางวัล', 'ชุดเนื้อหา', 'คีย์เวิร์ด',
-      'บัญชี LINE',
+      'บัญชี LINE', 'ทดลองเล่น',
     ])
   })
 
@@ -136,7 +136,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     const { container } = render(<CampaignNav campaignId="c1" />)
     const soon = Array.from(container.querySelectorAll('[data-nav-item]'))
       .filter((i) => i.querySelector('a, [href]') === null && i.tagName !== 'A')
-    expect(soon.length).toBe(3)
+    expect(soon.length).toBe(2)
     for (const item of soon) {
       expect(within(item as HTMLElement).getByText('รอบถัดไป'), item.textContent ?? '').toBeDefined()
       expect(item.getAttribute('aria-disabled')).toBe('true')
@@ -155,6 +155,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
     expect(itemNamed('การ์ด').textContent).toBe('การ์ด')
     expect(itemNamed('ชุดเนื้อหา').textContent).toBe('ชุดเนื้อหา')
     expect(itemNamed('กิจกรรม').textContent).toBe('กิจกรรม')
+    expect(itemNamed('ทดลองเล่น').textContent).toBe('ทดลองเล่น')
   })
 
   it('ป้ายรอบถัดไปใช้ทรงเดียวกับต้นแบบ', () => {
@@ -170,9 +171,7 @@ describe('ปลายทางที่มีจริงกับที่ย�
   it('เปิดจอใหม่ได้ด้วยการเติม path ให้รายการเดียว', () => {
     // รายการที่ยังไม่มีปลายทางคือรายการที่ไม่มี path — เติมบรรทัดเดียวก็เปิด
     const closed = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.path === undefined)
-    expect(closed.map((i) => i.label)).toEqual([
-      'Rich Menu', 'ส่งขึ้น LINE', 'ทดลองเล่น',
-    ])
+    expect(closed.map((i) => i.label)).toEqual(['Rich Menu', 'ส่งขึ้น LINE'])
   })
 })
 

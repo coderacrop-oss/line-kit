@@ -1,6 +1,6 @@
 import type postgres from 'postgres'
 import {
-  PREVIEW_LINE_UID, previewLineChannelId, previewNow,
+  PREVIEW_LINE_UID, playBlockers, previewChannelName, previewLineChannelId, previewNow,
   type PreviewInput, type PreviewSnapshot, type PreviewStock,
 } from '../preview/sim'
 import type { LineMessage } from '../render/card'
@@ -59,6 +59,10 @@ export async function ensurePreviewChannel(
 ): Promise<PreviewChannel> {
   const lineChannelId = previewLineChannelId(campaignId)
 
+  const [campaign] = await sql<{ name: string; created_by: string }[]>`
+    SELECT name, created_by FROM campaign WHERE id = ${campaignId}`
+  if (!campaign) throw new Error('ไม่พบแคมเปญนี้ — สร้างช่องทดลองเล่นไม่ได้')
+
   const [channel] = await sql<{ id: string }[]>`
     WITH live AS (
       SELECT ch.default_card_id, ch.greeting_card_id, ch.greeting_enabled
@@ -71,19 +75,17 @@ export async function ensurePreviewChannel(
     INSERT INTO channel (
       name, channel_type, line_channel_id, created_by,
       default_card_id, greeting_card_id, greeting_enabled)
-    SELECT 'ตัวอย่าง · ' || ca.name, 'preview', ${lineChannelId}, ca.created_by,
+    SELECT ${previewChannelName(campaign.name)}, 'preview', ${lineChannelId},
+           ${campaign.created_by},
            live.default_card_id, live.greeting_card_id,
            COALESCE(live.greeting_enabled, false)
-      FROM campaign ca LEFT JOIN live ON true
-     WHERE ca.id = ${campaignId}
+      FROM (VALUES (1)) AS one(x) LEFT JOIN live ON true
     ON CONFLICT (line_channel_id) DO UPDATE SET
       name = EXCLUDED.name,
       default_card_id = EXCLUDED.default_card_id,
       greeting_card_id = EXCLUDED.greeting_card_id,
       greeting_enabled = EXCLUDED.greeting_enabled
     RETURNING id`
-
-  if (!channel) throw new Error('ไม่พบแคมเปญนี้ — สร้างช่องทดลองเล่นไม่ได้')
 
   await sql`
     INSERT INTO campaign_channel (campaign_id, channel_id, is_published, published_at)
@@ -95,10 +97,9 @@ export async function ensurePreviewChannel(
   // ที่นับตามเวอร์ชันที่ส่งขึ้น
   await sql`
     INSERT INTO config_version (campaign_id, version_no, snapshot, channel_id, published_by)
-    SELECT ${campaignId}, ${PREVIEW_VERSION_NO}, '{}'::jsonb, ${channel.id}, ca.created_by
-      FROM campaign ca
-     WHERE ca.id = ${campaignId}
-       AND NOT EXISTS (
+    SELECT ${campaignId}, ${PREVIEW_VERSION_NO}, '{}'::jsonb, ${channel.id},
+           ${campaign.created_by}
+     WHERE NOT EXISTS (
              SELECT 1 FROM config_version cv
               WHERE cv.campaign_id = ${campaignId} AND cv.channel_id = ${channel.id})`
 
@@ -157,6 +158,56 @@ export async function loadPreviewSnapshot(
       code: c.code, name: c.name, value: c.value, target: c.target,
     })),
     entitlements: entitlements.map((e) => ({ code: e.code, status: e.status })),
+  }
+}
+
+export type PreviewScreen = {
+  campaignName: string
+  /** ชื่อช่องที่จอต้องประกาศออกมา (BR-19) */
+  channelName: string
+  /** ปุ่มเมนูจำลอง · ถอดจากคีย์เวิร์ดของแคมเปญ */
+  menu: Array<{ label: string; text: string }>
+  snapshot: PreviewSnapshot
+  /** เหตุผลที่ยังเล่นไม่ได้ · ว่างคือเล่นได้ */
+  blockers: string[]
+}
+
+/**
+ * ทุกอย่างที่จอต้องใช้ตอนเปิด · อ่านอย่างเดียว ไม่สร้างช่องให้
+ *
+ * Opening the screen writes nothing. The preview channel is created on the
+ * first tap instead, because a page that provisions rows while rendering
+ * provisions them again on every prefetch, and a campaign nobody ever
+ * rehearsed would still collect a channel and a config version.
+ *
+ * The simulated rich menu is built from keyword rules rather than from
+ * rich_menu, which has no screen behind it yet in this slice. A keyword is a
+ * way in that already works, so the buttons here send something the engine
+ * genuinely answers rather than miming a menu that does not exist.
+ */
+export async function loadPreviewScreen(
+  sql: Queryable, campaignId: string,
+): Promise<PreviewScreen | null> {
+  const [campaign] = await sql<{ name: string }[]>`
+    SELECT name FROM campaign WHERE id = ${campaignId}`
+  if (!campaign) return null
+
+  const [activities, keywords, snapshot] = await Promise.all([
+    sql<{ is_enabled: boolean }[]>`
+      SELECT is_enabled FROM activity WHERE campaign_id = ${campaignId}`,
+    sql<{ keyword: string }[]>`
+      SELECT DISTINCT ON (keyword) keyword FROM keyword_rule
+       WHERE campaign_id = ${campaignId}
+       ORDER BY keyword, sort_order`,
+    loadPreviewSnapshot(sql, campaignId),
+  ])
+
+  return {
+    campaignName: campaign.name,
+    channelName: previewChannelName(campaign.name),
+    menu: keywords.map((k) => ({ label: k.keyword, text: k.keyword })),
+    snapshot,
+    blockers: playBlockers(activities.map((a) => ({ isEnabled: a.is_enabled }))),
   }
 }
 

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { periodKey } from '../daykey'
 import {
   PREVIEW_LINE_UID, STOCK_MODES, dayLabel, isPreviewLineChannelId,
-  previewChannelName, previewLineChannelId, previewNow,
+  playBlockers, previewChannelName, previewLineChannelId, previewNow,
 } from './sim'
 
 const BASE = new Date('2026-08-17T05:00:00Z')
@@ -93,5 +93,21 @@ describe('สถานะที่เกิดยาก (BR-83)', () => {
       expect(mode.label.length, mode.value).toBeGreaterThan(0)
       expect(mode.note.length, mode.value).toBeGreaterThan(20)
     }
+  })
+})
+
+describe('แคมเปญพร้อมให้ทดลองเล่นหรือยัง', () => {
+  it('ไม่มีกิจกรรมเลย บอกให้ไปเพิ่มก่อน', () => {
+    expect(playBlockers([])).toEqual(['ยังไม่มีกิจกรรม — เพิ่มกิจกรรมแรกก่อนถึงจะทดลองเล่นได้'])
+  })
+
+  // queries.ts โหลดเฉพาะกิจกรรมที่เปิดอยู่ · ปิดหมดแล้วทุกการกดจะตกไปที่การ์ดสำรอง
+  // ซึ่งดูเหมือนจอพัง ไม่เหมือนจอที่ยังตั้งค่าไม่เสร็จ
+  it('มีกิจกรรมแต่ปิดหมด บอกคนละเหตุผลกับตอนไม่มีเลย', () => {
+    expect(playBlockers([{ isEnabled: false }])).toEqual(['กิจกรรมทั้งหมดปิดอยู่ — เปิดอย่างน้อย 1 กิจกรรม'])
+  })
+
+  it('เปิดอยู่อย่างน้อยหนึ่งตัวก็เล่นได้', () => {
+    expect(playBlockers([{ isEnabled: false }, { isEnabled: true }])).toEqual([])
   })
 })

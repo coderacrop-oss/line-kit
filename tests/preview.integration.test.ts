@@ -3,7 +3,7 @@ import type postgres from 'postgres'
 import { testDb } from '../lib/db/client'
 import { clearConfigCache } from '../lib/db/queries'
 import {
-  ensurePreviewChannel, loadPreviewSnapshot, resetPreview, runPreviewEvent,
+  ensurePreviewChannel, loadPreviewScreen, loadPreviewSnapshot, resetPreview, runPreviewEvent,
 } from '../lib/db/preview'
 import { previewLineChannelId } from '../lib/preview/sim'
 import { seededRng } from '../lib/test-utils/rng'
@@ -378,5 +378,50 @@ describe('แผงสถานะผู้เล่นจำลอง', () => {
     const snapshot = await loadPreviewSnapshot(sql, s.campaignId)
     expect(snapshot.attributes).toEqual([])
     expect(snapshot.entitlements).toEqual([])
+  })
+})
+
+describe('ข้อมูลที่จอใช้ตอนเปิด', () => {
+  it('แคมเปญที่ไม่มีอยู่คืนค่าว่าง ไม่ใช่ล้ม', async () => {
+    expect(await loadPreviewScreen(sql, '00000000-0000-0000-0000-000000000000')).toBe(null)
+  })
+
+  it('ปุ่มเมนูจำลองถอดมาจากคีย์เวิร์ดของแคมเปญ', async () => {
+    const s = await seedLive(sql)
+    const screen = await loadPreviewScreen(sql, s.campaignId)
+    expect(screen?.menu).toEqual([{ label: 'เล่น', text: 'เล่น' }])
+  })
+
+  it('แคมเปญที่มีกิจกรรมเปิดอยู่ ไม่มีอะไรกั้น', async () => {
+    const s = await seedLive(sql)
+    expect((await loadPreviewScreen(sql, s.campaignId))?.blockers).toEqual([])
+  })
+
+  it('ปิดกิจกรรมหมดแล้วจอบอกว่าเล่นไม่ได้และบอกว่าเพราะอะไร', async () => {
+    const s = await seedLive(sql)
+    await sql`UPDATE activity SET is_enabled = false WHERE campaign_id = ${s.campaignId}`
+    expect((await loadPreviewScreen(sql, s.campaignId))?.blockers)
+      .toEqual(['กิจกรรมทั้งหมดปิดอยู่ — เปิดอย่างน้อย 1 กิจกรรม'])
+  })
+
+  // เปิดจอเฉยๆ ต้องไม่สร้างแถวอะไรทิ้งไว้ · Next เรียก render ตอน prefetch ด้วย
+  it('เปิดจอแล้วยังไม่มีช่องตัวอย่างถูกสร้าง', async () => {
+    const s = await seedLive(sql)
+    await loadPreviewScreen(sql, s.campaignId)
+
+    const [row] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM channel
+       WHERE line_channel_id = ${previewLineChannelId(s.campaignId)}`
+    expect(row.count).toBe(0)
+  })
+
+  it('กดเล่นครั้งแรกถึงจะสร้างช่องให้', async () => {
+    const s = await seedLive(sql)
+    await play(s.campaignId)
+
+    const [row] = await sql<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM channel
+       WHERE line_channel_id = ${previewLineChannelId(s.campaignId)}`
+    expect(row.count).toBe(1)
   })
 })
