@@ -8,7 +8,10 @@ export default defineConfig({
     // ได้แต่ถูกเลิกใช้ใน vitest 3.2 และเตือนทุกครั้งที่รัน
     environment: 'node',
     include: ['**/*.test.ts', '**/*.test.tsx'],
-    exclude: ['node_modules/**', '.next/**'],
+    // .claude/worktrees เก็บสำเนารีโปเต็มของ agent ที่ทำงานขนานกัน
+    // ไม่กันไว้แล้วเทสต์ของทุก worktree จะถูกกวาดมารันพร้อมกัน ยิงฐานข้อมูล
+    // เดียวกัน แล้วแดงเป็นร้อยโดยที่โค้ดไม่ได้พังเลย
+    exclude: ['node_modules/**', '.next/**', '.claude/**'],
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, '.') },
