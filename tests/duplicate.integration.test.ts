@@ -372,25 +372,27 @@ describe('duplicateCampaign · ฐานข้อมูลจริง', () => {
     const code = `c${tag()}`.slice(0, 20)
     await duplicateOf(source, { code })
 
-    const before = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM campaign`
     await expect(duplicateOf(source, { code })).rejects.toThrow(code)
-    const after = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM campaign`
-    expect(after[0].n).toBe(before[0].n)
+    // นับเฉพาะรหัสนี้ ไม่ใช่ทั้งตาราง — ไฟล์ integration อื่นสร้างแคมเปญพร้อมกันอยู่
+    const [same] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM campaign WHERE code = ${code}`
+    expect(same.n).toBe(1)
   })
 
   it('ต้นทางที่ไม่มีอยู่จริง ไม่สร้างแคมเปญเปล่าทิ้งไว้', async () => {
     const source = await fullCampaign()
-    const before = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM campaign`
+    const ghostCode = `g${tag()}`.slice(0, 20)
 
     await expect(duplicateCampaign(sql, {
       sourceId: '00000000-0000-0000-0000-000000000000',
-      name: 'ผี', code: `g${tag()}`.slice(0, 20),
+      name: 'ผี', code: ghostCode,
       startAt: '2027-01-01T00:00:00Z', endAt: '2027-02-01T00:00:00Z',
       actorId: source.userId,
     })).rejects.toThrow('ไม่พบแคมเปญต้นทาง')
 
-    const after = await sql<{ n: number }[]>`SELECT count(*)::int AS n FROM campaign`
-    expect(after[0].n).toBe(before[0].n)
+    const [ghost] = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM campaign WHERE code = ${ghostCode}`
+    expect(ghost.n).toBe(0)
   })
 
   /**
