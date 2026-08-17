@@ -1,10 +1,17 @@
 import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
-import { Badge, Empty, PageHead, STATUS_TONES } from '@/components/ui'
+import { Badge, Empty, Note, PageHead, STATUS_TONES } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
 import { asCardFilter, CARD_FILTERS, type CardView, filterCards, listCards } from '@/lib/db/cards'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
+
+/** ลิงก์ไปจอสร้างการ์ด · ปุ่มหลักของหน้านี้ตามที่ต้นแบบวางไว้มุมขวาบน */
+const createLinkStyle: CSSProperties = {
+  background: 'var(--ink)', color: 'var(--panel)', border: '1px solid var(--ink)',
+  borderRadius: 'var(--r)', padding: '10px 18px', fontSize: 13, fontWeight: 600,
+  textDecoration: 'none', whiteSpace: 'nowrap',
+}
 
 const segmentStyle = (on: boolean): CSSProperties => ({
   borderRight: '1px solid var(--rule)',
@@ -48,8 +55,11 @@ const previewStyle: CSSProperties = {
 /**
  * แผ่นการ์ดหนึ่งใบ
  *
- * ยังไม่ใช่ลิงก์ เพราะจอตั้งค่าการ์ด (M3-S02) ยังไม่มีอยู่ · ลิงก์ไปยังที่อยู่ที่ยังไม่มี
- * ใครเขียนคือหน้า 404 ที่กลับออกมาไม่ได้ หลักเดียวกับที่แถบซ้ายใช้กับจอที่ยังไม่ได้ทำ
+ * ยังไม่ใช่ลิงก์ · จอ M3-S02 มีแล้วครึ่งหนึ่ง — ขั้นสร้าง (ชนิด × เทมเพลต) อยู่ที่
+ * `cards/new` และปุ่ม "+ สร้างการ์ด" บนหัวจอพาไปที่นั่น แต่ปลายทางที่แผ่นการ์ดควรพา
+ * ไปคือจอแก้บล็อกทีละใบ (`cards/[cardId]`) ซึ่งเป็น Task 13 และยังไม่มีใครเขียน
+ * ลิงก์ไปยังที่อยู่ที่ยังไม่มีไฟล์รองรับคือหน้า 404 ที่กลับออกมาไม่ได้ หลักเดียวกับ
+ * ที่แถบซ้ายใช้กับจอที่ยังไม่ได้ทำ
  *
  * The dashed edge and the pill say the same thing twice on purpose. Colour alone
  * is not a message, and this is the one state on the screen that means "nothing
@@ -118,6 +128,9 @@ export default async function CardsPage({ params, searchParams }: {
   const filter = asCardFilter(typeof query.f === 'string' ? query.f : undefined)
   const shown = filterCards(all, filter)
   const canEdit = session.role === 'configurator'
+  // รหัสของการ์ดที่เพิ่งสร้างจากจอ M3-S02 · จอนั้นพากลับมาที่นี่เพราะบล็อกเอดิเตอร์
+  // ยังไม่มีใครเขียน และการพาไปหน้าที่ยังไม่มีคือ 404 ทันทีหลังสร้างสำเร็จ
+  const created = typeof query.created === 'string' ? query.created : null
 
   return (
     <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 1000, margin: '0 auto' }}>
@@ -130,9 +143,23 @@ export default async function CardsPage({ params, searchParams }: {
               ← {campaign.name}
             </a>
             {!canEdit && <Badge tone="mute">ดูอย่างเดียว</Badge>}
+            {/* ปลายทางมีไฟล์จริงแล้ว (M3-S02 ขั้น 1–2) จึงเป็นลิงก์ได้ · แผ่นการ์ด
+                ยังไม่เป็นลิงก์ เพราะจอแก้บล็อกทีละใบยังไม่มีใครเขียน */}
+            {canEdit && (
+              <a href={`/campaigns/${campaign.id}/cards/new`} style={createLinkStyle}>
+                + สร้างการ์ด
+              </a>
+            )}
           </>
         }
       />
+
+      {created && (
+        <Note tone="ok" style={{ marginBottom: 14, maxWidth: 620 }}>
+          สร้างการ์ด <b>{created}</b> แล้ว — บล็อกของเทมเพลตติดมาให้ครบ
+          และยังไม่มีใครชี้มาหามัน จึงขึ้นป้ายว่าไม่มีใครใช้จนกว่าจะมีกิจกรรมหรือคีย์เวิร์ดชี้มา
+        </Note>
+      )}
 
       <div style={{
         fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.6, marginBottom: 16, maxWidth: 620,

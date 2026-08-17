@@ -313,3 +313,44 @@ describe('M3-S01 · สิ่งที่จอสัญญาไว้กับ
     }
   })
 })
+
+/**
+ * ทางเข้าจอสร้างการ์ด · ปลายทางมีไฟล์จริงแล้ว จึงเป็นลิงก์ได้
+ *
+ * แผ่นการ์ดยังไม่เป็นลิงก์ เพราะปลายทางของมันคือจอแก้บล็อกทีละใบ ซึ่งเป็น Task 13
+ * และยังไม่มีไฟล์ · ลิงก์สองอันนี้จึงอยู่คนละสถานะกันโดยตั้งใจ
+ */
+describe('M3-S01 · ทางเข้าจอสร้างการ์ด', () => {
+  const createLink = (container: HTMLElement) =>
+    Array.from(container.querySelectorAll('a'))
+      .find((a) => a.textContent?.includes('สร้างการ์ด')) ?? null
+
+  it('ผู้ตั้งค่าแคมเปญเห็นปุ่มสร้างการ์ด และมันพาไป cards/new', async () => {
+    const { container } = await show()
+    expect(createLink(container)?.getAttribute('href')).toBe('/campaigns/c1/cards/new')
+  })
+
+  it('ผู้ดูแลเนื้อหาไม่เห็นปุ่มนั้น เพราะ action ปฏิเสธเขาอยู่แล้ว', async () => {
+    state.role = 'content_editor'
+    const { container } = await show()
+    expect(createLink(container)).toBeNull()
+  })
+
+  it('แผ่นการ์ดยังไม่ใช่ลิงก์ · จอแก้บล็อกยังไม่มีใครเขียน', async () => {
+    const { container } = await show()
+    for (const tile of tiles(container)) {
+      expect(tile.tagName).not.toBe('A')
+      expect(tile.querySelector('a')).toBeNull()
+    }
+  })
+
+  it('กลับมาจากการสร้างสำเร็จ จอบอกว่าใบไหนเพิ่งเกิด', async () => {
+    const { container } = await show({ created: 'welcome' })
+    expect(container.textContent).toContain('สร้างการ์ด welcome แล้ว')
+  })
+
+  it('เข้ามาเฉยๆ ไม่มีกล่องนั้นค้างอยู่', async () => {
+    const { container } = await show()
+    expect(container.textContent).not.toContain('แล้ว — บล็อกของเทมเพลตติดมาให้ครบ')
+  })
+})
