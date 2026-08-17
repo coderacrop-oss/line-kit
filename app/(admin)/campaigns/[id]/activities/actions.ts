@@ -5,9 +5,12 @@ import { redirect } from 'next/navigation'
 import { requireRole } from '@/lib/auth/require'
 import { db } from '@/lib/db/client'
 import {
-  type EntryRuleConfig, type OutcomeConfig, asEntryRuleType, followHolder,
+  ENTRY_RULE_FIELDS, type EntryRuleConfig, type OutcomeConfig,
+  asEntryRuleType, followHolder,
 } from '@/lib/db/activities'
-import { asInputType, asResolveMethod, comboProblem } from '@/lib/activities/wizard'
+import {
+  asInputType, asResolveMethod, comboProblem, inputConfigFields,
+} from '@/lib/activities/wizard'
 
 /** รหัสกิจกรรมเดินทางอยู่ในปุ่มที่ส่งออกไปแล้ว · รูปเดียวกับที่ postback เข้ารหัส */
 const CODE_PATTERN = /^[a-z0-9_]{1,20}$/
@@ -255,6 +258,104 @@ export async function saveActivity(
   touch(campaignId, activityId)
 }
 
+/**
+ * บันทึกช่องของบล็อก 2 ที่เก็บอยู่ใน input_config (BR-87)
+ *
+ * The keys this will write are asked of inputConfigFields(), not listed here.
+ * That is the write half of the same rule the screen obeys: an activity that
+ * does not ask for slots cannot be made to store slots by anyone who edits the
+ * request, and a new input type is a new entry in lib/activities/wizard.ts
+ * rather than another branch in this file.
+ *
+ * Keys the current pair does not ask for are left alone rather than cleared.
+ * Somebody switching an activity from ตอบคำถาม to เลือกหนึ่งช่อง to see the
+ * difference should not come back to find their questions deleted.
+ */
+export async function saveInputConfig(
+  campaignId: string, activityId: string, formData: FormData,
+): Promise<void> {
+  await requireRole('configurator')
+  const sql = db()
+  await requireDraftCampaign(sql, campaignId)
+  const activity = await requireActivity(sql, campaignId, activityId)
+
+  const inputType = asInputType(activity.input_type)
+  const resolveMethod = asResolveMethod(activity.resolve_method)
+  const fields = inputType && resolveMethod ? inputConfigFields(inputType, resolveMethod) : []
+
+  const config: Record<string, unknown> = { ...activity.input_config }
+  for (const field of fields) {
+    if (field.control === 'toggle') {
+      config[field.key] = trimmed(formData, field.key) !== ''
+      continue
+    }
+    if (field.control === 'lines') {
+      config[field.key] = String(formData.get(field.key) ?? '')
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line !== '')
+      continue
+    }
+    config[field.key] = trimmed(formData, field.key)
+  }
+
+  await sql`
+    UPDATE activity SET input_config = ${sql.json(config as never)}
+     WHERE id = ${activityId} AND campaign_id = ${campaignId}`
+  touch(campaignId, activityId)
+}
+
+/**
+ * ค่าสะสมที่กิจกรรมนี้บวกให้เมื่อเล่นจบ
+ *
+ * planEffects() reads the *activity's* effect list, not the outcome's, and
+ * play_and_apply walks whatever comes out of it. Until an add_units effect sits
+ * here, a counter has nothing writing into it — which is exactly what the
+ * counter screen sends people over here to fix.
+ *
+ * The key is `counterCode`, because lib/db/apply.ts converts it to the SQL
+ * function's `counter_code` on the way out. Writing snake_case in the column
+ * would survive the round trip perfectly and mean nothing to toSqlEffect, and
+ * the counter would sit there never moving.
+ *
+ * Only counters that exist in this campaign can be named, and the list comes
+ * from the table rather than the form — a request naming somebody else's
+ * counter has nothing to match and is dropped rather than refused, because it
+ * cannot come from the screen at all.
+ */
+export async function saveEffects(
+  campaignId: string, activityId: string, formData: FormData,
+): Promise<void> {
+  await requireRole('configurator')
+  const sql = db()
+  await requireDraftCampaign(sql, campaignId)
+  const activity = await requireActivity(sql, campaignId, activityId)
+
+  const counters = await sql<{ code: string }[]>`
+    SELECT code FROM counter WHERE campaign_id = ${campaignId} ORDER BY code`
+
+  const added: Array<Record<string, unknown>> = []
+  for (const { code } of counters) {
+    const raw = trimmed(formData, `units_${code}`)
+    if (raw === '') continue
+
+    const amount = asOptionalInt(raw, { min: 1 })
+    if (amount === undefined) {
+      throw new Error(`จำนวนที่บวกให้ค่าสะสม "${code}" ต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป หรือเว้นว่าง`)
+    }
+    if (amount !== null) added.push({ type: 'add_units', counterCode: code, amount })
+  }
+
+  // grant_reward เป็นของ saveOutcome · บันทึกบล็อกนี้ต้องไม่ไปถอดมันทิ้ง
+  const kept = asArray<Record<string, unknown>>(activity.effects)
+    .filter((effect) => effect.type !== 'add_units')
+
+  await sql`
+    UPDATE activity SET effects = ${sql.json([...kept, ...added] as never)}
+     WHERE id = ${activityId} AND campaign_id = ${campaignId}`
+  touch(campaignId, activityId)
+}
+
 /** เปิดหรือปิดกิจกรรม · ปิดแล้ว queries.ts จะไม่โหลดมันขึ้น config เลย */
 export async function setActivityEnabled(
   campaignId: string, activityId: string, enabled: boolean,
@@ -308,22 +409,28 @@ export async function deleteActivity(campaignId: string, activityId: string): Pr
   touch(campaignId)
 }
 
-/** ผลลัพธ์ว่างหนึ่งแถว · id ของผลลัพธ์คือสิ่งที่ fixed ใช้จับคู่กับช่องที่ผู้เล่นกด */
-export async function addOutcome(campaignId: string, activityId: string): Promise<void> {
-  await requireRole('configurator')
-  const sql = db()
-  await requireDraftCampaign(sql, campaignId)
-  const activity = await requireActivity(sql, campaignId, activityId)
-
-  const outcomes = asArray<OutcomeConfig>(activity.resolve_config?.outcomes)
+/**
+ * id ของผลลัพธ์ที่ยังไม่มีใครใช้
+ *
+ * It is not decoration: resolve('fixed', …) matches the slot the player tapped
+ * against this id, so reusing one would make two outcomes indistinguishable to
+ * the engine and hand the player whichever came first in the list.
+ */
+function nextOutcomeId(outcomes: OutcomeConfig[]): string {
   const taken = new Set(outcomes.map((outcome) => outcome.id))
   let next = outcomes.length + 1
   while (taken.has(`o${next}`)) next += 1
-
-  await writeOutcomes(sql, campaignId, activity, [...outcomes, { id: `o${next}` }])
-  touch(campaignId, activityId)
+  return `o${next}`
 }
 
+/**
+ * บันทึกผลลัพธ์หนึ่งแถว · `index` ติดลบคือแถวใหม่ต่อท้าย
+ *
+ * One action rather than an add followed by a save, because an add of its own
+ * writes a row with no card into a live column — which is exactly the shape
+ * activityProblems() calls "ผู้เล่นกดแล้วเงียบ". The row is created and filled
+ * in the same write, so it never exists in that state.
+ */
 export async function saveOutcome(
   campaignId: string, activityId: string, index: number, formData: FormData,
 ): Promise<void> {
@@ -333,7 +440,8 @@ export async function saveOutcome(
   const activity = await requireActivity(sql, campaignId, activityId)
 
   const outcomes = asArray<OutcomeConfig>(activity.resolve_config?.outcomes)
-  const current = outcomes[index]
+  const isNew = index < 0
+  const current = isNew ? { id: nextOutcomeId(outcomes) } : outcomes[index]
   if (!current) throw new Error('ไม่พบผลลัพธ์แถวนี้ — หน้าจออาจค้างอยู่กับข้อมูลเก่า')
 
   const cardRaw = trimmed(formData, 'card_id')
@@ -373,7 +481,9 @@ export async function saveOutcome(
   if (scoreMin !== null) next.scoreMin = scoreMin
   if (scoreMax !== null) next.scoreMax = scoreMax
 
-  const updated = outcomes.map((outcome, at) => (at === index ? next : outcome))
+  const updated = isNew
+    ? [...outcomes, next]
+    : outcomes.map((outcome, at) => (at === index ? next : outcome))
   await writeOutcomes(sql, campaignId, activity, updated)
   touch(campaignId, activityId)
 }
@@ -393,25 +503,70 @@ export async function removeOutcome(
   touch(campaignId, activityId)
 }
 
-/** เงื่อนไขว่างหนึ่งข้อ · ลำดับคือลำดับที่ engine ตรวจ และผู้เล่นเห็นเหตุผลแรกที่ไม่ผ่าน */
-export async function addEntryRule(
-  campaignId: string, activityId: string, formData: FormData,
-): Promise<void> {
-  await requireRole('configurator')
-  const sql = db()
-  await requireDraftCampaign(sql, campaignId)
-  const activity = await requireActivity(sql, campaignId, activityId)
-
-  const type = asEntryRuleType(trimmed(formData, 'type'))
-  if (!type) throw new Error('ต้องเลือกชนิดเงื่อนไข')
-
-  const rules = [...asArray<EntryRuleConfig>(activity.entry_rules), { type }]
-  await sql`
-    UPDATE activity SET entry_rules = ${sql.json(rules as never)}
-     WHERE id = ${activityId} AND campaign_id = ${campaignId}`
-  touch(campaignId, activityId)
+/** ชั่วโมงของ time_window · คั่นด้วยจุลภาค และต้องเป็นชั่วโมงที่มีอยู่จริงบนนาฬิกา */
+function asHours(raw: string): number[] {
+  if (raw === '') return []
+  return raw.split(',').map((part) => {
+    const hour = Number(part.trim())
+    if (!Number.isInteger(hour) || hour < 0 || hour > 23) {
+      throw new Error(
+        `"${part.trim()}" ไม่ใช่ชั่วโมงที่มีอยู่ — กรอกเป็นตัวเลข 0 ถึง 23 คั่นด้วยจุลภาค`,
+      )
+    }
+    return hour
+  })
 }
 
+/**
+ * แปลงค่าที่กรอกของเงื่อนไขหนึ่งข้อ ตามช่องที่ชนิดนั้นประกาศไว้
+ *
+ * The field list is read from ENTRY_RULE_FIELDS rather than written out here,
+ * for the same reason the activity form is read from fieldsFor(): the key names
+ * are what lib/state.ts and lib/engine/entry.ts actually look up, and a second
+ * copy of them in the write path is a copy that can drift. Anything the current
+ * type did not declare is dropped, so a request carrying a rewardCode for a
+ * not_has_attribute rule stores an attribute rule and nothing else.
+ */
+function readEntryRule(type: EntryRuleConfig['type'], formData: FormData): EntryRuleConfig {
+  const rule: EntryRuleConfig = { type }
+
+  for (const field of ENTRY_RULE_FIELDS[type as keyof typeof ENTRY_RULE_FIELDS] ?? []) {
+    const raw = trimmed(formData, field.key)
+    if (raw === '') continue
+
+    if (field.control === 'number') {
+      const value = asOptionalInt(raw, { min: 1 })
+      if (value === undefined) {
+        throw new Error(`"${field.label}" ต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป`)
+      }
+      rule[field.key] = value
+      continue
+    }
+
+    if (field.control === 'hours') {
+      rule[field.key] = asHours(raw)
+      continue
+    }
+
+    if (field.control === 'op') {
+      if (raw !== 'lt' && raw !== 'gte') {
+        throw new Error('วิธีเทียบจำนวนครั้งต้องเป็น "ครบแล้วอย่างน้อย" หรือ "ยังไม่ถึง" เท่านั้น')
+      }
+      rule[field.key] = raw
+      continue
+    }
+
+    rule[field.key] = raw
+  }
+
+  return rule
+}
+
+/**
+ * บันทึกเงื่อนไขการเข้าเล่นหนึ่งข้อ · `index` ติดลบคือข้อใหม่ต่อท้าย
+ *
+ * ลำดับคือลำดับที่ engine ตรวจ และผู้เล่นเห็นเหตุผลแรกที่ไม่ผ่าน (BR-26)
+ */
 export async function saveEntryRule(
   campaignId: string, activityId: string, index: number, formData: FormData,
 ): Promise<void> {
@@ -421,10 +576,13 @@ export async function saveEntryRule(
   const activity = await requireActivity(sql, campaignId, activityId)
 
   const rules = asArray<EntryRuleConfig>(activity.entry_rules)
-  if (!rules[index]) throw new Error('ไม่พบเงื่อนไขข้อนี้ — หน้าจออาจค้างอยู่กับข้อมูลเก่า')
+  const isNew = index < 0
+  if (!isNew && !rules[index]) {
+    throw new Error('ไม่พบเงื่อนไขข้อนี้ — หน้าจออาจค้างอยู่กับข้อมูลเก่า')
+  }
 
   const type = asEntryRuleType(trimmed(formData, 'type'))
-  if (!type) throw new Error('ต้องเลือกชนิดเงื่อนไข')
+  if (!type) throw new Error('ต้องเลือกชนิดเงื่อนไขที่ engine ตรวจได้')
 
   const cardRaw = trimmed(formData, 'card_id')
   if (cardRaw) {
@@ -433,21 +591,12 @@ export async function saveEntryRule(
     if (!card) throw new Error('การ์ดที่ตอบเมื่อไม่ผ่านต้องเป็นการ์ดของแคมเปญนี้')
   }
 
-  const next: EntryRuleConfig = { type }
+  const next = readEntryRule(type, formData)
   if (cardRaw) next.cardId = cardRaw
 
-  if (type === 'limit' || type === 'activity_play_count') {
-    const count = asOptionalInt(trimmed(formData, 'count'), { min: 1 })
-    if (count === undefined) throw new Error('จำนวนครั้งต้องเป็นจำนวนเต็มตั้งแต่ 1 ขึ้นไป')
-    next.count = count ?? 1
-  }
-
-  const key = trimmed(formData, 'key')
-  if (key) next.key = key
-  const value = trimmed(formData, 'value')
-  if (value) next.value = value
-
-  const updated = rules.map((rule, at) => (at === index ? next : rule))
+  const updated = isNew
+    ? [...rules, next]
+    : rules.map((rule, at) => (at === index ? next : rule))
   await sql`
     UPDATE activity SET entry_rules = ${sql.json(updated as never)}
      WHERE id = ${activityId} AND campaign_id = ${campaignId}`

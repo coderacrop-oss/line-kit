@@ -46,6 +46,95 @@ export const ENTRY_RULE_NAME: Record<EntryRuleType, string> = {
 export const asEntryRuleType = (raw: string | undefined | null): EntryRuleType | null =>
   (ENTRY_RULE_TYPES as readonly string[]).includes(raw ?? '') ? (raw as EntryRuleType) : null
 
+/** ตัวควบคุมที่จอวาดให้ช่องของเงื่อนไข · จอมีตัวละหนึ่งแบบ */
+export const ENTRY_RULE_CONTROLS = ['number', 'text', 'reward', 'activity', 'op', 'hours'] as const
+export type EntryRuleControl = (typeof ENTRY_RULE_CONTROLS)[number]
+
+export type EntryRuleField = {
+  /** คีย์ที่ engine อ่านจาก JSONB · เป็นชื่อของช่องในฟอร์มด้วย จะได้ไม่มีตารางแปลงชื่อ */
+  key: string
+  label: string
+  control: EntryRuleControl
+  required: boolean
+  hint?: string
+}
+
+/**
+ * ช่องของเงื่อนไขแต่ละชนิด ถอดจากสิ่งที่ evaluate() กับ passes() อ่านจริง
+ *
+ * The key names are not a convention, they are the read side written down:
+ * lib/state.ts asks a has_entitlement condition for `rewardCode` and the three
+ * activity conditions for `activityCode`, and lib/engine/entry.ts asks limit for
+ * `count`. Storing a generic key/value pair instead — which is what this screen
+ * did before — produces a rule that is false for every player forever. Nothing
+ * reports it, because from the engine's side the condition simply did not hold,
+ * and the campaign quietly refuses everybody at the door.
+ *
+ * Required means the engine has nothing to compare without it. `value` on
+ * has_attribute is the one honest optional: evaluate() treats a missing value as
+ * "holding this key at all is enough", which is a condition people really write.
+ */
+export const ENTRY_RULE_FIELDS: Record<EntryRuleType, EntryRuleField[]> = {
+  limit: [
+    {
+      key: 'count',
+      label: 'เล่นได้กี่ครั้งต่อรอบ',
+      control: 'number',
+      required: false,
+      hint: 'ไม่กรอก = 1 ครั้ง · รอบหนึ่งคือหนึ่งวันของแคมเปญตามความยาววันที่ตั้งไว้',
+    },
+  ],
+  time_window: [
+    {
+      key: 'hoursOfDay',
+      label: 'ชั่วโมงที่เล่นได้',
+      control: 'hours',
+      required: false,
+      hint: 'คั่นด้วยจุลภาค เช่น 9,10,11 · เว้นว่าง = เล่นได้ทั้งวันตลอดช่วงแคมเปญ',
+    },
+    {
+      key: 'timezone',
+      label: 'เขตเวลาที่ใช้นับชั่วโมง',
+      control: 'text',
+      required: false,
+      hint: 'เว้นว่าง = UTC ซึ่งเร็วกว่าเวลาไทย 7 ชั่วโมง · กรอก Asia/Bangkok ถ้าหมายถึงเวลาไทย',
+    },
+  ],
+  has_attribute: [
+    { key: 'key', label: 'ชื่อค่าประจำตัว', control: 'text', required: true },
+    {
+      key: 'value',
+      label: 'ต้องเท่ากับ',
+      control: 'text',
+      required: false,
+      hint: 'เว้นว่าง = มีค่าประจำตัวนี้อยู่ก็พอ ไม่สนว่าค่าเป็นอะไร',
+    },
+  ],
+  not_has_attribute: [
+    { key: 'key', label: 'ชื่อค่าประจำตัว', control: 'text', required: true },
+  ],
+  has_entitlement: [
+    { key: 'rewardCode', label: 'รางวัลที่ต้องถืออยู่', control: 'reward', required: true },
+  ],
+  activity_completed: [
+    { key: 'activityCode', label: 'กิจกรรมที่ต้องเล่นจบแล้ว', control: 'activity', required: true },
+  ],
+  activity_not_completed: [
+    { key: 'activityCode', label: 'กิจกรรมที่ต้องยังไม่เล่น', control: 'activity', required: true },
+  ],
+  activity_play_count: [
+    { key: 'activityCode', label: 'กิจกรรมที่นับจำนวนครั้ง', control: 'activity', required: true },
+    { key: 'op', label: 'เทียบแบบไหน', control: 'op', required: true },
+    { key: 'count', label: 'จำนวนครั้ง', control: 'number', required: true },
+  ],
+}
+
+/** ตัวเลือกของ `op` ใน activity_play_count · ตรงกับ Condition ใน lib/state.ts */
+export const PLAY_COUNT_OPS: Array<{ value: 'lt' | 'gte'; label: string }> = [
+  { value: 'gte', label: 'ครบแล้วอย่างน้อย' },
+  { value: 'lt', label: 'ยังไม่ถึง' },
+]
+
 export type ActivityRow = {
   id: string
   code: string
@@ -79,6 +168,10 @@ export type ActivityView = {
   isEnabled: boolean
   isFollowEntry: boolean
   trigger: 'manual' | 'follow'
+  /** ค่าของบล็อก 2 อย่างที่เก็บไว้ · จอเติมกลับเข้าช่องจากตรงนี้ */
+  inputConfig: Record<string, unknown>
+  /** รหัสค่าสะสม → จำนวนที่กิจกรรมนี้บวกให้เมื่อเล่นจบ · ถอดจาก effects */
+  counterUnits: Record<string, number>
   fallbackCardId: string | null
   outcomes: OutcomeConfig[]
   entryRules: EntryRuleConfig[]
@@ -156,6 +249,18 @@ export function activityProblems(row: ActivityRow): string[] {
         + ' — ผู้เล่นที่ติดเงื่อนไขนี้กดแล้วเงียบ',
       )
     }
+
+    // ค่าที่ engine ต้องอ่านแต่ไม่มี · เงื่อนไขนั้นเป็นเท็จกับทุกคนตลอดไป
+    // และไม่มี error ที่ไหนบอก เพราะฝั่ง engine มันแค่ "ไม่ผ่าน" เฉยๆ
+    for (const field of ENTRY_RULE_FIELDS[rule.type as EntryRuleType] ?? []) {
+      const value = rule[field.key]
+      if (field.required && (value === undefined || value === null || value === '')) {
+        problems.push(
+          `เงื่อนไขที่ ${index + 1} ยังไม่ได้กรอก "${field.label}"`
+          + ' — ค่าที่ขาดทำให้เงื่อนไขนี้เป็นเท็จกับทุกคน แคมเปญจะกันผู้เล่นออกทั้งหมดโดยไม่มีอะไรฟ้อง',
+        )
+      }
+    }
   })
 
   if (row.input_type === 'pick_one' && asArray(row.input_config?.slots).length === 0) {
@@ -175,6 +280,25 @@ export function conditionText(rules: EntryRuleConfig[]): string {
   return rules
     .map((rule) => ENTRY_RULE_NAME[rule.type as EntryRuleType] ?? `เงื่อนไขที่ระบบไม่รู้จัก (${rule.type})`)
     .join(' · ')
+}
+
+/**
+ * ค่าสะสมที่กิจกรรมนี้บวกให้ · อ่านจาก effects ของกิจกรรม ไม่ใช่ของผลลัพธ์
+ *
+ * planEffects() walks the activity's list, and lib/db/apply.ts turns
+ * `counterCode` into the SQL function's `counter_code` on the way out. Reading
+ * the same key back is what lets the screen show what is actually configured
+ * rather than an empty box beside a counter that is already being written to.
+ */
+function counterUnits(effects: unknown): Record<string, number> {
+  const units: Record<string, number> = {}
+  for (const effect of asArray<Record<string, unknown>>(effects)) {
+    if (effect.type !== 'add_units') continue
+    const code = effect.counterCode
+    if (typeof code !== 'string' || code === '') continue
+    units[code] = Number(effect.amount ?? 1)
+  }
+  return units
 }
 
 /**
@@ -203,6 +327,8 @@ export function summarizeActivity(row: ActivityRow): ActivityView {
     isEnabled: row.is_enabled,
     isFollowEntry: row.trigger === 'follow',
     trigger: row.trigger,
+    inputConfig: row.input_config ?? {},
+    counterUnits: counterUnits(row.effects),
     fallbackCardId: row.fallback_card_id,
     outcomes: asArray<OutcomeConfig>(row.resolve_config?.outcomes),
     entryRules: rules,
@@ -220,6 +346,29 @@ export function summarizeActivity(row: ActivityRow): ActivityView {
 /** ช่องที่ฟอร์มของกิจกรรมนี้ต้องถาม · lookup ยังไม่มีฟอร์มของตัวเองในรอบนี้ */
 export const fieldsForActivity = (view: ActivityView) =>
   view.resolveMethod === 'lookup' ? [] : fieldsFor(view.inputType, view.resolveMethod)
+
+/**
+ * ประโยคเดียวที่บอกว่าตอนนี้กิจกรรมนี้ทำอะไรอยู่ · กล่อง "สรุปการตั้งค่าปัจจุบัน" ของต้นแบบ
+ *
+ * Written as a sentence rather than a row of counters because the thing worth
+ * catching here is a combination that reads wrong out loud — an activity that is
+ * fully filled in, switched on, and has no way for anybody to start it.
+ */
+export function activitySummary(view: ActivityView): string {
+  const entrance = view.isFollowEntry
+    ? 'เริ่มเล่นตอนแอดเป็นเพื่อน'
+    : view.isUnreachable
+      ? 'ไม่มีทางเข้าถึง — ยังไม่มีคีย์เวิร์ดหรือปุ่มไหนพามา'
+      : `เข้าจาก ${view.reachedBy.join(' · ')}`
+
+  return [
+    view.comboName,
+    `ผลลัพธ์ ${view.outcomes.length} อัน`,
+    `เงื่อนไข ${view.entryRules.length} ข้อ`,
+    entrance,
+    view.isEnabled ? 'เปิดอยู่' : 'ปิดอยู่ — ยังไม่ถูกโหลดขึ้นตอนส่งขึ้น LINE',
+  ].join(' · ')
+}
 
 /**
  * ทุกทางเข้าที่พาผู้เล่นมาถึงกิจกรรม ตามที่ schema เขียนไว้จริง
@@ -268,7 +417,14 @@ export async function listActivities(
   return rows.map(summarizeActivity)
 }
 
-export type CardOption = { id: string; code: string; name: string }
+/**
+ * การ์ดหนึ่งใบอย่างที่ช่องเลือกการ์ดต้องใช้
+ *
+ * ไม่มีชื่อ เพราะตาราง card ไม่มีคอลัมน์ชื่อเลย · ตัวตนเดียวที่การ์ดมีคือ code
+ * ซึ่งเป็นสิ่งที่ปุ่มบนการ์ดใบอื่นอ้างถึงอยู่แล้ว · เหตุผลเดียวกับรางวัลที่จอ M7-S04
+ * ใช้รหัสเป็นหัวข้อของแถว
+ */
+export type CardOption = { id: string; code: string }
 
 export type ActivityScreen = {
   activity: ActivityView
@@ -289,8 +445,7 @@ export async function loadActivity(
 
   const [cards, rewards, counters, siblings] = await Promise.all([
     sql<CardOption[]>`
-      SELECT id, code, coalesce(name, code) AS name FROM card
-       WHERE campaign_id = ${campaignId} ORDER BY code`,
+      SELECT id, code FROM card WHERE campaign_id = ${campaignId} ORDER BY code`,
     sql<{ code: string }[]>`
       SELECT code FROM reward WHERE campaign_id = ${campaignId} ORDER BY code`,
     sql<{ code: string }[]>`

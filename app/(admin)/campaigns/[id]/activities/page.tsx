@@ -2,11 +2,14 @@ import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, Button, Empty, Field, Panel, PageHead, Rows } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
-import { INPUT_TYPES, RESOLVE_METHODS, inputTypeName, isComboAllowed, resolveMethodName } from '@/lib/activities/wizard'
-import { type ActivityView, listActivities } from '@/lib/db/activities'
+import {
+  INPUT_TYPES, RESOLVE_METHODS, inputTypeName, isComboAllowed, resolveMethodName,
+} from '@/lib/activities/wizard'
+import { listActivities } from '@/lib/db/activities'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
-import { createActivity, deleteActivity, setActivityEnabled } from './actions'
+import { ActivityRow } from './ActivityRow'
+import { createActivity } from './actions'
 
 const summaryStyle: CSSProperties = {
   display: 'inline-block',
@@ -15,107 +18,7 @@ const summaryStyle: CSSProperties = {
   fontSize: 13, fontWeight: 600, cursor: 'pointer', width: 'fit-content',
 }
 
-const codeChipStyle: CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 10, color: 'var(--ink-3)',
-  background: 'var(--ground)', border: '1px solid var(--rule)',
-  borderRadius: 'var(--r-sm)', padding: '2px 8px',
-}
-
-const linkChipStyle: CSSProperties = {
-  fontSize: 11, border: '1px solid var(--rule)', background: 'var(--ground)',
-  borderRadius: 'var(--r-pill)', padding: '2px 10px',
-}
-
 const noteStyle: CSSProperties = { fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }
-
-const railLabelStyle: CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.05em',
-  textTransform: 'uppercase', color: 'var(--ink-3)',
-}
-
-/**
- * แถวหนึ่งของกิจกรรม
- *
- * The three flags are not decoration. "ไม่มีทางเข้าถึง" means no keyword, no
- * button and no follow trigger points here, so the activity will never run no
- * matter how correct the rest of it is — and nothing else in the system says
- * so. "ตั้งค่าไม่ครบ" counts the things a player would hit. Both are computed in
- * lib/db/activities.ts, where they have tests.
- */
-function ActivityRow({ campaignId, activity, canEdit }: {
-  campaignId: string
-  activity: ActivityView
-  canEdit: boolean
-}) {
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
-      {canEdit && (
-        <form action={setActivityEnabled.bind(null, campaignId, activity.id, !activity.isEnabled)}>
-          <Button
-            type="submit"
-            variant="ghost"
-            style={{ padding: '5px 12px', fontSize: 11 }}
-            title={activity.isEnabled ? 'ปิดกิจกรรมนี้' : 'เปิดกิจกรรมนี้'}
-          >
-            {activity.isEnabled ? 'เปิดอยู่' : 'ปิดอยู่'}
-          </Button>
-        </form>
-      )}
-
-      <div style={{ flex: 1, minWidth: 200 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
-          <a
-            href={`/campaigns/${campaignId}/activities/${activity.id}`}
-            style={{ fontSize: 14, fontWeight: 600 }}
-          >
-            {activity.name}
-          </a>
-          <span style={codeChipStyle}>{activity.code}</span>
-          <Badge tone="mute">{activity.inputName}</Badge>
-          <Badge tone="mute">{activity.resolveName}</Badge>
-          {activity.isFollowEntry && <Badge tone="info">⌂ เข้าจากเมนูหลัก</Badge>}
-          {activity.isUnreachable && <Badge tone="danger">ไม่มีทางเข้าถึง</Badge>}
-          {activity.isIncomplete && <Badge tone="warn">ตั้งค่าไม่ครบ</Badge>}
-        </div>
-
-        <div style={{ fontSize: 12, color: 'var(--ink-3)', marginTop: 3 }}>
-          {activity.conditionText}
-        </div>
-
-        {activity.reachedBy.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
-            <span style={railLabelStyle}>เข้าจาก →</span>
-            {activity.reachedBy.map((label) => (
-              <span key={label} style={linkChipStyle}>{label}</span>
-            ))}
-          </div>
-        )}
-
-        {activity.links.length > 0 && (
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 7, flexWrap: 'wrap' }}>
-            <span style={railLabelStyle}>พาไป →</span>
-            {activity.links.map((label) => (
-              <span key={label} style={linkChipStyle}>{label}</span>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-        {canEdit && (
-          <form action={deleteActivity.bind(null, campaignId, activity.id)}>
-            <Button type="submit" variant="ghost" style={{ padding: '8px 12px', fontSize: 12 }}>
-              ✕
-            </Button>
-          </form>
-        )}
-        <a href={`/campaigns/${campaignId}/activities/${activity.id}`}>
-          <Button variant="ghost" style={{ padding: '8px 14px', fontSize: 12 }}>ตั้งค่า →</Button>
-        </a>
-      </div>
-    </div>
-  )
-}
 
 export default async function ActivitiesPage({ params }: { params: Promise<{ id: string }> }) {
   const session = await getSession()
@@ -146,7 +49,7 @@ export default async function ActivitiesPage({ params }: { params: Promise<{ id:
 
       {canEdit && (
         <details style={{ marginBottom: 14 }}>
-          <summary style={summaryStyle}>+ เพิ่มกิจกรรม</summary>
+          <summary style={summaryStyle}>＋ เพิ่มกิจกรรม</summary>
           <Panel style={{ marginTop: 10 }}>
             <Panel.Row>
               <form
@@ -202,7 +105,9 @@ export default async function ActivitiesPage({ params }: { params: Promise<{ id:
 
                 {/* ฟอร์มสร้างถามแค่ตัวตนกับสองแกน · ช่องที่เหลือขึ้นกับคู่แกนที่เลือก
                     และ fieldsFor() เป็นคนบอกว่าคู่นั้นถามอะไร (BR-87) จอถัดไปจึงเป็น
-                    ที่ที่ถามมัน ไม่ใช่ที่นี่ */}
+                    ที่ที่ถามมัน ไม่ใช่ที่นี่ · ตัวเลือกที่ปิดไว้ตรงนี้อิงชนิดอินพุตค่าเริ่มต้น
+                    เพราะจอนี้ไม่มีสถานะฝั่งเบราว์เซอร์ที่จะตามช่องแรกทัน — คู่ที่ผสมกันไม่ได้
+                    ถูกปฏิเสธอีกครั้งใน createActivity() ซึ่งเป็นด่านจริง */}
                 <span style={noteStyle}>
                   ช่องที่เหลือถามที่หน้าตั้งค่า เพราะแต่ละคู่แกนถามคนละชุดกัน —
                   ฟอร์มสร้างจากนิยามชนิด ไม่ได้เขียนแยกไว้ทีละกิจกรรม (BR-87)
@@ -238,6 +143,14 @@ export default async function ActivitiesPage({ params }: { params: Promise<{ id:
       <div style={{ ...noteStyle, marginTop: 14 }}>
         ความเชื่อมโยงระหว่างกิจกรรมมาจากปุ่มบนการ์ดของแต่ละกิจกรรม — แถว &quot;พาไป →&quot;
         คือภาพรวมทางเดินทั้งหมดของแคมเปญนี้
+      </div>
+
+      {/* ตาราง activity_template มีอยู่ในสคีมาแต่ยังไม่มีแถวไหนเลย ทั้งใน migration
+          และในโค้ดที่ไหนก็ตาม · กล่องเทมเพลตของต้นแบบจึงยังวาดไม่ได้ และการวาดกล่อง
+          ว่างที่บอกว่ามีแปดแบบให้เลือกคือการโกหก */}
+      <div style={{ ...noteStyle, marginTop: 8 }}>
+        เทมเพลตกิจกรรมยังไม่มีให้เลือก — ตาราง activity_template ยังไม่มีแถวไหนอยู่เลย
+        ทุกกิจกรรมจึงเริ่มจากศูนย์ด้วยฟอร์มข้างบนไปก่อน
       </div>
     </main>
   )

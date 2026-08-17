@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  ENTRY_RULE_NAME, ENTRY_RULE_TYPES, type ActivityRow,
-  activityProblems, asEntryRuleType, comboName, conditionText, summarizeActivity,
+  ENTRY_RULE_CONTROLS, ENTRY_RULE_FIELDS, ENTRY_RULE_NAME, ENTRY_RULE_TYPES, type ActivityRow,
+  activityProblems, activitySummary, asEntryRuleType, comboName, conditionText, summarizeActivity,
 } from './activities'
 
 const row = (patch: Partial<ActivityRow> = {}): ActivityRow => ({
@@ -142,6 +142,140 @@ describe('ปัญหาที่ทำให้ยังส่งขึ้น�
   })
 })
 
+/**
+ * ช่องของเงื่อนไขแต่ละชนิด ถอดจากสิ่งที่ evaluate() กับ passes() อ่านจริง
+ *
+ * lib/state.ts reads `rewardCode` for has_entitlement and `activityCode` for the
+ * three activity conditions; lib/engine/entry.ts reads `count` for limit. None
+ * of them reads a generic key/value pair. A screen that wrote one would produce
+ * a rule that evaluates to false for every player forever — the campaign refuses
+ * everybody at the door and nothing anywhere reports an error, because from the
+ * engine's side the condition simply did not hold.
+ */
+describe('ช่องที่เงื่อนไขแต่ละชนิดต้องกรอก', () => {
+  it('ทุกชนิดที่จอเสนอ มีนิยามช่องของตัวเอง', () => {
+    for (const type of ENTRY_RULE_TYPES) {
+      expect(ENTRY_RULE_FIELDS[type], type).toBeDefined()
+    }
+  })
+
+  it('ทุกช่องใช้ control ที่จอวาดได้', () => {
+    for (const type of ENTRY_RULE_TYPES) {
+      for (const field of ENTRY_RULE_FIELDS[type]) {
+        expect(ENTRY_RULE_CONTROLS, `${type} · ${field.key}`).toContain(field.control)
+      }
+    }
+  })
+
+  it('ทุกช่องมีป้ายที่คนอ่านออก ไม่ใช่ชื่อคีย์ของ JSON', () => {
+    for (const type of ENTRY_RULE_TYPES) {
+      for (const field of ENTRY_RULE_FIELDS[type]) {
+        expect(field.label.length, `${type} · ${field.key}`).toBeGreaterThan(0)
+        expect(field.label).not.toBe(field.key)
+      }
+    }
+  })
+
+  it('คีย์ของทุกชนิด ตรงกับที่ evaluate() และ passes() อ่าน', () => {
+    const keysOf = (type: (typeof ENTRY_RULE_TYPES)[number]) =>
+      ENTRY_RULE_FIELDS[type].map((f) => f.key)
+    expect(keysOf('limit')).toEqual(['count'])
+    expect(keysOf('time_window')).toEqual(['hoursOfDay', 'timezone'])
+    expect(keysOf('has_attribute')).toEqual(['key', 'value'])
+    expect(keysOf('not_has_attribute')).toEqual(['key'])
+    expect(keysOf('has_entitlement')).toEqual(['rewardCode'])
+    expect(keysOf('activity_completed')).toEqual(['activityCode'])
+    expect(keysOf('activity_not_completed')).toEqual(['activityCode'])
+    expect(keysOf('activity_play_count')).toEqual(['activityCode', 'op', 'count'])
+  })
+
+  /** ค่าที่ขาดแล้วเงื่อนไขเป็นเท็จตลอดกาล ต้องเป็นช่องบังคับ */
+  it('รางวัลของ has_entitlement และกิจกรรมของ activity_completed เป็นช่องบังคับ', () => {
+    expect(ENTRY_RULE_FIELDS.has_entitlement[0].required).toBe(true)
+    expect(ENTRY_RULE_FIELDS.activity_completed[0].required).toBe(true)
+    expect(ENTRY_RULE_FIELDS.has_attribute[0].required).toBe(true)
+  })
+
+  /** ค่าประจำตัวที่ไม่ระบุค่า = มีคีย์นี้ก็พอ · evaluate() รองรับกรณีนั้นตรงๆ */
+  it('ค่าของ has_attribute ไม่บังคับ เพราะ "มีคีย์นี้ก็พอ" เป็นเงื่อนไขที่ใช้ได้จริง', () => {
+    const value = ENTRY_RULE_FIELDS.has_attribute.find((f) => f.key === 'value')
+    expect(value?.required).toBe(false)
+  })
+})
+
+describe('เงื่อนไขที่กรอกไม่ครบจนเป็นเท็จตลอดกาล', () => {
+  it('เงื่อนไขที่ขาดค่าที่ engine ต้องอ่าน ถูกฟ้องพร้อมบอกว่ากันทุกคนออก', () => {
+    const problems = activityProblems(row({
+      entry_rules: [{ type: 'has_entitlement', cardId: 'card-2' }],
+    }))
+    expect(problems.join()).toContain('เงื่อนไขที่ 1')
+    expect(problems.join()).toContain('รางวัล')
+  })
+
+  it('เงื่อนไขที่กรอกครบ ไม่ถูกฟ้อง', () => {
+    const problems = activityProblems(row({
+      entry_rules: [{ type: 'has_entitlement', cardId: 'card-2', rewardCode: 'mug' }],
+    }))
+    expect(problems).toEqual([])
+  })
+
+  it('ช่องที่ไม่บังคับ ขาดได้โดยไม่ถูกฟ้อง', () => {
+    const problems = activityProblems(row({
+      entry_rules: [{ type: 'has_attribute', cardId: 'card-2', key: 'tier' }],
+    }))
+    expect(problems).toEqual([])
+  })
+
+  it('ทุกชนิดที่มีช่องบังคับ ถูกฟ้องเมื่อยังไม่ได้กรอก', () => {
+    for (const type of ENTRY_RULE_TYPES) {
+      const required = ENTRY_RULE_FIELDS[type].filter((f) => f.required)
+      if (required.length === 0) continue
+      const problems = activityProblems(row({ entry_rules: [{ type, cardId: 'card-2' }] }))
+      expect(problems.join(), type).toContain('เงื่อนไขที่ 1')
+    }
+  })
+})
+
+describe('ประโยคสรุปการตั้งค่าปัจจุบัน', () => {
+  it('บอกคู่แกน จำนวนผลลัพธ์ และจำนวนเงื่อนไข', () => {
+    const said = activitySummary(summarizeActivity(row({
+      entry_rules: [{ type: 'limit', cardId: 'c2', count: 1 }],
+      resolve_config: { outcomes: [{ id: 'o1', cardId: 'c1' }, { id: 'o2', cardId: 'c3' }] },
+    })))
+    expect(said).toContain('ไม่รับอินพุต × สุ่มตามน้ำหนัก')
+    expect(said).toContain('ผลลัพธ์ 2')
+    expect(said).toContain('เงื่อนไข 1')
+  })
+
+  it('ยังไม่มีผลลัพธ์ ก็ยังนับให้เห็นว่าศูนย์ ไม่ใช่ข้ามไปเงียบๆ', () => {
+    const said = activitySummary(summarizeActivity(row({ resolve_config: { outcomes: [] } })))
+    expect(said).toContain('ผลลัพธ์ 0')
+  })
+
+  /**
+   * "เปิดอยู่" มีคำว่า "ปิดอยู่" อยู่ข้างในตั้งแต่ตัวที่สอง
+   *
+   * toContain('ปิดอยู่') จึงเป็นจริงกับทั้งสองสถานะ และเทสต์ที่เขียนแบบนั้นผ่านได้
+   * แม้ประโยคสรุปจะบอกว่าเปิดอยู่ตลอดเวลา · ต้องบังคับฝั่งที่ต้องไม่มีด้วย
+   */
+  it('กิจกรรมที่ปิดอยู่ บอกว่าปิด และไม่บอกว่าเปิด — ตั้งครบแค่ไหนก็ยังไม่มีใครเล่นได้', () => {
+    const off = activitySummary(summarizeActivity(row({ is_enabled: false })))
+    expect(off).toContain('ปิดอยู่')
+    expect(off).not.toContain('เปิดอยู่')
+    expect(activitySummary(summarizeActivity(row()))).toContain('เปิดอยู่')
+  })
+
+  it('กิจกรรมทักทายบอกทางเข้าของมัน ไม่ใช่เงียบเพราะไม่มีคีย์เวิร์ดชี้มา', () => {
+    const said = activitySummary(summarizeActivity(row({ trigger: 'follow', reached_by: [] })))
+    expect(said).toContain('แอดเป็นเพื่อน')
+  })
+
+  it('กิจกรรมที่ไม่มีทางเข้าถึง พูดออกมาในประโยคสรุปด้วย', () => {
+    expect(activitySummary(summarizeActivity(row({ reached_by: [] }))))
+      .toContain('ไม่มีทางเข้าถึง')
+  })
+})
+
 describe('ทางเข้าถึงกิจกรรม', () => {
   it('ไม่มีคีย์เวิร์ดและไม่มีปุ่มชี้มา คือไม่มีทางเข้าถึง', () => {
     expect(summarizeActivity(row({ reached_by: [] })).isUnreachable).toBe(true)
@@ -210,6 +344,56 @@ describe('แถวที่จอเอาไปวาด', () => {
     expect(view.outcomes[0].cardId).toBe('c1')
     expect(view.outcomes[0].rewardCode).toBe('mug')
     expect(view.outcomes[0].weight).toBe(3)
+  })
+
+  /** ช่องของบล็อก 2 ต้องเติมค่าเดิมกลับเข้าไปได้ · ค่านั้นอยู่ใน input_config */
+  it('พา input_config ออกมาให้จอเติมค่าเดิมกลับเข้าช่องได้', () => {
+    const view = summarizeActivity(row({
+      input_type: 'pick_one',
+      input_config: { slots: ['ก', 'ข'], grid: '1x3' },
+    }))
+    expect(view.inputConfig.slots).toEqual(['ก', 'ข'])
+    expect(view.inputConfig.grid).toBe('1x3')
+  })
+
+  it('input_config ที่ว่างเป็นอ็อบเจกต์เปล่า ไม่ใช่ undefined ที่จอต้องระวังเอง', () => {
+    expect(summarizeActivity(row({ input_config: undefined as never })).inputConfig).toEqual({})
+  })
+
+  /**
+   * ค่าสะสมที่กิจกรรมนี้บวกให้ · ถอดจาก effects ของกิจกรรม ไม่ใช่ของผลลัพธ์
+   *
+   * planEffects() อ่าน effects ของกิจกรรม และ toSqlEffect() อ่านคีย์ counterCode
+   * จอจึงต้องเติมค่าเดิมกลับเข้าช่องจากที่เดียวกันนั้น
+   */
+  it('พาจำนวนที่บวกให้ค่าสะสมแต่ละตัวออกมาให้จอเติมกลับเข้าช่อง', () => {
+    const view = summarizeActivity(row({
+      effects: [
+        { type: 'grant_reward' },
+        { type: 'add_units', counterCode: 'checkin', amount: 2 },
+      ],
+    }))
+    expect(view.counterUnits).toEqual({ checkin: 2 })
+  })
+
+  /**
+   * ชนิดของผลเป็นตัวตัดสิน ไม่ใช่การมีคีย์ counterCode ติดมา
+   *
+   * toSqlEffect() แปลงเฉพาะ add_units เป็น counter_code · แถวที่ชนิดเป็นอย่างอื่น
+   * แต่มี counterCode ติดมาด้วย (ของเก่าที่เขียนผิด หรือของที่แก้มือ) จะไม่มีวันบวก
+   * ค่าสะสมจริง จอจึงต้องไม่แสดงว่ามันบวกอยู่
+   */
+  it('ผลชนิดอื่นไม่ถูกนับเป็นค่าสะสม แม้จะมี counterCode ติดมาด้วย', () => {
+    expect(summarizeActivity(row({ effects: [{ type: 'grant_reward' }] })).counterUnits).toEqual({})
+    expect(summarizeActivity(row({
+      effects: [{ type: 'set_attribute', counterCode: 'checkin', amount: 5 }],
+    })).counterUnits).toEqual({})
+  })
+
+  it('add_units ที่ไม่มีชื่อค่าสะสม ถูกข้าม ไม่ใช่กลายเป็นคีย์ว่าง', () => {
+    expect(summarizeActivity(row({
+      effects: [{ type: 'add_units', amount: 3 }],
+    })).counterUnits).toEqual({})
   })
 
   it('กิจกรรมที่ยังกรอกไม่ครบติดธงไว้', () => {

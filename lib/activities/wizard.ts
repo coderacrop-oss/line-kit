@@ -59,12 +59,40 @@ export type WizardFieldKey =
 /** บล็อกของ M7-S02 ที่ช่องนี้อยู่ · 1 เล่นได้เมื่อไหร่ · 2 ตัดสินผลยังไง · 3 แล้วเกิดอะไรต่อ */
 export type WizardBlock = 1 | 2 | 3
 
+/**
+ * ตัวควบคุมที่จอวาดให้ช่องนี้ · จอมีตัวละหนึ่งแบบ ไม่มีตัวที่เขียนเผื่อกิจกรรมใดกิจกรรมหนึ่ง
+ *
+ * The screen keeps one renderer per entry here and looks it up by name. That is
+ * the difference between a generated form and a hand-written one: the screen
+ * never asks what kind of activity it is drawing, only what the definition said
+ * to draw, so a new pair of axes is a new line in this file rather than a new
+ * branch in a page.
+ */
+export const WIZARD_CONTROLS = [
+  'entry_rules', 'grid', 'lines', 'toggle', 'text', 'card',
+  'outcomes', 'outcome_weight', 'outcome_band',
+] as const
+export type WizardControl = (typeof WIZARD_CONTROLS)[number]
+
+/**
+ * ค่าของช่องนี้ไปลงที่ไหนในตาราง activity
+ *
+ * Written down rather than inferred because the save actions read the form by
+ * walking these fields. An action that guessed the destination from the input
+ * type would be the same switch BR-87 forbids, moved from the screen to the
+ * write path where it is harder to see.
+ */
+export const WIZARD_STORES = ['input_config', 'resolve_config', 'entry_rules', 'column'] as const
+export type WizardStore = (typeof WIZARD_STORES)[number]
+
 export type WizardField = {
   key: WizardFieldKey
   label: string
   hint?: string
   required: boolean
   block: WizardBlock
+  control: WizardControl
+  store: WizardStore
 }
 
 /** ช่องที่ทุกกิจกรรมมีเหมือนกัน ไม่ว่าจะผสมแกนไหน */
@@ -74,6 +102,8 @@ const ENTRY_RULES: WizardField = {
   hint: 'ตรวจเรียงจากบนลงล่าง · ไม่มีเงื่อนไข = ผู้เล่นกดเล่นได้เสมอ',
   required: false,
   block: 1,
+  control: 'entry_rules',
+  store: 'entry_rules',
 }
 
 const OUTCOMES: WizardField = {
@@ -82,20 +112,39 @@ const OUTCOMES: WizardField = {
   hint: 'ทุกผลลัพธ์ต้องมีการ์ดที่ตอบ ไม่งั้นผู้เล่นกดแล้วเงียบ',
   required: true,
   block: 3,
+  control: 'outcomes',
+  store: 'resolve_config',
 }
 
 /** ช่องที่มาจากแกน 1 · ชนิดอินพุตบอกว่าต้องถามอะไรเกี่ยวกับสิ่งที่ผู้เล่นส่งเข้ามา */
 const BY_INPUT: Record<InputType, WizardField[]> = {
   none: [],
   pick_one: [
-    { key: 'grid', label: 'ผังช่อง · Layout', required: true, block: 2 },
-    { key: 'slots', label: 'ป้ายบนแต่ละช่อง · Slots', required: true, block: 2 },
+    {
+      key: 'grid',
+      label: 'ผังช่อง · Layout',
+      required: true,
+      block: 2,
+      control: 'grid',
+      store: 'input_config',
+    },
+    {
+      key: 'slots',
+      label: 'ป้ายบนแต่ละช่อง · Slots',
+      hint: 'บรรทัดละหนึ่งช่อง · ลำดับของบรรทัดคือลำดับที่ผู้เล่นเห็น',
+      required: true,
+      block: 2,
+      control: 'lines',
+      store: 'input_config',
+    },
     {
       key: 'meaningful',
       label: 'ตัวเลือกมีความหมาย',
       hint: 'เปิด = ช่องที่กดตรงกับผลลัพธ์ลำดับเดียวกัน · ปิด = กดช่องไหนก็ตัดสินด้วยวิธีในแกน 2',
       required: false,
       block: 2,
+      control: 'toggle',
+      store: 'input_config',
     },
   ],
   quiz: [
@@ -105,6 +154,8 @@ const BY_INPUT: Record<InputType, WizardField[]> = {
       hint: 'ติ๊ก ✓ ที่ตัวเลือกเพื่อกำหนดคำตอบที่ถูก · ตัวเลือกได้ 2–4 ข้อ',
       required: true,
       block: 2,
+      control: 'lines',
+      store: 'input_config',
     },
   ],
   text: [
@@ -114,6 +165,8 @@ const BY_INPUT: Record<InputType, WizardField[]> = {
       hint: 'ผู้เล่นเห็นข้อความนี้ก่อนพิมพ์คำตอบ — ไม่มีข้อความ ผู้เล่นไม่รู้ว่าต้องพิมพ์อะไร',
       required: true,
       block: 2,
+      control: 'text',
+      store: 'input_config',
     },
   ],
 }
@@ -128,6 +181,8 @@ const BY_RESOLVE: Record<ResolveMethod, WizardField[]> = {
       hint: 'กรอกเป็นค่าดิบ — ระบบคำนวณเปอร์เซ็นต์ให้ ไม่ต้องไล่แก้ให้รวมกันได้ 100',
       required: true,
       block: 3,
+      control: 'outcome_weight',
+      store: 'resolve_config',
     },
   ],
   quota: [
@@ -137,6 +192,8 @@ const BY_RESOLVE: Record<ResolveMethod, WizardField[]> = {
       hint: 'จำนวนจำกัดอยู่ที่รางวัล ไม่ใช่ที่ผลลัพธ์ (BR-30)',
       required: true,
       block: 3,
+      control: 'outcome_weight',
+      store: 'resolve_config',
     },
     {
       key: 'fallback_card_id',
@@ -144,6 +201,8 @@ const BY_RESOLVE: Record<ResolveMethod, WizardField[]> = {
       hint: 'ของหมดแล้วยังมีคนกดเล่น — ไม่มีการ์ดสำรอง คนนั้นจะไม่ได้รับอะไรเลย',
       required: true,
       block: 2,
+      control: 'card',
+      store: 'column',
     },
   ],
   score: [
@@ -153,6 +212,8 @@ const BY_RESOLVE: Record<ResolveMethod, WizardField[]> = {
       hint: 'ตอบถูกกี่ข้อถึงได้ผลลัพธ์นี้ · ช่วงนับรวมปลายทั้งสองข้าง',
       required: true,
       block: 3,
+      control: 'outcome_band',
+      store: 'resolve_config',
     },
   ],
 }
@@ -169,6 +230,17 @@ const BY_RESOLVE: Record<ResolveMethod, WizardField[]> = {
 export function fieldsFor(input: InputType, resolve: ResolveMethod): WizardField[] {
   return [ENTRY_RULES, ...BY_INPUT[input], ...BY_RESOLVE[resolve], OUTCOMES]
 }
+
+/**
+ * ช่องที่ค่าไปลง input_config · ทั้งจอและ action อ่านฟอร์มจากรายการนี้
+ *
+ * The save action uses this to decide which form keys it is willing to write,
+ * so an activity that does not ask for slots cannot be made to store slots by
+ * anyone who edits the request. That is a filter derived from the type
+ * definition rather than a list repeated in the action.
+ */
+export const inputConfigFields = (input: InputType, resolve: ResolveMethod): WizardField[] =>
+  fieldsFor(input, resolve).filter((field) => field.store === 'input_config')
 
 /**
  * คู่ที่ผสมกันไม่ได้ พร้อมเหตุผล (BR-36)

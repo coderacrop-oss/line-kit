@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  INPUT_TYPES, RESOLVE_METHODS, comboProblem, fieldsFor, inputTypeName, resolveMethodName,
+  INPUT_TYPES, RESOLVE_METHODS, WIZARD_CONTROLS, WIZARD_STORES, comboProblem, fieldsFor,
+  inputConfigFields, inputTypeName, resolveMethodName,
 } from './wizard'
 
 describe('fieldsFor', () => {
@@ -95,6 +96,104 @@ describe('fieldsFor', () => {
         expect(asked, `${input} × ${resolve}`).toBe(resolve === 'quota')
       }
     }
+  })
+})
+
+/**
+ * นิยามชนิดต้องบอกด้วยว่าช่องนั้นวาดยังไงและเก็บไว้ที่ไหน ไม่ใช่แค่ชื่อ
+ *
+ * A key and a label are not enough to generate a form from. Without saying which
+ * control draws the field and which column stores it, the screen would have to
+ * decide both — and the only material it has to decide with is the input type,
+ * which is the `switch` BR-87 exists to forbid. Carrying `control` and `store`
+ * in the definition is what lets both the screen and the save action loop over
+ * fieldsFor() and stay ignorant of what kind of activity they are looking at.
+ */
+describe('ช่องบอกวิธีวาดและที่เก็บของตัวเอง', () => {
+  const everyField = INPUT_TYPES.flatMap((input) =>
+    RESOLVE_METHODS.map((resolve) => ({ input, resolve, fields: fieldsFor(input, resolve) })))
+
+  it('ทุกช่องของทุกคู่มี control ที่จอรู้จัก', () => {
+    for (const { input, resolve, fields } of everyField) {
+      for (const field of fields) {
+        expect(WIZARD_CONTROLS, `${input} × ${resolve} · ${field.key}`).toContain(field.control)
+      }
+    }
+  })
+
+  it('ทุกช่องของทุกคู่มี store ที่บอกว่าค่าลงคอลัมน์ไหน', () => {
+    for (const { input, resolve, fields } of everyField) {
+      for (const field of fields) {
+        expect(WIZARD_STORES, `${input} × ${resolve} · ${field.key}`).toContain(field.store)
+      }
+    }
+  })
+
+  it('ช่องเดียวกันใช้ control และ store เดิมเสมอ ไม่ว่าคู่ไหนถามมัน', () => {
+    const seen = new Map<string, string>()
+    for (const { input, resolve, fields } of everyField) {
+      for (const field of fields) {
+        const shape = `${field.control}/${field.store}/${field.block}`
+        const before = seen.get(field.key)
+        if (before) expect(shape, `${field.key} เปลี่ยนรูปตอน ${input} × ${resolve}`).toBe(before)
+        seen.set(field.key, shape)
+      }
+    }
+  })
+
+  /**
+   * ช่องของ input_config มาจากแกน 1 เท่านั้น
+   *
+   * The save action reads input_config out of the form by asking fieldsFor which
+   * keys belong there. If a resolve method ever contributed one, changing only
+   * the resolve method would silently change what the input configuration is
+   * allowed to hold, which is the axis leaking into the wrong column.
+   */
+  it('วิธีตัดสินผลไม่มีสิทธิ์เพิ่มช่องลง input_config', () => {
+    for (const input of INPUT_TYPES) {
+      const keys = RESOLVE_METHODS.map((resolve) =>
+        inputConfigFields(input, resolve).map((f) => f.key).join(','))
+      expect(new Set(keys).size, input).toBe(1)
+    }
+  })
+
+  it('ชนิดอินพุตที่ไม่รับอะไรเลย ไม่มีช่องใน input_config สักช่อง', () => {
+    expect(inputConfigFields('none', 'weighted')).toEqual([])
+  })
+
+  it('เลือกหนึ่งช่องกับตอบคำถาม มีช่องที่ต้องเก็บลง input_config', () => {
+    expect(inputConfigFields('pick_one', 'weighted').map((f) => f.key))
+      .toEqual(['grid', 'slots', 'meaningful'])
+    expect(inputConfigFields('quiz', 'weighted').map((f) => f.key)).toEqual(['questions'])
+    expect(inputConfigFields('text', 'weighted').map((f) => f.key)).toEqual(['prompt'])
+  })
+
+  it('การ์ดสำรองไม่ถูกนับเป็นของ input_config — มันเป็นคอลัมน์ของตัวเอง', () => {
+    const fallback = fieldsFor('none', 'quota').find((f) => f.key === 'fallback_card_id')
+    expect(fallback?.store).toBe('column')
+    expect(inputConfigFields('none', 'quota')).toEqual([])
+  })
+
+  it('ผลลัพธ์ น้ำหนัก และช่วงคะแนน เก็บอยู่กับ resolve_config ที่เดียวกัน', () => {
+    const byKey = new Map(fieldsFor('quiz', 'score').map((f) => [f.key, f]))
+    expect(byKey.get('outcomes')?.store).toBe('resolve_config')
+    expect(byKey.get('score_bands')?.store).toBe('resolve_config')
+    expect(fieldsFor('none', 'weighted').find((f) => f.key === 'weights')?.store)
+      .toBe('resolve_config')
+  })
+
+  it('เงื่อนไขการเข้าเล่นเก็บที่คอลัมน์ของตัวเอง ไม่ปนกับ input_config', () => {
+    const rules = fieldsFor('none', 'weighted').find((f) => f.key === 'entry_rules')
+    expect(rules?.store).toBe('entry_rules')
+    expect(rules?.block).toBe(1)
+  })
+
+  /** น้ำหนักกับช่วงคะแนนวาดเป็นคอลัมน์ในตารางผลลัพธ์ ไม่ใช่ช่องแยกของตัวเอง */
+  it('น้ำหนักและช่วงคะแนนเป็นคอลัมน์ของแถวผลลัพธ์', () => {
+    expect(fieldsFor('none', 'weighted').find((f) => f.key === 'weights')?.control)
+      .toBe('outcome_weight')
+    expect(fieldsFor('quiz', 'score').find((f) => f.key === 'score_bands')?.control)
+      .toBe('outcome_band')
   })
 })
 
