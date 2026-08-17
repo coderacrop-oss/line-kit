@@ -43,7 +43,7 @@ export const NAV_GROUPS: NavGroup[] = [
     head: 'Rules · กติกา',
     items: [
       { label: 'ค่าสะสม', path: 'counters' },
-      { label: 'รางวัล' },
+      { label: 'รางวัล', path: 'rewards' },
       { label: 'ชุดเนื้อหา' },
       { label: 'คีย์เวิร์ด', path: 'keywords' },
     ],
