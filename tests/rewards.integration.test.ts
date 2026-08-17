@@ -297,14 +297,25 @@ describe('reward_code.assigned_to · UNIQUE', () => {
    * second code-type reward a person wins takes the whole play down with a
    * constraint violation rather than being refused politely.
    */
-  it('รหัสของคนละรางวัล ก็ยังไปถึงคนเดียวกันไม่ได้ · UNIQUE คลุมทั้งตาราง', async () => {
+  /**
+   * เดิมข้อนี้เคยพังจริง · `assigned_to` ถูกตั้ง UNIQUE ทั้งตาราง แปลว่าคนหนึ่ง
+   * ถือรหัสได้ใบเดียวตลอดทั้งระบบ ข้ามรางวัลข้ามแคมเปญ
+   *
+   * และเพราะ play_and_apply จ่ายรหัสอยู่ในธุรกรรมเดียวกับการออกสิทธิ์
+   * รางวัลชนิดรหัสตัวที่สองที่คนนั้นชนะจะทำให้ **ทั้งการเล่นล้ม** ไม่ใช่แค่ไม่ได้รหัส
+   * ผู้เล่นจะเห็นข้อความว่าระบบขัดข้องทั้งที่เขาชนะ
+   */
+  it('รหัสของคนละรางวัล ไปถึงคนเดียวกันได้ · หนึ่งคนชนะได้หลายรางวัล', async () => {
     const a = await codeRewardWithCodes('MELO-A1B2')
     const b = await codeRewardWithCodes('SECOND-C3D4')
     const { participantId } = await aParticipant(a.user.id)
 
     await assign(a.codes[0].id, participantId)
-    await expect(assign(b.codes[0].id, participantId))
-      .rejects.toThrow(/duplicate key value|unique constraint/i)
+    await assign(b.codes[0].id, participantId)
+
+    const [{ count }] = await sql<{ count: string }[]>`
+      SELECT count(*) FROM reward_code WHERE assigned_to = ${participantId}`
+    expect(Number(count)).toBe(2)
   })
 
   it('คนละคนถือคนละรหัสได้ตามปกติ', async () => {
