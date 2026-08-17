@@ -2,7 +2,9 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type postgres from 'postgres'
 import { testDb } from '../lib/db/client'
 import { createCardFromTemplate } from '../lib/cards/create'
+import { loadCardEditor } from '../lib/db/cardEditor'
 import { configFor, loadPublishScreen } from '../lib/db/publish'
+import { DEFAULT_THEME } from '../lib/db/queries'
 import { validateForPublish } from '../lib/publish/validate'
 
 /**
@@ -248,5 +250,27 @@ describe('เงื่อนไขการแสดง (show_when) บันท
     const [afterRemove] = await sql<{ show_when: unknown }[]>`
       SELECT show_when FROM card_block WHERE id = ${block.id}`
     expect(afterRemove.show_when).toBeNull()
+  })
+})
+
+/**
+ * Task 13 ทิ้งไว้ว่า loadCardEditor ยังไม่ดึง campaign.theme — Task 14 (จอตัวอย่าง)
+ * ต้องเติมมัน และต้องเป็นค่าเดียวกับที่ makePorts (lib/db/queries.ts) ให้ webhook จริง
+ * เห็นเป๊ะ ไม่งั้นตัวอย่างจะวาดสีผิดจากของจริงแม้โครงจะตรง
+ */
+describe('loadCardEditor · campaign.theme', () => {
+  it('แคมเปญที่ไม่เคยตั้งธีมเลย ได้ DEFAULT_THEME ครบสามคีย์ — เดียวกับที่ webhook ใช้', async () => {
+    const s = await scene()
+    const screen = await loadCardEditor(sql, s.campaignId, s.cardId)
+    expect(screen?.theme).toEqual(DEFAULT_THEME)
+  })
+
+  it('แคมเปญที่ตั้งสีหลักไว้บางส่วน ได้ค่านั้นทับ ส่วนที่เหลือใช้ค่าเริ่มต้น', async () => {
+    const s = await scene()
+    await sql`UPDATE campaign SET theme = ${sql.json({ primary: '#123456' } as never)}
+               WHERE id = ${s.campaignId}`
+
+    const screen = await loadCardEditor(sql, s.campaignId, s.cardId)
+    expect(screen?.theme).toEqual({ ...DEFAULT_THEME, primary: '#123456' })
   })
 })

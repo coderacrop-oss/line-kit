@@ -71,7 +71,12 @@ async function loadKeywords(sql: Queryable, campaignId: string) {
   }
 }
 
-const DEFAULT_THEME = { primary: '#17756A', secondary: '#EFF3F1', text: '#151F1D' }
+/**
+ * ค่าเริ่มต้นเมื่อ campaign.theme ไม่มีคีย์ใดเลย · ส่งออกให้ lib/db/cardEditor.ts
+ * ใช้ค่าเดียวกันเป๊ะ — จอตัวอย่างของ Task 14 กับ webhook จริงต้องเห็นสีเดียวกันเสมอ
+ * ไม่งั้น BR-91 จะเป็นจริงแค่ครึ่งเดียว (โครงตรงแต่สีไม่ตรง)
+ */
+export const DEFAULT_THEME = { primary: '#17756A', secondary: '#EFF3F1', text: '#151F1D' }
 
 async function loadCards(sql: Queryable, campaignId: string) {
   const cards = await sql<{

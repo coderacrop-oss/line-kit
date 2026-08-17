@@ -3,13 +3,16 @@ import type { CSSProperties } from 'react'
 import { Badge, Button, Note, PageHead, Panel } from '@/components/ui'
 import { BlockForm } from '@/components/cards/BlockForm'
 import { BlockList } from '@/components/cards/BlockList'
+import { PreviewPanel } from '@/components/cards/PreviewPanel'
 import { getSession } from '@/lib/auth/session'
 import {
   BLOCK_TYPE_NAME, DRAWABLE_BLOCK_TYPES, canAddBlock, canRoleEditBlock, countAgainstLimits,
 } from '@/lib/cards/blocks'
 import { loadCardEditor } from '@/lib/db/cardEditor'
 import { db } from '@/lib/db/client'
+import { loadTestLineUid } from '@/lib/db/users'
 import { addBlock } from './actions'
+import { sendTestCard } from './preview-actions'
 
 const labelStyle: CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.06em',
@@ -17,11 +20,6 @@ const labelStyle: CSSProperties = {
 }
 
 const noteStyle: CSSProperties = { fontSize: 12, color: 'var(--ink-3)', lineHeight: 1.6 }
-
-const previewPlaceholderStyle: CSSProperties = {
-  border: '1px dashed var(--rule)', borderRadius: 'var(--r-lg)', background: 'var(--panel)',
-  padding: '20px 18px', display: 'flex', flexDirection: 'column', gap: 8,
-}
 
 const usedByBoxStyle: CSSProperties = {
   border: '1px solid var(--rule)', borderRadius: 'var(--r-lg)', background: 'var(--panel)',
@@ -49,6 +47,10 @@ export default async function CardEditPage({ params }: {
   const sql = db()
   const screen = await loadCardEditor(sql, id, cardId)
   if (!screen) notFound()
+
+  // ปุ่มส่งการ์ดทดสอบ (Task 14) ต้องรู้ว่าคนที่กำลังดูจอนี้มี LINE user id ของตัวเอง
+  // ไว้รับการ์ดหรือยัง (BR-62) — อ่านจาก session.userId เสมอ ไม่ใช่ให้จอกรอกเอง
+  const testLineUid = await loadTestLineUid(sql, session.userId)
 
   const canEditAnything = session.role === 'configurator' || session.role === 'content_editor'
   const canEditStructure = session.role === 'configurator'
@@ -150,14 +152,16 @@ export default async function CardEditPage({ params }: {
         </div>
 
         <div>
-          <div style={{ ...labelStyle, marginBottom: 10 }}>ตัวอย่างที่ผู้เล่นเห็น · Live preview</div>
-          <div data-preview-placeholder style={previewPlaceholderStyle}>
-            <span style={noteStyle}>
-              ช่องนี้เป็นของ Task 14 — หน้าตัวอย่างเรียก <code>groupBlocks</code>/<code>toFlexBubble</code>/
-              <code>toPlainText</code> ตัวเดียวกับที่ webhook เรียก (BR-91) พร้อมสวิตช์สลับสถานะผู้เล่นจำลอง
-              และปุ่มส่งทดสอบเข้า LINE ตัวเอง — ยังไม่มีใครเขียนไฟล์นี้
-            </span>
-          </div>
+          <PreviewPanel
+            blocks={screen.blocks}
+            theme={screen.theme}
+            renderAs={screen.card.renderAs}
+            rewardCodes={screen.rewardCodes}
+            activities={screen.activities}
+            counterCodes={screen.counterCodes}
+            testLineUid={testLineUid}
+            sendTest={sendTestCard.bind(null, id, cardId)}
+          />
 
           <div style={usedByBoxStyle}>
             <div style={{ ...labelStyle, marginBottom: 8 }}>ใครใช้การ์ดนี้อยู่</div>

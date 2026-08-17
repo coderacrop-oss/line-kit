@@ -1,6 +1,7 @@
 import type { LineMessage } from '../render/card'
 
 const REPLY_ENDPOINT = 'https://api.line.me/v2/bot/message/reply'
+const PUSH_ENDPOINT = 'https://api.line.me/v2/bot/message/push'
 const WEBHOOK_ENDPOINT = 'https://api.line.me/v2/bot/channel/webhook/endpoint'
 
 export function getChannelSecret(): string {
@@ -32,6 +33,33 @@ export async function replyMessage(replyToken: string, message: LineMessage): Pr
 
   if (!response.ok) {
     throw new Error(`LINE reply failed: ${response.status} ${await response.text()}`)
+  }
+}
+
+/**
+ * ส่งข้อความหนึ่งชิ้นถึงผู้ใช้คนเดียวโดยไม่ต้องมี event ต้นทาง — สิ่งที่ปุ่ม "ส่งการ์ด
+ * ทดสอบ" ของ M3-S02 (Task 14) ต้องใช้ เพราะการกดปุ่มบนจอแอดมินไม่ใช่ event จาก LINE
+ * จึงไม่มี reply token ให้ replyMessage ใช้
+ *
+ * โทเคนเป็นพารามิเตอร์เหมือน setWebhookEndpoint ไม่ใช่แบบ replyMessage ที่ยังอ่าน
+ * env อยู่ (หนี้ทางเทคนิคข้อ 1 ของ docs/HANDOFF.md) — การ์ดทดสอบต้องออกจากบัญชี LINE
+ * ประเภททดสอบที่ผู้เรียกเลือกมา ไม่ใช่บัญชีเดียวที่ผูกกับ process ตอนดีพลอย และ BR-62
+ * ห้ามส่งผ่านบัญชีจริงของลูกค้าไม่ว่ากรณีใด — ตัวเรียก (Server Action) เป็นผู้เลือก
+ * บัญชีและถอดกุญแจผ่าน readChannelSecret() ก่อนส่งเข้ามาที่นี่
+ */
+export async function pushMessage(accessToken: string, to: string, message: LineMessage): Promise<void> {
+  const response = await fetch(PUSH_ENDPOINT, {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${accessToken}`,
+    },
+    body: JSON.stringify({ to, messages: [message] }),
+  })
+
+  if (!response.ok) {
+    throw new Error(`LINE push failed: ${response.status} ${await response.text()}`)
   }
 }
 

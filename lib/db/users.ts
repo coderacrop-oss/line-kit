@@ -167,6 +167,19 @@ export function summarizeUsers(rows: readonly UserRow[], viewerId: string, now: 
 }
 
 /**
+ * LINE user id ของตัวเอง · อ่านเสมอจาก id ใน session ไม่ใช่จากอะไรที่ผู้เรียกส่งมา
+ *
+ * ตัวเรียกจริง (sendTestCard ของ Task 14) มี requireRole() คืน session ก่อนแล้ว —
+ * ฟังก์ชันนี้รับแค่ userId มาต่อ ไม่รับอีเมลหรือค่าอื่นที่เดาได้ เพื่อให้ผิดพลาดในชั้น
+ * ที่เรียกมันไม่มีทางกลายเป็นการอ่าน LINE user id ของคนอื่น (BR-62)
+ */
+export async function loadTestLineUid(sql: postgres.Sql, userId: string): Promise<string | null> {
+  const [row] = await sql<{ test_line_uid: string | null }[]>`
+    SELECT test_line_uid FROM app_user WHERE id = ${userId}`
+  return row?.test_line_uid ?? null
+}
+
+/**
  * ทุกคนในทีม รวมคนที่ถูกถอนสิทธิ์ไปแล้ว
  *
  * A revoked row is not hidden. It is the answer to "why can this person not get

@@ -179,3 +179,26 @@ export async function loadChannel(sql: postgres.Sql, id: string): Promise<Channe
   const [row] = await selectChannels(sql, sql<ChannelRow[]>`WHERE ch.id = ${id}`)
   return row ? summarizeChannel(row) : null
 }
+
+/**
+ * บัญชีที่ปุ่ม "ส่งการ์ดทดสอบ" ของ M3-S02 (Task 14) ใช้ได้ · BR-62 บังคับไว้ตรงๆ ว่า
+ * "ส่งได้เฉพาะผ่านบัญชีประเภททดลองเล่นหรือทดสอบ ห้ามส่งผ่านบัญชีจริงของลูกค้า"
+ *
+ * กรอง channel_type = 'test' เท่านั้น ไม่ใช่ 'production' — ชั้น 'preview' ไม่มีกุญแจ
+ * ให้ใช้อยู่แล้วตาม CHECK ของตาราง (encrypted_token ต้องเป็น NULL) จึงถูกกรองออกไป
+ * เองโดยเงื่อนไข encrypted_token IS NOT NULL แต่ยังกรอง channel_type ตรงๆ ไว้ด้วย
+ * เป็นการป้องกันสองชั้น ไม่ใช่พึ่ง CHECK อย่างเดียว
+ *
+ * ไม่ผูกกับแคมเปญที่กำลังแก้การ์ดอยู่ — บัญชีที่ใช้ยิงข้อความทดสอบไม่จำเป็นต้องเป็น
+ * บัญชีที่แคมเปญนี้เคยส่งขึ้นแล้ว (อาจยังเป็นฉบับร่างที่ไม่เคยผูกกับบัญชีไหนเลยก็ได้)
+ * เลือกบัญชีที่เพิ่งถูกใช้ล่าสุดเป็นค่าเริ่มต้น เพื่อให้ทีมที่มีบัญชีทดสอบเดียวไม่ต้อง
+ * เลือกเองทุกครั้ง
+ */
+export async function findTestSendChannel(sql: postgres.Sql): Promise<{ id: string } | null> {
+  const [row] = await sql<{ id: string }[]>`
+    SELECT id FROM channel
+     WHERE channel_type = 'test' AND encrypted_token IS NOT NULL
+     ORDER BY last_used_at DESC NULLS LAST, name
+     LIMIT 1`
+  return row ?? null
+}

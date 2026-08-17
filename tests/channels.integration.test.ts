@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type postgres from 'postgres'
 import { decryptSecret, encryptSecret } from '../lib/crypto/secretbox'
-import { listChannels, loadChannel } from '../lib/db/channels'
+import { findTestSendChannel, listChannels, loadChannel } from '../lib/db/channels'
 import { readChannelSecret } from '../lib/db/tokens'
 import { testDb } from '../lib/db/client'
 import { seed } from './helpers/seed'
@@ -470,5 +470,55 @@ describe('readChannelSecret · ร่องรอยในตารางจร�
     })).rejects.toThrow('ยังไม่ได้ผูกกุญแจ')
 
     expect(await logsOf(s.channelId)).toEqual([])
+  })
+})
+
+/**
+ * BR-62 · ปุ่มส่งการ์ดทดสอบของ M3-S02 (Task 14) "ส่งได้เฉพาะผ่านบัญชีประเภททดลองเล่น
+ * หรือทดสอบ ห้ามส่งผ่านบัญชีจริงของลูกค้า" — ฐานข้อมูลใช้ร่วมกันทุก worktree จึงยืนยัน
+ * แค่พฤติกรรมสัมพัทธ์ (แถวของตัวเองต้องไม่/ต้องถูกเลือก) ไม่นับจำนวนทั้งตาราง
+ */
+describe('findTestSendChannel · BR-62', () => {
+  const insert = async (opts: {
+    type: 'preview' | 'test' | 'production'
+    hasKey: boolean
+    lastUsedAt: string
+  }) => {
+    const user = await aUser()
+    const t = tag()
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO channel (name, channel_type, encrypted_token, encrypted_secret,
+                           token_last4, key_version, last_used_at, created_by)
+      VALUES (${`fts-${t}`}, ${opts.type},
+              ${opts.hasKey ? 'cipher' : null}, ${opts.hasKey ? 'cipher' : null},
+              ${opts.hasKey ? '1a2b' : null}, ${opts.hasKey ? 1 : null},
+              ${opts.lastUsedAt}, ${user.id})
+      RETURNING id`
+    return row.id as string
+  }
+
+  it('บัญชี production ที่มีกุญแจ ไม่มีวันถูกเลือก ไม่ว่าจะใหม่แค่ไหน', async () => {
+    const productionId = await insert({ type: 'production', hasKey: true, lastUsedAt: '9999-01-01' })
+
+    const found = await findTestSendChannel(sql)
+
+    expect(found?.id).not.toBe(productionId)
+  })
+
+  it('บัญชีทดสอบที่ใช้ล่าสุด (ในกลุ่มที่สร้างเอง) ถูกเลือกก่อนบัญชีทดสอบที่เก่ากว่า', async () => {
+    await insert({ type: 'test', hasKey: true, lastUsedAt: '2020-01-01' })
+    const newestId = await insert({ type: 'test', hasKey: true, lastUsedAt: '9999-01-02' })
+
+    const found = await findTestSendChannel(sql)
+
+    expect(found?.id).toBe(newestId)
+  })
+
+  it('บัญชีชั้น preview ไม่มีกุญแจให้ใช้ ไม่มีวันถูกเลือกแม้จะใหม่ที่สุด', async () => {
+    const previewId = await insert({ type: 'preview', hasKey: false, lastUsedAt: '9999-01-03' })
+
+    const found = await findTestSendChannel(sql)
+
+    expect(found?.id).not.toBe(previewId)
   })
 })

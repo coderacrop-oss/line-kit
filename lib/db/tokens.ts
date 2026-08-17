@@ -1,8 +1,14 @@
 import type postgres from 'postgres'
 import { decryptSecret } from '../crypto/secretbox'
 
-/** ค่าที่ CHECK ของ token_access_log.purpose ยอมรับ (§5.2) */
-export type TokenPurpose = 'send_reply' | 'publish' | 'verify_signature' | 'display_last4'
+/**
+ * ค่าที่ CHECK ของ token_access_log.purpose ยอมรับ (§5.2 + migration 0005)
+ *
+ * `test_send` เพิ่มโดย Task 14 สำหรับปุ่มส่งการ์ดทดสอบของ M3-S02 — คนละเหตุการณ์กับ
+ * `send_reply` ซึ่งสงวนไว้ให้เส้นทางตอบผู้เล่นจริงผ่าน webhook (ยังไม่มีใครเรียกจริง
+ * เพราะ replyMessage ยังอ่านโทเคนจาก env อยู่ ดู docs/HANDOFF.md หนี้ทางเทคนิคข้อ 1)
+ */
+export type TokenPurpose = 'send_reply' | 'publish' | 'verify_signature' | 'display_last4' | 'test_send'
 
 /** สองกุญแจที่บัญชีหนึ่งบัญชีเก็บไว้ · โทเคนไว้พูด ซีเคร็ตไว้ตรวจว่าใครพูด */
 export type SecretField = 'token' | 'secret'

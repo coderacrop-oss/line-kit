@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type postgres from 'postgres'
 import { testDb } from '../lib/db/client'
-import { listUsers, summarizeUsers } from '../lib/db/users'
+import { listUsers, loadTestLineUid, summarizeUsers } from '../lib/db/users'
 import { seed } from './helpers/seed'
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
@@ -128,5 +128,37 @@ describe('ลบผู้ใช้ไม่ได้ · ฐานข้อมู
     const user = await makeUser({ isActive: false })
     await sql`UPDATE app_user SET is_active = true WHERE id = ${user.id}`
     expect(find(await listUsers(sql), user.id).is_active).toBe(true)
+  })
+})
+
+/**
+ * loadTestLineUid · สิ่งที่ปุ่มส่งการ์ดทดสอบของ M3-S02 (Task 14) อ่านก่อนยิงอะไรออกไป
+ *
+ * ต้องอ่านจาก id ที่ส่งเข้ามาตรงๆ เท่านั้น (BR-62) — ไม่มีทางลัดที่อ่านแถวอื่นได้เลย
+ */
+describe('loadTestLineUid', () => {
+  it('คืนค่าที่ตั้งไว้ของบัญชีนั้น', async () => {
+    const user = await makeUser()
+    const uid = `U${'a'.repeat(32)}`
+    await sql`UPDATE app_user SET test_line_uid = ${uid} WHERE id = ${user.id}`
+
+    expect(await loadTestLineUid(sql, user.id)).toBe(uid)
+  })
+
+  it('ยังไม่ได้ตั้ง คืน null', async () => {
+    const user = await makeUser()
+    expect(await loadTestLineUid(sql, user.id)).toBeNull()
+  })
+
+  it('อ่านของบัญชีตัวเอง ไม่ใช่ของคนอื่นที่มีค่าตั้งไว้', async () => {
+    const owner = await makeUser()
+    const somebodyElse = await makeUser()
+    await sql`UPDATE app_user SET test_line_uid = ${`U${'b'.repeat(32)}`} WHERE id = ${somebodyElse.id}`
+
+    expect(await loadTestLineUid(sql, owner.id)).toBeNull()
+  })
+
+  it('id ที่ไม่มีอยู่จริง คืน null แทนที่จะโยน', async () => {
+    expect(await loadTestLineUid(sql, '00000000-0000-0000-0000-000000000000')).toBeNull()
   })
 })

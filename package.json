@@ -11,7 +11,7 @@
     "typecheck": "tsc --noEmit",
     "test:all": "vitest run",
     "test:integration": "vitest run tests/*.integration.test.ts",
-    "db:reset": "psql -q postgres -c \"DROP DATABASE IF EXISTS linekit_test\" -c \"CREATE DATABASE linekit_test\" && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0001_init.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0002_play_and_apply.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0003_reward_code_scope.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0004_card_templates.sql",
+    "db:reset": "psql -q postgres -c \"DROP DATABASE IF EXISTS linekit_test\" -c \"CREATE DATABASE linekit_test\" && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0001_init.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0002_play_and_apply.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0003_reward_code_scope.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0004_card_templates.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0005_test_send_token_purpose.sql",
     "db:check": "node scripts/check-schema-vs-doc.mjs",
     "test:design": "vitest run tests/design-fidelity.test.ts"
   },

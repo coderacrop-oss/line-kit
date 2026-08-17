@@ -1,8 +1,10 @@
 import type postgres from 'postgres'
 import type { CampaignStatus } from './campaigns'
 import { loadCard, type CardView } from './cards'
+import { DEFAULT_THEME } from './queries'
 import type { SelectorReturn } from './selectors'
 import type { CardBlock } from '../render/groups'
+import type { Theme } from '../render/flex'
 
 /**
  * ทุกอย่างที่จอ M3-S02 ขั้น 3 (บล็อกเอดิเตอร์) ต้องอ่าน — การ์ดหนึ่งใบพร้อมบล็อกของมัน
@@ -21,6 +23,13 @@ export type CardEditorScreen = {
   hasSampleText: boolean
   campaignName: string
   campaignStatus: CampaignStatus
+  /**
+   * ธีมของแคมเปญนี้ · ครบทั้งสามคีย์เสมอ (merge กับ DEFAULT_THEME ที่ webhook จริง
+   * ใช้ตัวเดียวกัน จาก lib/db/queries.ts) เพราะ toFlexBubble/renderCard (lib/render/)
+   * รับ Theme แบบ required ทั้งสามคีย์ ไม่รับ partial — Task 14 (จอตัวอย่าง) ต้องส่ง
+   * ค่าที่ครบแบบเดียวกับที่ผู้เล่นจริงเห็น ไม่ใช่ปล่อยให้ undefined หลุดเข้าไปใน renderer
+   */
+  theme: Theme
   blocks: CardBlock[]
   /** ชุดเนื้อหาของแคมเปญนี้ — กรองตามชนิดที่บล็อกแต่ละแบบใช้ได้ที่จอเอง ไม่ใช่ที่นี่ */
   selectors: CardSelectorOption[]
@@ -35,6 +44,7 @@ type CardMetaRow = {
   has_sample_text: boolean
   campaign_name: string
   campaign_status: CampaignStatus
+  campaign_theme: { primary?: string; secondary?: string; text?: string }
 }
 
 type BlockRow = CardBlock & { card_id: string }
@@ -51,7 +61,7 @@ export async function loadCardEditor(
 ): Promise<CardEditorScreen | null> {
   const [meta] = await sql<CardMetaRow[]>`
     SELECT c.campaign_id, c.template_code, c.has_sample_text,
-           ca.name AS campaign_name, ca.status AS campaign_status
+           ca.name AS campaign_name, ca.status AS campaign_status, ca.theme AS campaign_theme
       FROM card c
       JOIN campaign ca ON ca.id = c.campaign_id
      WHERE c.id = ${cardId} AND c.campaign_id = ${campaignId}`
@@ -82,6 +92,7 @@ export async function loadCardEditor(
     hasSampleText: meta.has_sample_text,
     campaignName: meta.campaign_name,
     campaignStatus: meta.campaign_status,
+    theme: { ...DEFAULT_THEME, ...meta.campaign_theme },
     blocks: blockRows.map(({ card_id: _cardId, ...block }) => block),
     selectors,
     activities,
