@@ -48,6 +48,9 @@ function parseDoc(html) {
   return tables
 }
 
+/** Tables that exist to run this project, not to hold what it means (scripts/migrate.mjs). */
+const TOOLING_TABLES = new Set(['_migrations'])
+
 async function readLiveSchema(sql) {
   const rows = await sql`
     SELECT table_name, column_name
@@ -56,6 +59,7 @@ async function readLiveSchema(sql) {
 
   const tables = new Map()
   for (const { table_name, column_name } of rows) {
+    if (TOOLING_TABLES.has(table_name)) continue
     if (!tables.has(table_name)) tables.set(table_name, new Set())
     tables.get(table_name).add(column_name)
   }
