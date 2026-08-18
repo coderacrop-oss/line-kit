@@ -6,8 +6,10 @@ import {
   blocksFromTemplate, createCardFromTemplate, listCardTemplates,
 } from '../lib/cards/create'
 import { listCards } from '../lib/db/cards'
+import { DEFAULT_THEME } from '../lib/db/queries'
 import { configFor, loadPublishScreen } from '../lib/db/publish'
 import { validateForPublish } from '../lib/publish/validate'
+import { renderCard } from '../lib/render/card'
 import { groupBlocks } from '../lib/render/groups'
 import { toPlainText } from '../lib/render/text'
 import type { PlayerState } from '../lib/state'
@@ -82,6 +84,26 @@ const pickChannel = (
 
 const emptyState: PlayerState = {
   attributes: {}, counters: {}, entitlements: [], playCounts: {}, completed: [],
+}
+
+/**
+ * เดินทุกกิ่งของ flex bubble/carousel หาคอมโพเนนต์ปุ่มที่ toFlexBubble สร้าง
+ *
+ * component() ใน lib/render/flex.ts กระจาย options.action ของบล็อกออกไปเป็น action
+ * ของ LINE ตรงๆ โดยไม่ตรวจรูปร่าง — ปุ่มที่พังจะไม่มีวันโผล่เป็น error ตอนสร้าง
+ * ข้อความ แต่จะโผล่ตอน LINE ปฏิเสธข้อความทั้งใบเมื่อส่งจริงเท่านั้น (ดู 0006)
+ */
+function collectButtonActions(node: unknown, out: Record<string, unknown>[] = []): Record<string, unknown>[] {
+  if (!node || typeof node !== 'object') return out
+  const obj = node as Record<string, unknown>
+  if (obj.type === 'button' && obj.action && typeof obj.action === 'object') {
+    out.push(obj.action as Record<string, unknown>)
+  }
+  for (const value of Object.values(obj)) {
+    if (Array.isArray(value)) value.forEach((v) => collectButtonActions(v, out))
+    else if (value && typeof value === 'object') collectButtonActions(value, out)
+  }
+  return out
 }
 
 /**
@@ -166,6 +188,34 @@ describe('card_template ที่ seed ไว้', () => {
       const text = toPlainText(groupBlocks(blocks, emptyState), emptyState)
       expect(text, template.code).not.toBe('ระบบขัดข้องชั่วคราว กรุณาลองใหม่')
     }
+  })
+
+  /**
+   * 0004 เคยทิ้ง {"action":{"type":"postback","data":""}} ไว้ในเจ็ดปุ่ม (0006 แก้)
+   *
+   * LINE ปฏิเสธข้อความทั้งใบด้วย 400 ทันทีที่การ์ดถูกส่งจริง ไม่ใช่ตอนแก้ไขการ์ด
+   * และไม่ใช่ตอนกดปุ่ม — เอดิเตอร์เองก็ไม่มีทางเห็นบั๊กนี้เพราะ readButtonAction()
+   * อ่านรูปนี้เป็น "ยังไม่ได้ตั้งปลายทาง" อยู่แล้ว เทสต์นี้จึงต้องเดินทาง render
+   * จริงแทนการอ่านค่า options ตรงๆ — เส้นทางเดียวที่เห็นสิ่งที่ LINE จะเห็นจริง
+   */
+  it('ทุกปุ่มในทุกเทมเพลตมี action ที่ LINE รับได้จริง — postback ต้องไม่มี data ว่าง', async () => {
+    const bad: string[] = []
+    for (const template of await builtins()) {
+      const blocks = template.blocks.map((b, i) => ({
+        id: `${template.code}-${i}`, blockType: b.blockType, sortOrder: i,
+        content: b.content ?? null, showWhen: null, options: b.options ?? null,
+      }))
+      const card = { code: template.code, renderAs: 'flex_bubble' as const, blocks }
+      const message = renderCard(card, emptyState, DEFAULT_THEME)
+      if (message.type !== 'flex') continue
+
+      for (const action of collectButtonActions(message.contents)) {
+        if (action.type === 'postback' && !(typeof action.data === 'string' && action.data.length > 0)) {
+          bad.push(template.code)
+        }
+      }
+    }
+    expect(bad).toEqual([])
   })
 })
 

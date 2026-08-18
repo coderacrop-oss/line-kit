@@ -8,6 +8,7 @@ const row = (patch: Partial<ChannelRow> = {}): ChannelRow => ({
   id: 'ch1',
   name: 'OA ทดสอบ',
   channel_type: 'test',
+  line_channel_id: null,
   token_last4: 'wxyz',
   key_version: 1,
   last_used_at: null,
@@ -66,6 +67,19 @@ describe('summarizeChannel', () => {
     expect(summarizeChannel(row({ channel_type: 'preview' })).isEditable).toBe(false)
     expect(summarizeChannel(row({ channel_type: 'test' })).isEditable).toBe(true)
     expect(summarizeChannel(row({ channel_type: 'production' })).isEditable).toBe(true)
+  })
+
+  /**
+   * ค่านี้คือสิ่งเดียวที่ webhook ใช้จับคู่ข้อความที่เข้ามากับแคมเปญ — ไม่มีมันแล้ว
+   * ทุกข้อความจากไลน์จริงจะหาแคมเปญไม่เจอเสมอ ไม่ว่ากุญแจจะถูกหรือผิด
+   */
+  it('บัญชีที่ยังไม่ได้กรอก Channel ID คืน null', () => {
+    expect(summarizeChannel(row()).lineChannelId).toBeNull()
+  })
+
+  it('บัญชีที่กรอก Channel ID แล้ว ส่งค่านั้นออกมาตรงๆ', () => {
+    expect(summarizeChannel(row({ line_channel_id: '1657123456' })).lineChannelId)
+      .toBe('1657123456')
   })
 })
 

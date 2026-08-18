@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, Button, Field, Note, PageHead, Panel } from '@/components/ui'
+import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
 import {
   type ChannelSummary, type ChannelType, describePublished, loadChannel, maskedKey,
@@ -89,7 +90,9 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
   const published = channel ? describePublished(channel) : null
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 600 }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 'calc(100vh - 56px)' }}>
+      <GlobalNav isAdmin={canEdit} />
+      <main style={{ flex: 1, minWidth: 0, padding: 'var(--page-y) var(--page-x)', maxWidth: 600 }}>
       <a href="/channels" style={{ fontSize: 12, color: 'var(--ink-3)' }}>← บัญชี LINE ทั้งหมด</a>
 
       <PageHead
@@ -139,6 +142,19 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
                 · <b>ไม่มีทางไหนดูค่าเต็มได้ ทั้งก่อนและหลังกดแก้ (BR-16)</b>
               </Note>
             )}
+
+            <Field
+              label="Channel ID"
+              hint="ตัวเลขล้วนจากแท็บ Basic settings ของ LINE Developers Console — คนละค่ากับ token/secret ข้างล่าง และเป็นค่าเดียวที่ระบบใช้จับคู่ข้อความที่เข้ามาจากไลน์จริงกับแคมเปญนี้ ไม่กรอกไว้แล้วบัญชีจะตอบว่า “กิจกรรมจบไปแล้ว” ทุกครั้ง"
+            >
+              <input
+                name="line_channel_id"
+                defaultValue={channel?.lineChannelId ?? ''}
+                disabled={locked || isPreview}
+                placeholder="เช่น 1657123456"
+                style={{ fontFamily: 'var(--mono)' }}
+              />
+            </Field>
 
             <Field label="Channel access token">
               <input
@@ -193,6 +209,7 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
         กุญแจถูกเข้ารหัสก่อนเก็บ (DD-03) และทุกครั้งที่ระบบอ่านมันไปใช้ จะมีบันทึกไว้ว่าใครอ่านและอ่านทำไม
         · บัญชีจริงของลูกค้าคือชั้นที่ผู้ร่วมสนุกจริงมองเห็น ส่งแล้วลบไม่ได้
       </div>
-    </main>
+      </main>
+    </div>
   )
 }

@@ -40,7 +40,7 @@ vi.mock('@/lib/db/publish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/db/publish')>()),
   loadPublishScreen: async () => state.screen,
 }))
-vi.mock('./actions', () => ({ publish: vi.fn() }))
+vi.mock('./actions', () => ({ publish: vi.fn(), saveDefaultCard: vi.fn() }))
 
 const PublishPage = (await import('./page')).default
 
@@ -70,6 +70,7 @@ const goodBase = (): PublishScreenData['base'] => ({
   keywordRules: [{ id: 'k1', keyword: 'เล่น', targetActivityId: 'a1', targetCardId: null }],
   rewards: [],
   counters: [],
+  richMenus: [],
 })
 
 const aScreen = (patch: Partial<PublishScreenData> = {}): PublishScreenData => ({
@@ -77,6 +78,7 @@ const aScreen = (patch: Partial<PublishScreenData> = {}): PublishScreenData => (
   channels: [aChannel()],
   latestVersion: 0,
   campaignDayLengthSec: 86_400,
+  campaignCode: 'summer',
   ...patch,
 })
 
@@ -471,7 +473,9 @@ describe('M1-S04 · การ์ดตั้งต้นของบัญชี
     const row = Array.from(container.querySelectorAll('[data-check="blocked"]'))
       .find((node) => node.textContent?.includes('BR-39'))
     expect(row, 'ต้องมีแถวของ BR-39').not.toBeUndefined()
-    expect(row!.querySelector('a')!.getAttribute('href')).toBe('/channels')
+    // ชี้มาที่จอนี้เอง ไม่ใช่ /channels — ไม่มีจอไหนเคยให้ตั้งค่านี้มาก่อน จนกว่าจะมี
+    // ช่องเลือกการ์ดตั้งต้นอยู่บนจอนี้แล้ว (ดู describe ถัดไป)
+    expect(row!.querySelector('a')!.getAttribute('href')).toBe('/campaigns/camp-1/publish#default-card')
     expect((screen.getByRole('button', { name: /ส่งขึ้น LINE/ }) as HTMLButtonElement).disabled)
       .toBe(true)
   })
@@ -482,6 +486,30 @@ describe('M1-S04 · การ์ดตั้งต้นของบัญชี
 
     expect(container.querySelector('[data-check="blocked"]')).toBeNull()
     expect(screen.getByText('ผ่านทุกข้อ')).toBeDefined()
+  })
+
+  it('มีช่องเลือกการ์ดตั้งต้นอยู่บนจอนี้จริง ตรงกับจุดยึดที่ด่าน BR-39 ชี้มา', async () => {
+    state.screen = withTextInput(null)
+    const { container } = await open({ channel: 'ch-test' })
+
+    expect(container.querySelector('#default-card')).not.toBeNull()
+    expect(screen.getByRole('combobox', { name: /การ์ดตั้งต้น/ })).toBeDefined()
+  })
+
+  it('ช่องเลือกการ์ดตั้งต้น มีตัวเลือกจากการ์ดของแคมเปญนี้ พร้อมค่าปัจจุบันของบัญชี', async () => {
+    state.screen = withTextInput('c1')
+    const { container } = await open({ channel: 'ch-test' })
+
+    const select = container.querySelector('#default-card select') as HTMLSelectElement
+    expect(select.value).toBe('c1')
+    expect(Array.from(select.options).map((o) => o.value)).toContain('c1')
+  })
+
+  it('ยังไม่ได้เลือกบัญชี — ไม่มีช่องเลือกการ์ดตั้งต้นให้กรอก (ไม่รู้จะบันทึกลงบัญชีไหน)', async () => {
+    state.screen = withTextInput(null)
+    const { container } = await open()
+
+    expect(container.querySelector('#default-card')).toBeNull()
   })
 
   /**

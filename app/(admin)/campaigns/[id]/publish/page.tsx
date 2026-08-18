@@ -1,15 +1,15 @@
 import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
-import { Badge, Button, Note, PageHead, Panel, STATUS_TONES } from '@/components/ui'
+import { Badge, Button, Field, Note, PageHead, Panel, STATUS_TONES } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { describeLastUsed, maskedKey } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { configFor, type PublishChannel, loadPublishScreen } from '@/lib/db/publish'
 import {
-  type Check, CONFIRM_WORD, checkPublish, WHERE, whereHref,
+  type Check, CONFIRM_WORD, type PublishCard, checkPublish, WHERE, whereHref,
 } from '@/lib/publish/validate'
-import { publish } from './actions'
+import { publish, saveDefaultCard } from './actions'
 
 const labelStyle: CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.06em',
@@ -275,6 +275,30 @@ export default async function PublishPage({ params, searchParams }: {
               </form>
             )}
           </Panel>
+
+          {selected && (
+            <Panel id="default-card">
+              <div style={headStyle}>การ์ดตั้งต้น</div>
+              <div style={{ padding: 18 }}>
+                <form action={saveDefaultCard.bind(null, campaign.id, selected.id)}>
+                  <Field
+                    label="การ์ดตั้งต้นเมื่อผู้เล่นพิมพ์ลอยๆ (BR-39)"
+                    hint="ผูกกับบัญชีนี้โดยเฉพาะ ไม่ใช่กับแคมเปญ — บัญชีอื่นตั้งค่าคนละใบได้"
+                  >
+                    <select name="default_card_id" defaultValue={selected.defaultCardId ?? ''}>
+                      <option value="">— ยังไม่เลือก —</option>
+                      {base.cards.map((card: PublishCard) => (
+                        <option key={card.id} value={card.id}>{card.code}</option>
+                      ))}
+                    </select>
+                  </Field>
+                  <div style={{ display: 'flex', justifyContent: 'flex-end', marginTop: 10 }}>
+                    <Button type="submit" variant="ghost">บันทึกการ์ดตั้งต้น</Button>
+                  </div>
+                </form>
+              </div>
+            </Panel>
+          )}
 
           <Panel>
             <div style={headStyle}>

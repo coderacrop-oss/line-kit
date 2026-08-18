@@ -492,3 +492,80 @@ describe('ตรงกับตัวตรวจของจอกิจกร�
     expect(validateForPublish(config).length).toBeGreaterThan(0)
   })
 })
+
+// ────────────────────────────────────────────────────────────────────────────
+// Rich Menu (M4-S01) · §4.4 ขั้น 1 เพิ่มการตรวจเมนูเข้าไปด้วย v0.16/v0.17/v0.30
+// ────────────────────────────────────────────────────────────────────────────
+
+/** เมนูตัวเข้าเดียว ครบภาพ ไม่มีช่องว่าง — จุดตั้งต้นที่ผ่านด่านทุกข้อ */
+const goodMenu = {
+  id: 'm1', alias: 'main', hasImage: true, isEntry: true,
+  areas: [{ kind: 'url', target: 'https://example.com' }],
+}
+
+describe('validateForPublish · Rich Menu', () => {
+  it('ตัดสินใจข้อ 5 — แคมเปญที่ไม่มี richMenus เลย ไม่ถูกด่านเมนูแตะเลย (ไม่ใช้ Rich Menu)', () => {
+    expect(validateForPublish(ok)).toEqual([])
+  })
+
+  it('richMenus เป็นอาเรย์ว่าง ก็ไม่ถูกด่านเมนูแตะเหมือนกัน', () => {
+    expect(validateForPublish({ ...ok, richMenus: [] })).toEqual([])
+  })
+
+  it('แคมเปญที่ใช้เมนูและตั้งค่าครบ ผ่านด่านเมนูทั้งหมด', () => {
+    expect(validateForPublish({ ...ok, richMenus: [goodMenu] })).toEqual([])
+  })
+
+  it('เมนูที่ยังไม่ได้เลือกภาพ บล็อก (ERR-037)', () => {
+    const bad = { ...ok, richMenus: [{ ...goodMenu, hasImage: false }] }
+    const problems = validateForPublish(bad)
+    expect(problems.some((p) => p.code === 'ERR-037')).toBe(true)
+  })
+
+  it('เมนูที่มีช่องไม่ชี้ไปไหน บล็อกตอน publish แม้จะบันทึกได้ตอนกรอก (BR-01)', () => {
+    const bad = { ...ok, richMenus: [{ ...goodMenu, areas: [{ kind: 'none', target: null }] }] }
+    const problems = validateForPublish(bad)
+    expect(problems.some((p) => p.message.includes('ไม่ชี้ไปไหน'))).toBe(true)
+  })
+
+  it('ไม่มีเมนูตัวเข้าเลย บล็อก (BR-78 · ERR-039)', () => {
+    const bad = { ...ok, richMenus: [{ ...goodMenu, isEntry: false }] }
+    const problems = validateForPublish(bad)
+    expect(problems.some((p) => p.code === 'ERR-039')).toBe(true)
+  })
+
+  it('มีเมนูตัวเข้ามากกว่าหนึ่งอัน บล็อก (BR-78 · ERR-039)', () => {
+    const second = { ...goodMenu, id: 'm2', alias: 'promo' }
+    const bad = { ...ok, richMenus: [goodMenu, second] }
+    const problems = validateForPublish(bad)
+    expect(problems.some((p) => p.code === 'ERR-039')).toBe(true)
+  })
+
+  it('ปุ่มสลับแท็บชี้ไปเมนูที่ไม่มีอยู่จริง บล็อก (ERR-036)', () => {
+    const bad = {
+      ...ok,
+      richMenus: [{ ...goodMenu, areas: [{ kind: 'menu', target: 'ghost-id' }] }],
+    }
+    const problems = validateForPublish(bad)
+    expect(problems.some((p) => p.code === 'ERR-036')).toBe(true)
+  })
+
+  it('ปุ่มสลับแท็บชี้ไปเมนูที่มีอยู่จริงในแคมเปญนี้ ไม่ถูกบล็อกด้วย ERR-036', () => {
+    const target = { ...goodMenu, id: 'm2', alias: 'promo' }
+    const source = { ...goodMenu, id: 'm1', alias: 'main', areas: [{ kind: 'menu', target: 'm2' }] }
+    const problems = validateForPublish({ ...ok, richMenus: [source, target] })
+    // m2 ไม่ได้เป็นตัวเข้าและไม่มีภาพ (มาจาก goodMenu ที่ isEntry ซ้ำ) — override ให้ m2 ไม่ใช่ตัวเข้า
+    expect(problems.some((p) => p.code === 'ERR-036')).toBe(false)
+  })
+
+  it('ทุกด่านของเมนูมี where ชี้กลับไปที่จอ richmenu', () => {
+    const bad = { ...ok, richMenus: [{ ...goodMenu, hasImage: false }] }
+    const problems = validateForPublish(bad)
+    expect(problems.every((p) => p.where === 'richmenu')).toBe(true)
+  })
+
+  it('ไม่กระทบด่านตรวจอื่นของแคมเปญเดิม — Task 17 ยังทำงานเหมือนเดิมทุกประการ', () => {
+    const withMenu = { ...ok, richMenus: [goodMenu] }
+    expect(validateForPublish(withMenu)).toEqual(validateForPublish(ok))
+  })
+})

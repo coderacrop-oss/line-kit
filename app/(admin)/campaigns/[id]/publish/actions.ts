@@ -2,14 +2,44 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { assetStore } from '@/lib/assets/store'
 import { requireRole } from '@/lib/auth/require'
 import { db } from '@/lib/db/client'
 import { configFor, loadPublishScreen, snapshotOf, writePublish } from '@/lib/db/publish'
+import { publishRichMenus } from '@/lib/db/richmenu'
 import { readChannelSecret } from '@/lib/db/tokens'
 import { setWebhookEndpoint } from '@/lib/line/client'
 import { isConfirmed, validateForPublish } from '@/lib/publish/validate'
 
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
+
+/**
+ * การ์ดตั้งต้นเมื่อผู้เล่นพิมพ์ลอยๆ (BR-39) — ไม่มีจอไหนเคยให้กรอกค่านี้มาก่อน
+ * ทั้งที่ webhook (`lib/webhook/handle.ts`) และด่านตรวจ BR-39 อ่านมันอยู่แล้ว
+ *
+ * channel_id ผูกมากับตัว action เหมือน publish ข้างบน ไม่ใช่ให้ฟอร์มส่งมาเอง —
+ * เหตุผลเดียวกัน: ฟอร์มเป็นของที่ผู้ส่งแต่งเองได้ทั้งใบ
+ *
+ * การ์ดต้องตรวจว่าเป็นของแคมเปญนี้จริง ไม่ใช่ id ที่ปลอมมา เพราะ channel ไม่มี
+ * FK ผูกกับแคมเปญตรงๆ (ผูกทีละแคมเปญผ่าน campaign_channel แทน) คอลัมน์นี้ยอมรับ
+ * id อะไรก็ได้ที่มีอยู่ในตาราง card ถ้าไม่ตรวจเอง
+ */
+export async function saveDefaultCard(
+  campaignId: string, channelId: string, formData: FormData,
+): Promise<void> {
+  await requireRole('configurator')
+  const sql = db()
+
+  const cardId = trimmed(formData, 'default_card_id')
+  if (cardId) {
+    const [card] = await sql<{ id: string }[]>`
+      SELECT id FROM card WHERE id = ${cardId} AND campaign_id = ${campaignId}`
+    if (!card) throw new Error('การ์ดที่เลือกไม่ใช่ของแคมเปญนี้')
+  }
+
+  await sql`UPDATE channel SET default_card_id = ${cardId || null} WHERE id = ${channelId}`
+  revalidatePath(`/campaigns/${campaignId}/publish`)
+}
 
 /**
  * ที่อยู่ที่ LINE จะยิง event มา
@@ -32,8 +62,8 @@ function webhookEndpoint(): string {
 /**
  * ส่งแคมเปญขึ้น LINE · ลำดับตาม §4.4 ของ L2
  *
- * ตรวจ → ยืนยันถ้าเป็น production → กันชนบัญชี → สร้าง version → ตั้ง webhook
- * ขั้นที่เกี่ยวกับริชเมนู (4b · 5 · 5a · 5b · 5c) ไม่อยู่ในสไลซ์นี้
+ * ตรวจ → ยืนยันถ้าเป็น production → กันชนบัญชี → สร้าง version → เมนู (4b·5·5b·5c) → ตั้ง webhook
+ * ขั้น 5a (วาดภาพล่วงหน้าของริชเมสเสจ) ไม่อยู่ในงานนี้ — ดู docs/HANDOFF.md
  *
  * ลำดับไม่ใช่เรื่องของความสวยงาม · ด่านตรวจอยู่ก่อนการอ่านกุญแจ เพราะกุญแจที่ถูก
  * ถอดรหัสคือเหตุการณ์ที่ถูกบันทึกถาวรและย้อนไม่ได้ · กันชนบัญชีอยู่ก่อนการเขียน
@@ -49,7 +79,7 @@ export async function publish(campaignId: string, formData: FormData): Promise<v
   const channelId = trimmed(formData, 'channel_id')
   if (!channelId) throw new Error('ต้องเลือกบัญชี LINE ปลายทางก่อนจึงจะส่งขึ้นได้')
 
-  const { base, channels } = await loadPublishScreen(sql, campaignId)
+  const { base, channels, campaignCode } = await loadPublishScreen(sql, campaignId)
 
   // ชั้นของบัญชีถูกอ่านจากแถวจริง ไม่ใช่จากฟอร์ม · ไม่งั้น BR-18 จะเป็นด่านที่
   // ปลดได้ด้วยการพิมพ์ channel_type=test ลงไปเอง
@@ -100,7 +130,13 @@ export async function publish(campaignId: string, formData: FormData): Promise<v
     channelId: channel.id,
     publishedBy: session.userId,
     snapshot: snapshotOf(base, channel),
-    runAtLine: () => setWebhookEndpoint(accessToken, endpoint),
+    // §4.4 ขั้น 4b·5·5b·5c ก่อนขั้น 6 (ตั้ง webhook) เสมอ — ทั้งหมดอยู่ในธุรกรรม
+    // เดียวกับ config_version ผ่าน `tx` ที่ writePublish ส่งเข้ามา · ขั้นไหนล้ม
+    // ธุรกรรมทั้งก้อนย้อนกลับหมด ไม่เหลือเมนูที่อัปโหลดไปแล้วครึ่งๆ กลางๆ
+    runAtLine: async (tx) => {
+      await publishRichMenus(tx, { campaignId, campaignCode, accessToken, store: assetStore() })
+      await setWebhookEndpoint(accessToken, endpoint)
+    },
   })
 
   revalidatePath('/campaigns')

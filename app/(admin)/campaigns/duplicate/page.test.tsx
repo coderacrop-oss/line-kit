@@ -20,6 +20,7 @@ vi.mock('next/navigation', () => ({
     state.redirectedTo = to
     throw new Error('NEXT_REDIRECT')
   },
+  usePathname: () => '/campaigns/duplicate',
 }))
 vi.mock('@/lib/auth/session', () => ({ getSession: async () => state.session }))
 vi.mock('@/lib/db/client', () => ({ db: () => ({}) }))

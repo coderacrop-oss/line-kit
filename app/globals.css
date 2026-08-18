@@ -100,3 +100,11 @@ summary::-webkit-details-marker { display: none; }
 .nav-back:hover,
 .nav-item:hover { background: var(--ground); color: var(--ink); }
 .nav-item-on:hover { background: var(--ink); color: var(--panel); }
+
+/* วงหมุนบนปุ่มที่กำลังรอ Server Action ตอบ — inline style ไม่มี @keyframes ให้ใช้ */
+@keyframes ui-spin { to { transform: rotate(360deg); } }
+.ui-spin { animation: ui-spin .6s linear infinite; }
+
+/* แถบโครงจางที่ค้างระหว่างเปลี่ยนหน้า (app/(admin)/loading.tsx) */
+@keyframes ui-pulse { 50% { opacity: .5; } }
+.ui-skeleton { animation: ui-pulse 1.4s ease-in-out infinite; }
