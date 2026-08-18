@@ -5,7 +5,7 @@ import { testDb } from '../lib/db/client'
 import { writePublish } from '../lib/db/publish'
 import {
   createRichMenu, deleteRichMenu, DuplicateAliasError, loadRichMenuScreen, publishRichMenus,
-  RichMenuInUseError, setAreaTarget, setEntryMenu, setLayout, updateRichMenu,
+  RichMenuInUseError, setAreaTarget, setEntryMenu, setLayout, setMenuImage, updateRichMenu,
 } from '../lib/db/richmenu'
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
@@ -98,6 +98,32 @@ describe('createRichMenu / updateRichMenu · ฐานข้อมูลจร�
     const menu = data.menus.find((m) => m.id === id)
     expect(menu?.alias).toBe('new')
     expect(menu?.imageAssetId).toBe(s.assetId2)
+  })
+})
+
+describe('setMenuImage · ฐานข้อมูลจริง', () => {
+  it('แก้ภาพโดยไม่แตะชื่อเรียกเลย', async () => {
+    const s = await scene()
+    const { id } = await createRichMenu(sql, {
+      campaignId: s.campaignId, alias: 'keep-me', imageAssetId: s.assetId, layout: 'large_1',
+    })
+    await setMenuImage(sql, { id, campaignId: s.campaignId, imageAssetId: s.assetId2 })
+    const data = await loadRichMenuScreen(sql, s.campaignId)
+    const menu = data.menus.find((m) => m.id === id)
+    expect(menu?.alias).toBe('keep-me')
+    expect(menu?.imageAssetId).toBe(s.assetId2)
+  })
+
+  it('เมนูที่ไม่มีอยู่จริง หรือของแคมเปญอื่น ถูกปฏิเสธ ไม่เขียนอะไรเลย', async () => {
+    const s = await scene()
+    const other = await scene()
+    const { id } = await createRichMenu(sql, {
+      campaignId: s.campaignId, alias: 'x', imageAssetId: s.assetId, layout: 'large_1',
+    })
+    await expect(setMenuImage(sql, { id, campaignId: other.campaignId, imageAssetId: s.assetId2 }))
+      .rejects.toThrow('ไม่พบเมนูนี้')
+    const data = await loadRichMenuScreen(sql, s.campaignId)
+    expect(data.menus.find((m) => m.id === id)?.imageAssetId).toBe(s.assetId)
   })
 })
 

@@ -288,7 +288,10 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
                   style={{ fontSize: 11, marginTop: 6 }}
                 />
                 <span style={{ fontSize: 10, color: 'var(--ink-3)', display: 'block', marginTop: 3 }}>
-                  ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังปัจจุบันอัตโนมัติ
+                  ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังปัจจุบันอัตโนมัติ ·{' '}
+                  <a href={`/campaigns/${campaignId}/richmenu/${menu.id}/compose`} style={{ color: 'var(--ink)' }}>
+                    จัดวางภาพหลายชิ้น →
+                  </a>
                 </span>
               </>
             )}
