@@ -1,0 +1,76 @@
+import type { EffectSpec } from '../engine/effects'
+import type { EntryRule } from '../engine/entry'
+import type { Outcome, ResolveMethod } from '../engine/resolve'
+import type { RenderableCard } from '../render/card'
+import type { Theme } from '../render/flex'
+import type { KeywordRule } from '../match/keyword'
+import type { PlayerState } from '../state'
+
+export type ActivityConfig = {
+  id: string
+  code: string
+  inputType: 'none' | 'pick_one' | 'quiz' | 'text'
+  resolveMethod: ResolveMethod
+  outcomes: Outcome[]
+  entryRules: EntryRule[]
+  effectSpec: EffectSpec[]
+  fallbackCardId: string | null
+  trigger: 'manual' | 'follow'
+}
+
+export type LiveCampaign = {
+  campaignId: string
+  code: string
+  timezone: string
+  dayLengthSec: number
+  startAt: Date
+  endAt: Date
+  theme: Theme
+  configVersionId: string
+  keywordRules: KeywordRule[]
+  /** keyword rule id → where it points */
+  keywordTargets: Record<string, { activityId?: string; cardId?: string }>
+  activities: ActivityConfig[]
+  /** card id → card, and code → card, both pointing at the same objects */
+  cardsById: Record<string, RenderableCard>
+  defaultCardId: string | null
+  greetingCardId: string | null
+  greetingEnabled: boolean
+}
+
+export type PlayOutcome =
+  | { kind: 'played'; outcomeId: string; cardId: string }
+  | { kind: 'replayed'; outcomeId: string; cardId: string }
+  | { kind: 'exhausted' }
+
+/**
+ * Everything the webhook needs from the outside world, named as intentions
+ * rather than as queries.
+ *
+ * The handler takes this as an argument, which is why the whole branch tree can
+ * be tested without a database: a test passes a fake, the route passes the real
+ * one, and neither knows about the other.
+ */
+export type Ports = {
+  findLiveCampaign(lineChannelId: string): Promise<LiveCampaign | null>
+  ensureParticipant(lineChannelId: string, lineUid: string): Promise<string>
+  loadPlayerState(participantId: string, campaignId: string): Promise<PlayerState>
+  playsThisPeriod(participantId: string, activityId: string, periodKey: string): Promise<number>
+  play(args: {
+    participantId: string
+    activity: ActivityConfig
+    campaignId: string
+    periodKey: string
+    configVersionId: string
+    ranked: Outcome[]
+  }): Promise<PlayOutcome>
+  logEvent(args: {
+    participantId: string
+    activityId: string | null
+    configVersionId: string
+    eventType: string
+    postbackData: string | null
+    result: unknown
+    durationMs: number
+  }): Promise<void>
+}

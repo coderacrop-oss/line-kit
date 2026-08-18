@@ -6,18 +6,28 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "test": "vitest run",
+    "test": "vitest run --exclude \"**/*.integration.test.ts\"",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test:all": "vitest run",
+    "test:integration": "vitest run tests/*.integration.test.ts",
+    "db:reset": "psql -q postgres -c \"DROP DATABASE IF EXISTS linekit_test\" -c \"CREATE DATABASE linekit_test\" && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0001_init.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0002_play_and_apply.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0003_reward_code_scope.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0004_card_templates.sql && psql -q -v ON_ERROR_STOP=1 -d linekit_test -f supabase/migrations/0005_test_send_token_purpose.sql",
+    "db:check": "node scripts/check-schema-vs-doc.mjs",
+    "test:design": "vitest run tests/design-fidelity.test.ts"
   },
   "dependencies": {
     "next": "^15.5.0",
+    "postgres": "^3.4.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"
   },
   "devDependencies": {
+    "@testing-library/dom": "^10.4.1",
+    "@testing-library/react": "^16.3.2",
     "@types/node": "^22.15.0",
     "@types/react": "^19.1.0",
+    "@types/react-dom": "^19.2.4",
+    "jsdom": "^29.1.1",
     "typescript": "^5.8.0",
     "vitest": "^3.2.0"
   }

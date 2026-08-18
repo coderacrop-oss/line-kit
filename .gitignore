@@ -1,5 +1,6 @@
 # dependencies
 node_modules/
+node_modules
 .pnp
 .pnp.js
 
@@ -25,6 +26,10 @@ yarn-error.log*
 # env — ห้าม commit ความลับของ LINE channel เด็ดขาด
 .env*
 !.env.example
+
+# ภาพที่คนอัปโหลดเข้าคลัง — เป็นข้อมูลของลูกค้า ไม่ใช่ซอร์ส
+# ยังไม่มีที่เก็บบนคลาวด์ผูกไว้ ไฟล์จึงลงดิสก์ของเครื่องที่รันระบบ
+public/uploads/
 
 # vercel
 .vercel

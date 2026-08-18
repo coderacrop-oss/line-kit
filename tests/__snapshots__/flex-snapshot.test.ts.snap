@@ -1,0 +1,272 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`รูปร่างของข้อความที่ส่งเข้า LINE > การ์ดปัดได้ · สามใบ 1`] = `
+{
+  "altText": "เลือกหนึ่งอย่าง",
+  "contents": {
+    "contents": [
+      {
+        "body": {
+          "contents": [
+            {
+              "color": "#151F1D",
+              "size": "lg",
+              "text": "ตัวเลือกที่ 1",
+              "type": "text",
+              "weight": "bold",
+              "wrap": true,
+            },
+          ],
+          "layout": "vertical",
+          "spacing": "md",
+          "type": "box",
+        },
+        "type": "bubble",
+      },
+      {
+        "body": {
+          "contents": [
+            {
+              "color": "#151F1D",
+              "size": "lg",
+              "text": "ตัวเลือกที่ 2",
+              "type": "text",
+              "weight": "bold",
+              "wrap": true,
+            },
+          ],
+          "layout": "vertical",
+          "spacing": "md",
+          "type": "box",
+        },
+        "type": "bubble",
+      },
+      {
+        "body": {
+          "contents": [
+            {
+              "color": "#151F1D",
+              "size": "lg",
+              "text": "ตัวเลือกที่ 3",
+              "type": "text",
+              "weight": "bold",
+              "wrap": true,
+            },
+          ],
+          "layout": "vertical",
+          "spacing": "md",
+          "type": "box",
+        },
+        "type": "bubble",
+      },
+    ],
+    "type": "carousel",
+  },
+  "type": "flex",
+}
+`;
+
+exports[`รูปร่างของข้อความที่ส่งเข้า LINE > การ์ดผลลัพธ์ · สามปุ่มท้าย 1`] = `
+{
+  "altText": "คุณได้รางวัล",
+  "contents": {
+    "body": {
+      "contents": [
+        {
+          "color": "#151F1D",
+          "size": "lg",
+          "text": "คุณได้รางวัล",
+          "type": "text",
+          "weight": "bold",
+          "wrap": true,
+        },
+        {
+          "color": "#151F1D",
+          "size": "md",
+          "text": "สติกเกอร์ไลน์ 1 ชุด",
+          "type": "text",
+          "weight": "regular",
+          "wrap": true,
+        },
+      ],
+      "layout": "vertical",
+      "spacing": "md",
+      "type": "box",
+    },
+    "footer": {
+      "contents": [
+        {
+          "action": {
+            "label": "รับรางวัล",
+            "type": "uri",
+            "uri": "https://example.com/r",
+          },
+          "color": "#17756A",
+          "style": "primary",
+          "type": "button",
+        },
+        {
+          "action": {
+            "data": "c=krobpet&a=draw&d=2026-08-14",
+            "label": "เล่นอีกครั้ง",
+            "type": "postback",
+          },
+          "color": "#17756A",
+          "style": "primary",
+          "type": "button",
+        },
+        {
+          "action": {
+            "label": "ดูของที่ได้",
+            "type": "uri",
+            "uri": "https://example.com/mine",
+          },
+          "color": "#17756A",
+          "style": "primary",
+          "type": "button",
+        },
+      ],
+      "layout": "vertical",
+      "spacing": "sm",
+      "type": "box",
+    },
+    "type": "bubble",
+  },
+  "type": "flex",
+}
+`;
+
+exports[`รูปร่างของข้อความที่ส่งเข้า LINE > การ์ดสะสมแต้ม · ครึ่งทาง 1`] = `
+{
+  "altText": "สะสมอาหารให้ โมจิ",
+  "contents": {
+    "body": {
+      "contents": [
+        {
+          "color": "#151F1D",
+          "size": "lg",
+          "text": "สะสมอาหารให้ โมจิ",
+          "type": "text",
+          "weight": "bold",
+          "wrap": true,
+        },
+        {
+          "backgroundColor": "#EFF3F1",
+          "contents": [
+            {
+              "backgroundColor": "#17756A",
+              "contents": [],
+              "cornerRadius": "4px",
+              "height": "8px",
+              "layout": "vertical",
+              "type": "box",
+              "width": "50%",
+            },
+          ],
+          "cornerRadius": "4px",
+          "height": "8px",
+          "layout": "vertical",
+          "type": "box",
+        },
+        {
+          "color": "#EFF3F1",
+          "size": "sm",
+          "text": "ให้อาหารแล้ว 50 จาก 100",
+          "type": "text",
+          "weight": "regular",
+          "wrap": true,
+        },
+        {
+          "margin": "md",
+          "type": "separator",
+        },
+      ],
+      "layout": "vertical",
+      "spacing": "md",
+      "type": "box",
+    },
+    "footer": {
+      "contents": [
+        {
+          "action": {
+            "data": "c=krobpet&a=feed&d=2026-08-14",
+            "label": "ให้อาหาร",
+            "type": "postback",
+          },
+          "color": "#17756A",
+          "style": "primary",
+          "type": "button",
+        },
+      ],
+      "layout": "vertical",
+      "spacing": "sm",
+      "type": "box",
+    },
+    "hero": {
+      "aspectMode": "cover",
+      "size": "full",
+      "type": "image",
+      "url": "https://cdn/hero.png",
+    },
+    "type": "bubble",
+  },
+  "type": "flex",
+}
+`;
+
+exports[`รูปร่างของข้อความที่ส่งเข้า LINE > การ์ดสะสมแต้ม · ยังไม่เริ่ม — บล็อกที่ซ่อนต้องหายไปจริง 1`] = `
+{
+  "altText": "เริ่มสะสมวันนี้",
+  "contents": {
+    "body": {
+      "contents": [
+        {
+          "color": "#151F1D",
+          "size": "lg",
+          "text": "เริ่มสะสมวันนี้",
+          "type": "text",
+          "weight": "bold",
+          "wrap": true,
+        },
+      ],
+      "layout": "vertical",
+      "spacing": "md",
+      "type": "box",
+    },
+    "footer": {
+      "contents": [
+        {
+          "action": {
+            "data": "c=krobpet&a=feed&d=2026-08-14",
+            "label": "เริ่มเลย",
+            "type": "postback",
+          },
+          "color": "#17756A",
+          "style": "primary",
+          "type": "button",
+        },
+      ],
+      "layout": "vertical",
+      "spacing": "sm",
+      "type": "box",
+    },
+    "type": "bubble",
+  },
+  "type": "flex",
+}
+`;
+
+exports[`รูปร่างของข้อความที่ส่งเข้า LINE > ข้อความล้วน · ทางสำรอง 1`] = `
+{
+  "text": "กิจกรรมจบแล้ว
+ขอบคุณที่ร่วมสนุก",
+  "type": "text",
+}
+`;
+
+exports[`รูปร่างของข้อความที่ส่งเข้า LINE > ริชเมสเสจยังไม่มีตัววาด จึงตกมาเป็นข้อความ ไม่ใช่เงียบ 1`] = `
+{
+  "text": "เนื้อหาที่ยังวาดเป็นภาพไม่ได้",
+  "type": "text",
+}
+`;

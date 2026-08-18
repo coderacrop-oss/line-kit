@@ -1,0 +1,102 @@
+/* Token ทั้งชุด ถอดจาก docs/design/flex-builder-prototype.html
+   ธีมเดียว ไม่มีโหมดมืด — ต้นแบบไม่มี และการเพิ่มทีหลังถูกกว่าการถอดออก */
+:root {
+  --ground: #F7F7F5;
+  --panel: #FFFFFF;
+  --panel-2: #EFEFED;
+  --ink: #111111;
+  --ink-2: #6B6B68;
+  --ink-3: #9B9B98;
+  --rule: #E5E5E3;
+  --rule-2: #C2C2BF;
+  --accent: #E63B2E;
+  --warn: #D97706;
+  --danger: #E63B2E;
+  --ok: #16A34A;
+  --info: #2563EB;
+
+  /* สองสีนี้เป็นสีของแอป LINE ไม่ใช่สีของระบบเรา · อยู่ในชุด token เพราะจอ
+     ทดลองเล่นต้องวาดหน้าแชทให้เหมือนของจริง และค่าสีต้องไม่ไปนอนอยู่ใน .tsx */
+  --chat-ground: #CBD8E8;
+  --chat-mine: #9FE870;
+
+  --sans: var(--font-noto-thai), var(--font-dm-sans), sans-serif;
+  --mono: var(--font-dm-mono), ui-monospace, monospace;
+
+  --r: 9px;
+  --r-lg: 14px;
+  --r-pill: 99px;
+  --r-sm: 6px;
+
+  --page-x: 36px;
+  --page-y: 32px;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body { margin: 0; padding: 0; }
+
+body {
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: var(--ink); text-decoration: none; }
+a:hover { color: var(--accent); }
+::placeholder { color: var(--rule-2); }
+
+button, input, select, textarea {
+  font-family: inherit;
+  font-size: inherit;
+  color: inherit;
+}
+
+/* เดินด้วยคีย์บอร์ดต้องเห็นว่าอยู่ที่ไหน · :focus-visible ไม่ขึ้นตอนคลิกเมาส์ */
+:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* ป้ายรหัสจอเหนือหัวข้อทุกหน้า — ตัวที่ทำให้คุยกับเอกสารรู้เรื่อง */
+.screen-code {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-3);
+}
+
+/* เส้นคั่นระหว่างแถวในแผง — อยู่ที่นี่ไม่ใช่ใน inline style เพราะแถวสุดท้าย
+   ต้องไม่ขีด และ inline style ถามไม่ได้ว่าตัวเองเป็นตัวสุดท้ายหรือเปล่า */
+.panel-row { border-bottom: 1px solid var(--rule); }
+.panel-row:last-child { border-bottom: 0; }
+
+/* <summary> ที่ทำหน้าที่เป็นปุ่มเปิดฟอร์ม · การตั้ง display ทับ list-item ซ่อนสามเหลี่ยม
+   ได้เกือบทุกเบราว์เซอร์ แต่ Safari ยังวาดของตัวเองจนกว่าจะสั่งตรงนี้ */
+summary::-webkit-details-marker { display: none; }
+
+/* ตัวอักษรตัวเล็กแบบ mono ใช้กับรหัสและ id ที่คนต้องก๊อปไปใช้ */
+.code {
+  font-family: var(--mono);
+  font-size: 12px;
+  background: var(--panel);
+  border: 1px solid var(--rule);
+  border-radius: var(--r-sm);
+  padding: 2px 6px;
+}
+
+/* แถบซ้ายของแคมเปญ — hover ต้องอยู่ใน CSS เพราะ inline style เขียน :hover ไม่ได้
+   .nav-item-on ต้องมาทับกฎ a:hover ข้างบน ไม่งั้นรายการที่เปิดอยู่จะเปลี่ยนเป็น
+   สีเน้นบนพื้นเข้ม ซึ่งอ่านไม่ออก */
+.nav-back:hover,
+.nav-item:hover { background: var(--ground); color: var(--ink); }
+.nav-item-on:hover { background: var(--ink); color: var(--panel); }

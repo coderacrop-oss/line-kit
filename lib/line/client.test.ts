@@ -1,6 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { buildHintCard } from '../flex/prompt'
-import { getAccessToken, getChannelSecret, replyMessage } from './client'
+import { getAccessToken, getChannelSecret, pushMessage, replyMessage, setWebhookEndpoint } from './client'
+
+import type { FlexMessage } from '../flex/types'
+
+/** Smallest Flex message LINE accepts, for exercising the client itself. */
+function testMessage(): FlexMessage {
+  return {
+    type: 'flex',
+    altText: 'test',
+    contents: { type: 'bubble', body: { type: 'box', layout: 'vertical', contents: [] } },
+  }
+}
+
 
 const fetchMock = vi.fn()
 
@@ -31,7 +42,7 @@ describe('environment readers', () => {
 
 describe('replyMessage', () => {
   it('posts the message to the LINE reply endpoint', async () => {
-    const message = buildHintCard()
+    const message = testMessage()
     await replyMessage('reply-token-123', message)
 
     expect(fetchMock).toHaveBeenCalledTimes(1)
@@ -47,11 +58,103 @@ describe('replyMessage', () => {
 
   it('throws when LINE rejects the reply', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => 'Invalid reply token' })
-    await expect(replyMessage('stale-token', buildHintCard())).rejects.toThrow(/400/)
+    await expect(replyMessage('stale-token', testMessage())).rejects.toThrow(/400/)
   })
 
   it('passes an abort signal so a stalled LINE API call cannot hang forever', async () => {
-    await replyMessage('reply-token-123', buildHintCard())
+    await replyMessage('reply-token-123', testMessage())
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+/**
+ * ขั้น 6 ของ §4.4 · ตั้ง webhook ให้บัญชีที่กำลังส่งขึ้น
+ */
+describe('setWebhookEndpoint', () => {
+  it('ตั้ง endpoint ที่ปลายทางของ LINE ด้วย PUT', async () => {
+    await setWebhookEndpoint('oa-token', 'https://example.com/api/line/webhook')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.line.me/v2/bot/channel/webhook/endpoint')
+    expect(init.method).toBe('PUT')
+    expect(JSON.parse(init.body)).toEqual({ endpoint: 'https://example.com/api/line/webhook' })
+  })
+
+  /**
+   * โทเคนมาจากพารามิเตอร์ ไม่ใช่จาก env
+   *
+   * นี่คือความต่างทั้งหมดระหว่างระบบที่พูดแทน OA ได้ตัวเดียวกับระบบที่พูดแทนบัญชี
+   * ไหนก็ได้ · env ถูกตั้งไว้ในเทสต์นี้ด้วยค่าอื่น ถ้าวันหนึ่งมีคนเปลี่ยนไปอ่าน env
+   * เพื่อความสะดวก เทสต์นี้จะเป็นตัวที่ฟ้อง
+   */
+  it('ใช้โทเคนที่ส่งเข้ามา ไม่ใช่โทเคนใน env', async () => {
+    await setWebhookEndpoint('oa-token', 'https://example.com/api/line/webhook')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers.Authorization).toBe('Bearer oa-token')
+    expect(init.headers.Authorization).not.toContain('test-token')
+  })
+
+  it('LINE ปฏิเสธแล้วโยน พร้อมรหัสสถานะที่ตอบมา', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401, text: async () => 'Invalid token' })
+    await expect(setWebhookEndpoint('bad', 'https://example.com/hook')).rejects.toThrow(/401/)
+  })
+
+  it('มี abort signal เหมือนกัน — LINE ที่ไม่ตอบต้องไม่ค้างธุรกรรมไว้ตลอดกาล', async () => {
+    await setWebhookEndpoint('oa-token', 'https://example.com/hook')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+/**
+ * ปุ่มส่งการ์ดทดสอบของ M3-S02 (Task 14) · ยังไม่มีฟังก์ชันนี้มาก่อน — reply ใช้ได้แค่
+ * ตอบ event ที่มี reply token จริง ส่วนการ์ดทดสอบไม่มี event ต้นทาง จึงต้องเป็น push
+ */
+describe('pushMessage', () => {
+  const aMessage = () => ({ type: 'text' as const, text: 'สวัสดี' })
+
+  it('ยิงไปที่ push endpoint ของ LINE ด้วย POST', async () => {
+    await pushMessage('oa-token', 'U1234', aMessage())
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.line.me/v2/bot/message/push')
+    expect(init.method).toBe('POST')
+  })
+
+  it('ส่ง to กับ messages ตามรูปแบบที่ LINE ต้องการ', async () => {
+    const message = aMessage()
+    await pushMessage('oa-token', 'U1234', message)
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(JSON.parse(init.body)).toEqual({ to: 'U1234', messages: [message] })
+  })
+
+  /**
+   * โทเคนมาจากพารามิเตอร์ ไม่ใช่จาก env — เหมือน setWebhookEndpoint ทั้งหมด
+   * เพราะการ์ดทดสอบต้องออกจากบัญชี LINE ประเภททดสอบที่ผู้เรียกเลือก ไม่ใช่บัญชี
+   * เดียวที่ผูกกับ process ตอนดีพลอย
+   */
+  it('ใช้โทเคนที่ส่งเข้ามา ไม่ใช่โทเคนใน env', async () => {
+    await pushMessage('oa-token', 'U1234', aMessage())
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers.Authorization).toBe('Bearer oa-token')
+    expect(init.headers.Authorization).not.toContain('test-token')
+  })
+
+  it('LINE ปฏิเสธแล้วโยน พร้อมรหัสสถานะที่ตอบมา', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => 'Invalid user' })
+    await expect(pushMessage('oa-token', 'U1234', aMessage())).rejects.toThrow(/400/)
+  })
+
+  it('มี abort signal — LINE ที่ไม่ตอบต้องไม่ค้างปุ่มส่งทดสอบไว้ตลอดกาล', async () => {
+    await pushMessage('oa-token', 'U1234', aMessage())
 
     const [, init] = fetchMock.mock.calls[0]
     expect(init.signal).toBeInstanceOf(AbortSignal)
