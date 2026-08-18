@@ -206,13 +206,17 @@ export function Compositor({
 
   return (
     <div style={{ display: 'flex', gap: 20, flexWrap: 'wrap', alignItems: 'flex-start' }}>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 10,
+        background: 'var(--ground)', padding: 12, borderRadius: 'var(--r)',
+      }}>
         <div
           data-compositor-stage
           onClick={() => setSelectedId(null)}
           style={{
             position: 'relative', width: STAGE_DISPLAY_WIDTH, height: stageHeight,
-            background: background.color, border: '1px solid var(--rule)', overflow: 'hidden',
+            background: background.color, border: '1px solid var(--rule-2)', overflow: 'hidden',
+            boxShadow: '0 1px 6px var(--rule-2)',
           }}
         >
           {layers.map((layer) => (

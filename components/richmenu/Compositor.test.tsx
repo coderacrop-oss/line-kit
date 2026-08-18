@@ -64,6 +64,15 @@ describe('Compositor · โครงเริ่มต้น', () => {
     expect(screen.queryByText('+ เพิ่มข้อความ')).toBeNull()
     expect(screen.queryByText('ใช้')).toBeNull()
   })
+
+  // ผืนภาพเทียบกับหน้าเดิม (border 1px var(--rule) จางจนแทบไม่เห็นบนพื้นขาว) ต้องอ่านออก
+  // ว่าเป็นกรอบตัดภาพที่ตั้งใจ ไม่ใช่กล่องเปล่าที่ขอบขึ้นเองจากคอมโพเนนต์อื่น
+  it('ผืนภาพมีเส้นขอบและเงาให้เห็นชัดกว่าเดิม ไม่ใช่แค่ var(--rule) จางๆ', () => {
+    const { container } = draw()
+    const stage = container.querySelector('[data-compositor-stage]') as HTMLElement
+    expect(stage.style.border).not.toBe('1px solid var(--rule)')
+    expect(stage.style.boxShadow).not.toBe('')
+  })
 })
 
 describe('Compositor · เพิ่มชั้น', () => {
