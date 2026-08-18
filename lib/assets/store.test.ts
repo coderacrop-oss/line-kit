@@ -281,4 +281,28 @@ describe('supabaseStorageStore · เก็บผ่าน Supabase Storage', ()
     expect(store.describe).toContain('Supabase Storage')
     expect(store.describe).toContain('assets')
   })
+
+  // fetch ของ Node ไม่มีเพดานเวลาในตัวเอง — ถ้า Supabase สะดุดแม้แค่ชั่วครู่ request
+  // จะค้างได้นานเท่าที่ปลายทางยอมค้าง (เจอจริง: publishRichMenus เรียก get() ก่อน
+  // อัปโหลดต่อให้ LINE แล้วทั้งขั้นตอนค้างไปสิบกว่านาทีโดยไม่มี error ให้เห็นเลย)
+  // put/get ทั้งคู่ต้องมีเพดานเวลาเหมือนทุกคำสั่งเรียก LINE ใน lib/line/client.ts
+  it('put ใส่เพดานเวลาไว้ กันค้างไม่รู้จบถ้า Supabase ไม่ตอบ', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
+    const store = supabaseStorageStore(config)
+
+    await store.put('uploads/c1/u1/a.png', bytes, 'image/png')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+
+  it('get ใส่เพดานเวลาไว้ กันค้างไม่รู้จบถ้า Supabase ไม่ตอบ', async () => {
+    fetchMock.mockResolvedValue(new Response(bytes, { status: 200 }))
+    const store = supabaseStorageStore(config)
+
+    await store.get('uploads/c1/u1/a.png')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
 })
