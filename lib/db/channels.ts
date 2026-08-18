@@ -27,6 +27,7 @@ export type ChannelRow = {
   id: string
   name: string
   channel_type: ChannelType
+  line_channel_id: string | null
   token_last4: string | null
   key_version: number | null
   last_used_at: Date | null
@@ -47,6 +48,8 @@ export type ChannelSummary = {
   id: string
   name: string
   channelType: ChannelType
+  /** ตัวเลข Channel ID จากแท็บ Basic settings ของ LINE Developers Console — คนละค่ากับ token/secret และเป็นสิ่งเดียวที่ webhook ใช้จับคู่ว่าข้อความที่เข้ามาเป็นของบัญชีไหน */
+  lineChannelId: string | null
   tokenLast4: string | null
   keyVersion: number | null
   lastUsedAt: Date | null
@@ -61,6 +64,7 @@ export function summarizeChannel(row: ChannelRow): ChannelSummary {
     id: row.id,
     name: row.name,
     channelType: row.channel_type,
+    lineChannelId: row.line_channel_id,
     tokenLast4: row.token_last4,
     keyVersion: row.key_version,
     lastUsedAt: row.last_used_at,
@@ -158,7 +162,7 @@ export function groupByTier(channels: readonly ChannelSummary[]): ChannelGroup[]
  */
 function selectChannels(sql: postgres.Sql, where: postgres.PendingQuery<ChannelRow[]>) {
   return sql<ChannelRow[]>`
-    SELECT ch.id, ch.name, ch.channel_type, ch.token_last4, ch.key_version,
+    SELECT ch.id, ch.name, ch.channel_type, ch.line_channel_id, ch.token_last4, ch.key_version,
            ch.last_used_at, ch.existing_keywords,
            (SELECT ca.name FROM campaign_channel cc
               JOIN campaign ca ON ca.id = cc.campaign_id

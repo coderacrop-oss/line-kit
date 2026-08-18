@@ -19,7 +19,12 @@ const BINDABLE_TYPES: readonly ChannelType[] = ['test', 'production']
 const isBindable = (value: string): value is ChannelType =>
   (BINDABLE_TYPES as readonly string[]).includes(value)
 
+const UNIQUE_VIOLATION = '23505'
+
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
+
+/** ว่าง = ยังไม่ได้กรอก ไม่ใช่ค่าจริง — เขียนเป็น NULL ไม่ใช่สตริงว่าง เพราะคอลัมน์นี้ UNIQUE (BR-68) และหลายบัญชีที่ยังไม่กรอกต้องอยู่ด้วยกันได้ */
+const trimmedOrNull = (formData: FormData, key: string) => trimmed(formData, key) || null
 
 /**
  * ข้อความในกล่องเดียว กลายเป็นรายการคำ
@@ -81,16 +86,25 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
   const token = trimmed(formData, 'access_token')
   const secret = trimmed(formData, 'channel_secret')
   const keywords = asKeywordList(String(formData.get('existing_keywords') ?? ''))
+  const lineChannelId = trimmedOrNull(formData, 'line_channel_id')
 
   if (!token && !secret) {
     // แก้ของเดิมโดยไม่แตะกุญแจ · บัญชีใหม่ต้องมีกุญแจ เพราะ CHECK ของตารางบังคับ
     if (!id) throw new Error('บัญชีใหม่ต้องมีกุญแจทั้งสองตัวจาก LINE Developers Console')
 
-    await sql`
-      UPDATE channel
-         SET name = ${name}, channel_type = ${channelType},
-             existing_keywords = ${sql.array(keywords)}
-       WHERE id = ${id}`
+    try {
+      await sql`
+        UPDATE channel
+           SET name = ${name}, channel_type = ${channelType},
+               existing_keywords = ${sql.array(keywords)},
+               line_channel_id = ${lineChannelId}
+         WHERE id = ${id}`
+    } catch (error) {
+      if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
+        throw new Error('Channel ID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — หนึ่ง Channel ID ผูกได้แถวเดียว')
+      }
+      throw error
+    }
 
     revalidatePath('/channels')
     redirect('/channels')
@@ -104,24 +118,32 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
   const encryptedToken = encryptSecret(token)
   const encryptedSecret = encryptSecret(secret)
 
-  if (id) {
-    await sql`
-      UPDATE channel
-         SET name = ${name}, channel_type = ${channelType},
-             existing_keywords = ${sql.array(keywords)},
-             encrypted_token = ${encryptedToken.cipher},
-             encrypted_secret = ${encryptedSecret.cipher},
-             token_last4 = ${last4(token)},
-             key_version = ${encryptedToken.keyVersion}
-       WHERE id = ${id}`
-  } else {
-    await sql`
-      INSERT INTO channel
-             (name, channel_type, existing_keywords,
-              encrypted_token, encrypted_secret, token_last4, key_version, created_by)
-      VALUES (${name}, ${channelType}, ${sql.array(keywords)},
-              ${encryptedToken.cipher}, ${encryptedSecret.cipher},
-              ${last4(token)}, ${encryptedToken.keyVersion}, ${session.userId})`
+  try {
+    if (id) {
+      await sql`
+        UPDATE channel
+           SET name = ${name}, channel_type = ${channelType},
+               existing_keywords = ${sql.array(keywords)},
+               line_channel_id = ${lineChannelId},
+               encrypted_token = ${encryptedToken.cipher},
+               encrypted_secret = ${encryptedSecret.cipher},
+               token_last4 = ${last4(token)},
+               key_version = ${encryptedToken.keyVersion}
+         WHERE id = ${id}`
+    } else {
+      await sql`
+        INSERT INTO channel
+               (name, channel_type, existing_keywords, line_channel_id,
+                encrypted_token, encrypted_secret, token_last4, key_version, created_by)
+        VALUES (${name}, ${channelType}, ${sql.array(keywords)}, ${lineChannelId},
+                ${encryptedToken.cipher}, ${encryptedSecret.cipher},
+                ${last4(token)}, ${encryptedToken.keyVersion}, ${session.userId})`
+    }
+  } catch (error) {
+    if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
+      throw new Error('Channel ID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — หนึ่ง Channel ID ผูกได้แถวเดียว')
+    }
+    throw error
   }
 
   revalidatePath('/channels')

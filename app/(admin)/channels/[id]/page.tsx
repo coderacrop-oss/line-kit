@@ -143,6 +143,19 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
               </Note>
             )}
 
+            <Field
+              label="Channel ID"
+              hint="ตัวเลขล้วนจากแท็บ Basic settings ของ LINE Developers Console — คนละค่ากับ token/secret ข้างล่าง และเป็นค่าเดียวที่ระบบใช้จับคู่ข้อความที่เข้ามาจากไลน์จริงกับแคมเปญนี้ ไม่กรอกไว้แล้วบัญชีจะตอบว่า “กิจกรรมจบไปแล้ว” ทุกครั้ง"
+            >
+              <input
+                name="line_channel_id"
+                defaultValue={channel?.lineChannelId ?? ''}
+                disabled={locked || isPreview}
+                placeholder="เช่น 1657123456"
+                style={{ fontFamily: 'var(--mono)' }}
+              />
+            </Field>
+
             <Field label="Channel access token">
               <input
                 name="access_token"

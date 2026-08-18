@@ -10,7 +10,8 @@ const state: {
   user: UserRow | undefined
   channel: ChannelRow | undefined
   writes: Array<{ text: string; values: unknown[] }>
-} = { cookie: undefined, user: undefined, channel: undefined, writes: [] }
+  writeError: { code: string } | undefined
+} = { cookie: undefined, user: undefined, channel: undefined, writes: [], writeError: undefined }
 
 const sql = Object.assign(
   (strings: TemplateStringsArray, ...values: unknown[]) => {
@@ -23,6 +24,7 @@ const sql = Object.assign(
     }
 
     state.writes.push({ text, values })
+    if (state.writeError) return Promise.reject(state.writeError)
     return Promise.resolve([{ id: 'new-channel' }])
   },
   { array: (value: unknown) => value, json: (value: unknown) => value },
@@ -80,6 +82,7 @@ beforeEach(() => {
   state.user = undefined
   state.channel = { id: 'ch1', channel_type: 'test', token_last4: 'oldk' }
   state.writes = []
+  state.writeError = undefined
   vi.mocked(redirect).mockClear()
 })
 
@@ -310,6 +313,58 @@ describe('saveChannel · แก้ของเดิม', () => {
     await saveChannel('ch1', validForm({ access_token: '', channel_secret: '' }))
     expect(lastWrite().text).toContain('WHERE id')
     expect(lastWrite().values).toContain('ch1')
+  })
+})
+
+/**
+ * Channel ID · ค่าเดียวที่ webhook ใช้จับคู่ข้อความที่เข้ามากับบัญชี — ไม่มีมันแล้ว
+ * ทุกข้อความจากไลน์จริงหาแคมเปญไม่เจอ ไม่ว่ากุญแจจะถูกหรือผิด
+ */
+describe('saveChannel · Channel ID', () => {
+  beforeEach(() => { signedInAs('configurator') })
+
+  it('บัญชีใหม่ที่กรอก Channel ID เขียนค่านั้นลงไป', async () => {
+    await saveChannel(null, validForm({ line_channel_id: '1657123456' }))
+    expect(lastWrite().values).toContain('1657123456')
+  })
+
+  it('เว้นช่อง Channel ID ไว้ เขียนเป็น NULL ไม่ใช่สตริงว่าง', async () => {
+    await saveChannel(null, validForm({ line_channel_id: '' }))
+    expect(lastWrite().values).not.toContain('')
+    expect(lastWrite().values).toContain(null)
+  })
+
+  it('ช่องว่างหัวท้ายถูกตัดก่อนเขียน', async () => {
+    await saveChannel(null, validForm({ line_channel_id: '  1657123456  ' }))
+    expect(lastWrite().values).toContain('1657123456')
+  })
+
+  it('แก้ของเดิมโดยไม่แตะกุญแจ ยังปรับ Channel ID ได้', async () => {
+    await saveChannel('ch1', validForm({
+      access_token: '', channel_secret: '', line_channel_id: '999',
+    }))
+    expect(lastWrite().text).toContain('UPDATE channel')
+    expect(lastWrite().text).toContain('line_channel_id')
+    expect(lastWrite().values).toContain('999')
+  })
+
+  it('Channel ID ซ้ำกับบัญชีอื่น บอกตรงๆ ว่าซ้ำ ไม่ใช่โยนรหัส constraint ดิบๆ', async () => {
+    state.writeError = { code: '23505' }
+    await expect(saveChannel(null, validForm({ line_channel_id: '1657123456' })))
+      .rejects.toThrow('ถูกผูกกับบัญชีอื่นอยู่แล้ว')
+  })
+
+  it('Channel ID ซ้ำตอนแก้ของเดิมโดยไม่แตะกุญแจ ก็ยังบอกตรงๆ', async () => {
+    state.writeError = { code: '23505' }
+    await expect(saveChannel('ch1', validForm({
+      access_token: '', channel_secret: '', line_channel_id: '1657123456',
+    }))).rejects.toThrow('ถูกผูกกับบัญชีอื่นอยู่แล้ว')
+  })
+
+  // error อื่นที่ไม่ใช่ unique violation ต้องหลุดออกไปตามเดิม ไม่ถูกกลืนเป็นข้อความซ้ำผิดๆ
+  it('error อื่นที่ไม่ใช่ Channel ID ซ้ำ หลุดออกไปตามเดิม ไม่ถูกแปลงเป็นข้อความ "ซ้ำ"', async () => {
+    state.writeError = { code: '23502' }
+    await expect(saveChannel(null, validForm())).rejects.toMatchObject({ code: '23502' })
   })
 })
 
