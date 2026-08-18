@@ -23,7 +23,7 @@ async function assertLayerImagesOwned(sql: ReturnType<typeof db>, composition: C
   if (assetIds.length === 0) return
 
   const owned = await sql<{ id: string }[]>`
-    SELECT id FROM asset WHERE id = ANY(${sql.array(assetIds)}) AND campaign_id = ${campaignId}`
+    SELECT id FROM asset WHERE id = ANY(${sql.array(assetIds)}::uuid[]) AND campaign_id = ${campaignId}`
   if (owned.length !== assetIds.length) {
     throw new Error('มีภาพบางชั้นไม่ได้อยู่ในคลังของแคมเปญนี้')
   }
@@ -111,7 +111,7 @@ export async function applyComposition(
 
   const assetIds = [...new Set(verdict.composition.layers.filter((l) => l.type === 'image').map((l) => l.assetId))]
   const assetRows = assetIds.length === 0 ? [] : await sql<{ id: string; storage_path: string }[]>`
-    SELECT id, storage_path FROM asset WHERE id = ANY(${sql.array(assetIds)}) AND campaign_id = ${campaignId}`
+    SELECT id, storage_path FROM asset WHERE id = ANY(${sql.array(assetIds)}::uuid[]) AND campaign_id = ${campaignId}`
   const pathById = new Map(assetRows.map((row) => [row.id, row.storage_path]))
 
   const store = assetStore()
