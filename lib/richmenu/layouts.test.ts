@@ -83,9 +83,21 @@ describe('LAYOUTS · รายการสำหรับปุ่มเลื�
     }
   })
 
-  it('เจ็ดผังเป็นของผืนใหญ่ ห้าผังเป็นของผืนเล็ก — ตรงกับที่ LINE เสนอเอง', () => {
-    expect(layoutsOfSize('large')).toHaveLength(7)
+  it('แปดผังเป็นของผืนใหญ่ (เจ็ดแบบ LINE + หนึ่งแบบกำหนดเอง) ห้าผังเป็นของผืนเล็ก', () => {
+    expect(layoutsOfSize('large')).toHaveLength(8)
     expect(layoutsOfSize('small')).toHaveLength(5)
+  })
+})
+
+describe('origin · ผังไหนลอกมาจาก LINE ตรงๆ ผังไหนระบบนี้เพิ่มเอง', () => {
+  it('มีผังแบบกำหนดเองอยู่หนึ่งแบบเท่านั้น (large_8 · ตาราง 2×4)', () => {
+    const custom = LAYOUTS.filter((option) => option.origin === 'custom')
+    expect(custom.map((option) => option.key)).toEqual(['large_8'])
+  })
+
+  it('ที่เหลืออีกสิบสองแบบเป็นแบบ LINE ทั้งหมด', () => {
+    const line = LAYOUTS.filter((option) => option.origin === 'line')
+    expect(line).toHaveLength(12)
   })
 })
 

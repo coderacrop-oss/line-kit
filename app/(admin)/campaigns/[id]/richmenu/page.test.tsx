@@ -152,14 +152,27 @@ describe('M4-S01 · การ์ดของเมนูหนึ่งใบ', 
   })
 })
 
-describe('M4-S01 · ผังของฟอร์ม "+ เพิ่มเมนู" — ครบสิบสองแบบ จัดกลุ่มภาพใหญ่/ภาพเล็ก', () => {
-  it('มีทั้งเจ็ดผังของภาพใหญ่และห้าผังของภาพเล็ก พร้อมป้าย "แบบ LINE" กำกับทั้งสองกลุ่ม', async () => {
+describe('M4-S01 · ผังของฟอร์ม "+ เพิ่มเมนู" — สิบสามแบบ จัดกลุ่มภาพใหญ่/ภาพเล็ก', () => {
+  it('มีทั้งแปดผังของภาพใหญ่และห้าผังของภาพเล็ก รวมสิบสามแบบ ไม่มีค่าซ้ำ', async () => {
     const { container } = await open()
     const radios = Array.from(container.querySelectorAll('input[name="layout"]')) as HTMLInputElement[]
     const values = radios.map((r) => r.value)
-    expect(values).toHaveLength(12)
-    expect(new Set(values).size).toBe(12)
-    expect(screen.getAllByText('แบบ LINE')).toHaveLength(2)
+    expect(values).toHaveLength(13)
+    expect(new Set(values).size).toBe(13)
+  })
+
+  // สิบสองแบบลอกมาจาก LINE ตรงๆ (large_8 · ตาราง 2×4 เป็นแบบเดียวที่ระบบนี้เพิ่มเอง)
+  it('ทุกผังติดป้ายกำกับที่มาของตัวเอง — "แบบ LINE" สิบสองอัน "แบบกำหนดเอง" หนึ่งอัน', async () => {
+    await open()
+    expect(screen.getAllByText('แบบ LINE')).toHaveLength(12)
+    expect(screen.getAllByText('แบบกำหนดเอง')).toHaveLength(1)
+  })
+
+  it('ผังแบบกำหนดเอง (ตาราง 2×4) อยู่ในกลุ่มภาพใหญ่ ไม่ใช่ภาพเล็ก', async () => {
+    const { container } = await open()
+    const custom = container.querySelector('input[name="layout"][value="large_8"]')
+    expect(custom).not.toBeNull()
+    expect(screen.getByRole('radio', { name: /8 ช่อง \(ตาราง 2×4\)/ })).toBeDefined()
   })
 
   it('ผังเริ่มต้นคือเต็มภาพของภาพใหญ่ (large_1)', async () => {

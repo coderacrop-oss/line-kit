@@ -141,8 +141,12 @@ const layoutChoiceStyle: CSSProperties = {
 
 /**
  * ผังทั้งชุดของขนาดผืนภาพหนึ่งขนาด — จัดกลุ่ม "ภาพใหญ่"/"ภาพเล็ก" แยกกันเหมือน
- * หน้าเลือกเทมเพลตจริงของ LINE Official Account Manager (ทั้งสิบสองแบบลอกมาจาก
- * ที่นั่นตรงๆ จึงติดป้าย "แบบ LINE" กำกับทุกกลุ่ม — ไม่ใช่ผังที่ตั้งเองในระบบนี้)
+ * หน้าเลือกเทมเพลตจริงของ LINE Official Account Manager
+ *
+ * ป้ายกำกับอยู่ที่ "ตัวเลือก" ไม่ใช่ที่หัวกลุ่ม เพราะกลุ่มหนึ่งมีทั้งผังที่ลอกมาจาก
+ * LINE ตรงๆ ("แบบ LINE") และผังที่ระบบนี้เพิ่มเอง ("แบบกำหนดเอง" — เช่นตาราง 2×4
+ * ที่ไม่มีอยู่ในหน้าเลือกเทมเพลตของ LINE) ปนกันอยู่ — ป้ายเดียวที่หัวกลุ่มจะโกหก
+ * ผังใดผังหนึ่งในกลุ่มเสมอ
  */
 function LayoutSizeGroup({ size, current, onFormId }: {
   size: MenuSize; current?: LayoutKey; onFormId?: string
@@ -150,10 +154,7 @@ function LayoutSizeGroup({ size, current, onFormId }: {
   const canvas = MENU_CANVAS[size]
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-        <span style={labelStyle}>{SIZE_LABEL[size]} · {canvas.width}×{canvas.height}</span>
-        <Badge tone="mute">แบบ LINE</Badge>
-      </div>
+      <span style={labelStyle}>{SIZE_LABEL[size]} · {canvas.width}×{canvas.height}</span>
       <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
         {layoutsOfSize(size).map((option) => (
           <label key={option.key} style={layoutChoiceStyle}>
@@ -164,6 +165,9 @@ function LayoutSizeGroup({ size, current, onFormId }: {
             />
             <LayoutDiagram layoutKey={option.key} />
             <span>{option.label}</span>
+            <Badge tone={option.origin === 'line' ? 'mute' : 'info'}>
+              {option.origin === 'line' ? 'แบบ LINE' : 'แบบกำหนดเอง'}
+            </Badge>
           </label>
         ))}
       </div>
