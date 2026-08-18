@@ -184,3 +184,65 @@ describe('คีย์เวิร์ดแก้ได้ทั้งที่�
     expect(out?.message).toEqual({ type: 'text', text: 'พิมพ์ว่า เล่น เพื่อเริ่ม' })
   })
 })
+
+/**
+ * publishRichMenus (M4-S01) only registers a menu on LINE's own servers — it
+ * never links one to any player. BR-78's per-player side happens here instead,
+ * the first time a real keyword match fires, using the actual query against
+ * real Postgres rather than a fake Ports — this is exactly the kind of SQL
+ * (UUID columns, a fresh JOIN) that broke silently before in this codebase.
+ */
+describe('ผูกเมนูตัวเข้าให้ผู้เล่นตอนพิมพ์คีย์เวิร์ดเข้าร่วมครั้งแรก (BR-78 ฝั่งผู้เล่น)', () => {
+  let tag = 0
+  const unique = () => `${Date.now().toString(36)}${(tag++).toString(36)}`
+
+  async function seedEntryRichMenu(campaignId: string): Promise<string> {
+    const t = unique()
+    const [uploader] = await sql<{ id: string }[]>`
+      INSERT INTO app_user (email, role) VALUES (${`asset-${t}@example.com`}, 'configurator') RETURNING id`
+    const [asset] = await sql<{ id: string }[]>`
+      INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, bytes, width, height, uploaded_by)
+      VALUES (${campaignId}, ${`uploads/${t}/a.png`}, ${`/uploads/${t}/a.png`}, 'image', 'image/png', 100, 2500, 1686, ${uploader.id})
+      RETURNING id`
+    const richMenuLineId = `line-rm-${t}`
+    await sql`
+      INSERT INTO rich_menu (campaign_id, alias, image_asset_id, is_entry, line_rich_menu_id)
+      VALUES (${campaignId}, 'main', ${asset.id}, true, ${richMenuLineId})`
+    return richMenuLineId
+  }
+
+  it('คีย์เวิร์ดที่ยังไม่เคยผูก → handleEvent คืน linkRichMenu ตรงกับเมนูตัวเข้าจริงในฐานข้อมูล', async () => {
+    const s = await seedLive(sql)
+    const richMenuLineId = await seedEntryRichMenu(s.campaignId)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    const out = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+
+    expect(out?.linkRichMenu?.richMenuId).toBe(richMenuLineId)
+    expect(out?.linkRichMenu?.lineUid).toBe('U-e2e')
+  })
+
+  it('mark ว่าผูกแล้วจริง → ครั้งถัดไปไม่ติดคำสั่งผูกซ้ำ', async () => {
+    const s = await seedLive(sql)
+    await seedEntryRichMenu(s.campaignId)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    const first = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+    const participantId = first?.linkRichMenu?.participantId
+    expect(participantId).toBeDefined()
+
+    await ports.markRichMenuLinked(participantId!)
+    expect(await ports.hasRichMenuLinked(participantId!)).toBe(true)
+
+    const second = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(second?.linkRichMenu).toBeUndefined()
+  })
+
+  it('แคมเปญที่ไม่มีเมนูตัวเข้าเลย → ไม่ติดคำสั่งผูก', async () => {
+    const s = await seedLive(sql)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    const out = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(out?.linkRichMenu).toBeUndefined()
+  })
+})

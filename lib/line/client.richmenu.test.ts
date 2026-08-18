@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  createRichMenu, linkRichMenuBatch, setRichMenuAlias, uploadRichMenuImage,
+  createRichMenu, linkRichMenu, linkRichMenuBatch, setRichMenuAlias, uploadRichMenuImage,
   validateRichMenuObject, type LineRichMenuPayload,
 } from './client'
 
@@ -137,5 +137,22 @@ describe('linkRichMenuBatch · ขั้น 5c (BR-97)', () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'batch failed' })
     await expect(linkRichMenuBatch('token', [{ type: 'link', from: 'a', to: 'b' }]))
       .rejects.toThrow(/batch failed/)
+  })
+})
+
+describe('linkRichMenu · ผูกเมนูตัวเข้าให้ผู้เล่นคนเดียวตอนเข้าร่วมครั้งแรก', () => {
+  it('ยิงไป /v2/bot/user/{userId}/richmenu/{richMenuId} ด้วย POST ไม่มี body', async () => {
+    await linkRichMenu('token', 'U1', 'rm-entry')
+
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.line.me/v2/bot/user/U1/richmenu/rm-entry')
+    expect(init.method).toBe('POST')
+    expect(init.body).toBeUndefined()
+    expect(init.headers.Authorization).toBe('Bearer token')
+  })
+
+  it('ล้มเหลว → โยน error พร้อมข้อความของ LINE', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => 'invalid richMenuId' })
+    await expect(linkRichMenu('token', 'U1', 'rm-bad')).rejects.toThrow(/invalid richMenuId/)
   })
 })

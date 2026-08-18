@@ -7,6 +7,7 @@ const RICHMENU_ENDPOINT = 'https://api.line.me/v2/bot/richmenu'
 const RICHMENU_VALIDATE_ENDPOINT = 'https://api.line.me/v2/bot/richmenu/validate'
 const RICHMENU_ALIAS_ENDPOINT = 'https://api.line.me/v2/bot/richmenu/alias'
 const RICHMENU_BATCH_ENDPOINT = 'https://api.line.me/v2/bot/richmenu/batch'
+const USER_RICHMENU_ENDPOINT = 'https://api.line.me/v2/bot/user'
 // L2 §5.2 (v0.17) · อัปโหลด/ดาวน์โหลดภาพเมนูยิงไปโดเมนนี้ คนละโดเมนกับคำสั่งอื่นทั้งหมด
 const RICHMENU_DATA_HOST = 'https://api-data.line.me'
 
@@ -237,6 +238,28 @@ export async function linkRichMenuBatch(
 
   if (!response.ok) {
     throw new Error(`ย้ายผู้ใช้ไปเมนูรุ่นใหม่ไม่สำเร็จ (${response.status}) ${await response.text()}`)
+  }
+}
+
+/**
+ * ผูกเมนูตัวเข้าให้ผู้เล่นคนเดียว ตอนพิมพ์คีย์เวิร์ดเข้าร่วมครั้งแรก — คนละคำสั่งกับ
+ * linkRichMenuBatch (ย้ายคนที่ผูกอยู่แล้ว) เพราะคนที่เพิ่งเข้าร่วมไม่เคยผูกอะไรมาก่อน
+ * ไม่มี "จาก" ให้ batch endpoint ย้าย
+ *
+ * `POST /v2/bot/user/{userId}/richmenu/{richMenuId}` เรียกซ้ำด้วยค่าเดิมได้อย่าง
+ * ปลอดภัย (ตั้งค่าเดิมทับค่าเดิม) — ผู้เรียก (webhook route) จึงรอให้คำสั่งนี้สำเร็จ
+ * จริงก่อนค่อยบันทึกว่าผูกแล้ว ไม่ใช่บันทึกไว้ก่อนแล้วค่อยยิง เพื่อให้ข้อความถัดไป
+ * ยังลองผูกใหม่ได้ถ้าครั้งนี้ล้ม
+ */
+export async function linkRichMenu(accessToken: string, lineUid: string, richMenuId: string): Promise<void> {
+  const response = await fetch(`${USER_RICHMENU_ENDPOINT}/${lineUid}/richmenu/${richMenuId}`, {
+    method: 'POST',
+    signal: AbortSignal.timeout(5000),
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!response.ok) {
+    throw new Error(`ผูกเมนูตัวเข้าให้ผู้เล่นไม่สำเร็จ (${response.status}) ${await response.text()}`)
   }
 }
 

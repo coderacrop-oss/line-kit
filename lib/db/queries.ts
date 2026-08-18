@@ -42,6 +42,13 @@ type CampaignRow = {
   greeting_enabled: boolean
 }
 
+/** BR-78 · แถวเดียวถ้ามี (unique index กันเกินหนึ่งไว้แล้ว) — null ถ้ายังไม่เคย publish เมนูตัวเข้า */
+async function loadEntryRichMenuLineId(sql: Queryable, campaignId: string): Promise<string | null> {
+  const [row] = await sql<{ line_rich_menu_id: string | null }[]>`
+    SELECT line_rich_menu_id FROM rich_menu WHERE campaign_id = ${campaignId} AND is_entry`
+  return row?.line_rich_menu_id ?? null
+}
+
 function asArray<T>(value: unknown): T[] {
   return Array.isArray(value) ? (value as T[]) : []
 }
@@ -188,6 +195,7 @@ export function makePorts(sql: Queryable, lineChannelIdOverride?: string): Ports
         defaultCardId: row.default_card_id,
         greetingCardId: row.greeting_card_id,
         greetingEnabled: row.greeting_enabled,
+        entryRichMenuLineId: await loadEntryRichMenuLineId(sql, row.campaign_id),
       }
 
       configCache.set(row.config_version_id, live)
@@ -275,6 +283,16 @@ export function makePorts(sql: Queryable, lineChannelIdOverride?: string): Ports
           ${args.eventType}, ${args.postbackData},
           ${args.result === null ? null : sql.json(args.result as never)},
           ${args.durationMs})`
+    },
+
+    async hasRichMenuLinked(participantId) {
+      const [row] = await sql<{ linked: boolean }[]>`
+        SELECT rich_menu_linked_at IS NOT NULL AS linked FROM participant WHERE id = ${participantId}`
+      return row?.linked ?? false
+    },
+
+    async markRichMenuLinked(participantId) {
+      await sql`UPDATE participant SET rich_menu_linked_at = now() WHERE id = ${participantId}`
     },
   }
 }
