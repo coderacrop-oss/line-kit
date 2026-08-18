@@ -2,6 +2,7 @@ import type postgres from 'postgres'
 import type { PublishConfig } from '../publish/validate'
 import { listActivities } from './activities'
 import type { ChannelType } from './channels'
+import { loadRichMenuScreen } from './richmenu'
 import { listRewards } from './rewards'
 
 /**
@@ -42,7 +43,8 @@ export type PublishChannel = {
 export type PublishCounter = { id: string; code: string; name: string; target: number }
 
 /** ส่วนของ config ที่ไม่ขึ้นกับว่าจะส่งขึ้นบัญชีไหน */
-export type PublishBase = Pick<PublishConfig, 'cards' | 'activities' | 'keywordRules' | 'rewards'>
+export type PublishBase =
+  Pick<PublishConfig, 'cards' | 'activities' | 'keywordRules' | 'rewards' | 'richMenus'>
   & { counters: PublishCounter[] }
 
 export type PublishScreenData = {
@@ -51,6 +53,8 @@ export type PublishScreenData = {
   /** เวอร์ชันล่าสุดของแคมเปญนี้ ไม่ว่าจะส่งขึ้นบัญชีไหน · ครั้งถัดไปคือ +1 */
   latestVersion: number
   campaignDayLengthSec: number
+  /** รหัสแคมเปญ · ใช้ประกอบ postback ของช่อง Rich Menu ที่ชี้ไปกิจกรรม (BR-33 · BR-77) */
+  campaignCode: string
 }
 
 type CardRow = { id: string; code: string; has_sample_text: boolean; blocks: number }
@@ -87,7 +91,7 @@ export async function loadPublishScreen(
   sql: postgres.Sql,
   campaignId: string,
 ): Promise<PublishScreenData> {
-  const [cards, activities, keywordRules, counters, rewards, channels, versions, campaign] =
+  const [cards, activities, keywordRules, counters, rewards, channels, versions, campaign, richMenuScreen] =
     await Promise.all([
       sql<CardRow[]>`
         SELECT c.id, c.code, c.has_sample_text,
@@ -128,8 +132,11 @@ export async function loadPublishScreen(
          ORDER BY ch.channel_type, ch.name`,
       sql<{ latest: number | null }[]>`
         SELECT max(version_no) AS latest FROM config_version WHERE campaign_id = ${campaignId}`,
-      sql<{ day_length_sec: number }[]>`
-        SELECT day_length_sec FROM campaign WHERE id = ${campaignId}`,
+      sql<{ day_length_sec: number; code: string }[]>`
+        SELECT day_length_sec, code FROM campaign WHERE id = ${campaignId}`,
+      // §4.4 ขั้น 1 (v0.16/v0.17/v0.30) ต้องตรวจเมนู — โหลดจากตัวเดียวกับที่จอ
+      // M4-S01 ใช้ ด้วยเหตุผลเดียวกับที่กิจกรรมและรางวัลถูกโหลดผ่าน listActivities/listRewards
+      loadRichMenuScreen(sql, campaignId),
     ])
 
   const targets = await sql<{ channel_id: string; code: string; target: number }[]>`
@@ -173,6 +180,13 @@ export async function loadPublishScreen(
         codeShortfall: reward.codeShortfall,
       })),
       counters,
+      richMenus: richMenuScreen.menus.map((menu) => ({
+        id: menu.id,
+        alias: menu.alias,
+        hasImage: !menu.imageBad,
+        isEntry: menu.isEntry,
+        areas: menu.areas.map((area) => ({ kind: area.kind, target: area.target })),
+      })),
     },
     channels: channels.map((row) => ({
       id: row.id,
@@ -193,6 +207,7 @@ export async function loadPublishScreen(
     })),
     latestVersion: versions[0]?.latest ?? 0,
     campaignDayLengthSec: campaign[0]?.day_length_sec ?? 86_400,
+    campaignCode: campaign[0]?.code ?? '',
   }
 }
 
@@ -215,6 +230,7 @@ export function configFor(
     keywordRules: base.keywordRules,
     rewards: base.rewards,
     counters: base.counters,
+    richMenus: base.richMenus,
     channelType: channel?.channelType ?? 'test',
     confirmed,
     defaultCardId: channel?.defaultCardId ?? null,
@@ -259,7 +275,13 @@ export async function writePublish(
     channelId: string
     publishedBy: string
     snapshot: unknown
-    runAtLine: () => Promise<void>
+    /**
+     * รับ `tx` ของธุรกรรมนี้เข้าไปด้วย — ขั้นที่เกี่ยวกับ Rich Menu (4b · 5 · 5b ·
+     * 5c) ต้องเขียน `rich_menu.line_rich_menu_id` ในธุรกรรมเดียวกับ webhook และ
+     * config_version ไม่ใช่แยกออกไปเขียนทีหลัง ไม่งั้น LINE ล้มตอน webhook แล้ว
+     * เมนูที่อัปโหลดไปแล้วจะไม่ถูกย้อนกลับไปด้วย
+     */
+    runAtLine: (tx: postgres.TransactionSql) => Promise<void>
   },
 ): Promise<PublishResult> {
   return sql.begin(async (tx) => {
@@ -281,7 +303,7 @@ export async function writePublish(
 
     await tx`UPDATE campaign SET status = 'published' WHERE id = ${opts.campaignId}`
 
-    await opts.runAtLine()
+    await opts.runAtLine(tx)
 
     return { versionNo: version.version_no }
   }) as Promise<PublishResult>

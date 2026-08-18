@@ -1,3 +1,7 @@
+import { asAreaKind, countEmpty as countEmptyAreas } from '../richmenu/areas'
+import { danglingSwitchTargets } from '../richmenu/alias'
+import { countEntries } from '../richmenu/entry'
+
 /**
  * ด่านตรวจก่อนส่งขึ้น LINE · ขั้นที่ 1 และ 2 ของ §4.4
  *
@@ -100,12 +104,29 @@ export type PublishReward = {
 
 export type PublishCounter = { code: string; name?: string }
 
+export type PublishRichMenuArea = { kind: string; target: string | null }
+
+export type PublishRichMenu = {
+  id: string
+  alias: string
+  /** true เมื่อเมนูนี้เลือกภาพจากคลังไว้แล้ว · ยังไม่ตรวจขนาด 2500×1686 ที่นี่ — ด่านนั้นอยู่ตอนเลือกภาพ (M4-S01) */
+  hasImage: boolean
+  isEntry: boolean
+  areas: readonly PublishRichMenuArea[]
+}
+
 export type PublishConfig = {
   cards: readonly PublishCard[]
   activities: readonly PublishActivity[]
   keywordRules: readonly PublishKeywordRule[]
   counters?: readonly PublishCounter[]
   rewards?: readonly PublishReward[]
+  /**
+   * เมนูใต้แชทของแคมเปญนี้ · undefined หรืออาเรย์ว่างแปลว่าแคมเปญนี้ไม่ใช้ Rich Menu
+   * เลย — ด่านของ M4-S01 ทั้งหมดถูกข้ามไปทั้งกลุ่มเมื่อไม่มีเมนูสักใบ (ตัดสินใจข้อ 5
+   * ของงานนี้) แคมเปญที่ไม่เคยเปิดจอ Rich Menu เลยต้องส่งขึ้นได้เหมือนก่อนมีงานนี้
+   */
+  richMenus?: readonly PublishRichMenu[]
   /** ชั้นของบัญชีปลายทาง · production คือบัญชีที่ผู้ร่วมสนุกจริงมองเห็น */
   channelType: string
   /** BR-18 · คนกดพิมพ์คำยืนยันมาแล้วหรือยัง */
@@ -134,6 +155,12 @@ const ERR = {
   missing: 'ERR-020',
   /** BR-37 · ยังมีข้อความตัวอย่างจากเทมเพลต */
   sampleText: 'ERR-034',
+  /** ปุ่มสลับแท็บชี้ไปเมนูที่ไม่มี (L2 §7 v0.16) */
+  switchTarget: 'ERR-036',
+  /** ภาพเมนูไม่ผ่านข้อกำหนด (L2 §7 v0.16) — ที่นี่คือ "ยังไม่ได้เลือกภาพเลย" ส่วนขนาดผิดถูกกันไว้ตอนเลือกภาพแล้ว */
+  menuImage: 'ERR-037',
+  /** เมนูตัวเข้าไม่ถูกต้อง (BR-78 · L2 §7 v0.17) */
+  entryMenu: 'ERR-039',
 } as const
 
 /** ปลายทางของปุ่ม "ไปแก้ →" ทุกอัน · เขียนไว้ที่เดียวจะได้ไม่มีสตริงลอย */
@@ -145,6 +172,7 @@ export const WHERE = {
   counters: 'counters',
   rewards: 'rewards',
   channels: '/channels',
+  richmenu: 'richmenu',
   /** จอนี้เอง · ช่องยืนยันอยู่ล่างสุด จึงพาไปที่จุดยึดไม่ใช่หัวจอ */
   confirm: 'publish#confirm',
 } as const
@@ -446,6 +474,75 @@ export function checkPublish(config: PublishConfig): Check[] {
       tone: has ? 'ok' : 'blocked',
       where: WHERE.channels,
     })
+  }
+
+  // ── Rich Menu (M4-S01) ─────────────────────────────────────────────────
+  //
+  // ข้ามทั้งกลุ่มเมื่อแคมเปญนี้ไม่ใช้ Rich Menu เลย (richMenus ว่างหรือไม่ส่งมา) —
+  // แคมเปญที่ไม่เคยเปิดจอนี้ต้องส่งขึ้นได้เหมือนก่อนมีงานนี้ (ตัดสินใจข้อ 5)
+  const richMenus = config.richMenus ?? []
+  if (richMenus.length > 0) {
+    for (const menu of richMenus) {
+      if (!menu.hasImage) {
+        checks.push({
+          code: ERR.menuImage,
+          label: `เมนู "${menu.alias}" ยังไม่มีภาพที่ใช้ได้ (ต้องเป็น 2500×1686 พอดี)`,
+          detail: 'ภาพเมนูบังคับต้องมีและต้องขนาดถูกต้อง — ตรวจตั้งแต่ตอนเลือกภาพในจอ M4-S01 อยู่แล้ว แต่แถวเดิมอาจตกค้าง',
+          tone: 'blocked',
+          where: WHERE.richmenu,
+        })
+      }
+
+      const empty = countEmptyAreas(menu.areas.map((area) => ({
+        x: 0, y: 0, width: 0, height: 0,
+        kind: asAreaKind(area.kind),
+        target: area.target,
+      })))
+      if (empty > 0) {
+        checks.push({
+          code: ERR.incomplete,
+          label: `เมนู "${menu.alias}" มี ${empty} ช่องไม่ชี้ไปไหน (BR-01)`,
+          detail: 'กดแล้วเงียบ — บันทึกได้แต่ถูกบล็อกตอนส่งขึ้น LINE ตามที่จอ M4-S01 เตือนไว้',
+          tone: 'blocked',
+          where: WHERE.richmenu,
+        })
+      }
+    }
+
+    const entryCount = countEntries(richMenus.map((m) => ({ id: m.id, isEntry: m.isEntry })))
+    if (entryCount !== 1) {
+      checks.push({
+        code: ERR.entryMenu,
+        label: entryCount === 0
+          ? 'แคมเปญนี้ใช้ Rich Menu แต่ยังไม่ได้ตั้งเมนูตัวเข้า (BR-78)'
+          : `แคมเปญนี้ตั้งเมนูตัวเข้าไว้ ${entryCount} อัน — ต้องมีพอดีหนึ่งอัน (BR-78)`,
+        detail: 'ต้องมีพอดีหนึ่งอัน เพื่อให้ระบบรู้ว่าจะแขวนเมนูไหนให้คนที่เข้าร่วม',
+        tone: 'blocked',
+        where: WHERE.richmenu,
+      })
+    } else {
+      checks.push({
+        code: ERR.entryMenu,
+        label: 'ตั้งเมนูตัวเข้าไว้พอดีหนึ่งอันแล้ว (BR-78)',
+        tone: 'ok',
+        where: WHERE.richmenu,
+      })
+    }
+
+    const dangling = danglingSwitchTargets(richMenus.map((m) => ({
+      id: m.id,
+      alias: m.alias,
+      areas: m.areas.map((a) => ({ kind: asAreaKind(a.kind), target: a.target })),
+    })))
+    for (const target of dangling) {
+      checks.push({
+        code: ERR.switchTarget,
+        label: `ปุ่มสลับแท็บชี้ไปเมนู ${target} ซึ่งยังไม่มีเมนูรองรับ`,
+        detail: 'สร้างเมนูของแท็บนั้นก่อน หรือเปลี่ยนปลายทางของปุ่ม',
+        tone: 'blocked',
+        where: WHERE.richmenu,
+      })
+    }
   }
 
   // ── BR-18 · บัญชีจริงของลูกค้าต้องยืนยันซ้ำ ──────────────────────────────
