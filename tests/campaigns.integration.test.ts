@@ -1,6 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type postgres from 'postgres'
-import { listCampaigns, loadCampaign } from '../lib/db/campaigns'
+import { listCampaigns, loadCampaign, loadCampaignHeader } from '../lib/db/campaigns'
 import { testDb } from '../lib/db/client'
 import { seed } from './helpers/seed'
 
@@ -147,5 +147,106 @@ describe('loadCampaign · ฐานข้อมูลจริง', () => {
 
     await sql`UPDATE campaign SET theme = '{"primary":"#123456"}'::jsonb WHERE id = ${s.campaignId}`
     expect((await loadCampaign(sql, s.campaignId))?.themePrimary).toBe('#123456')
+  })
+})
+
+/**
+ * แถบชื่อแคมเปญที่ค้างอยู่บนหัวจอ (ต้นแบบ · `campBadges`) — สองช่องเสมอ
+ * (ทดสอบ · ลูกค้า) versionNo เป็น null แปลว่า "ยังไม่ขึ้น" ไม่ใช่ "ไม่มีข้อมูล"
+ */
+describe('loadCampaignHeader · ฐานข้อมูลจริง', () => {
+  const boundChannel = async (
+    campaignId: string,
+    userId: string,
+    opts: { type: 'preview' | 'test' | 'production'; published: boolean },
+  ) => {
+    const t = tag()
+    const [channel] = await sql<{ id: string }[]>`
+      INSERT INTO channel (name, channel_type, encrypted_token, encrypted_secret,
+                           token_last4, key_version, created_by)
+      VALUES (${`ch-${t}`}, ${opts.type},
+              ${opts.type === 'preview' ? null : 'cipher'},
+              ${opts.type === 'preview' ? null : 'cipher'},
+              ${opts.type === 'preview' ? null : '1a2b'},
+              ${opts.type === 'preview' ? null : 1}, ${userId})
+      RETURNING id`
+    await sql`
+      INSERT INTO campaign_channel (campaign_id, channel_id, is_published)
+      VALUES (${campaignId}, ${channel.id}, ${opts.published})`
+    return channel.id as string
+  }
+
+  it('แคมเปญที่ยังไม่ผูกบัญชีไหนเลย คืนชื่อพร้อมสองช่องที่ยังไม่ขึ้น', async () => {
+    const s = await seed(sql)
+    const solo = await makeCampaign(s.userId)
+
+    expect(await loadCampaignHeader(sql, solo)).toEqual({
+      name: 'Extra',
+      channels: [
+        { channelType: 'test', versionNo: null },
+        { channelType: 'production', versionNo: null },
+      ],
+    })
+  })
+
+  it('id ที่ไม่มีอยู่ คืน null', async () => {
+    expect(await loadCampaignHeader(sql, '00000000-0000-0000-0000-000000000000')).toBeNull()
+  })
+
+  it('บัญชีที่ผูกไว้แต่ยังไม่ส่งขึ้น ยังนับว่าช่องนั้นยังไม่ขึ้น', async () => {
+    const s = await seed(sql)
+    const camp = await makeCampaign(s.userId)
+    await boundChannel(camp, s.userId, { type: 'test', published: false })
+
+    expect((await loadCampaignHeader(sql, camp))?.channels).toEqual([
+      { channelType: 'test', versionNo: null },
+      { channelType: 'production', versionNo: null },
+    ])
+  })
+
+  it('บัญชีชั้นทดลองเล่นไม่นับเป็นบัญชีที่ "กำลังพูดกับใครอยู่" แม้จะส่งขึ้นแล้วก็ตาม', async () => {
+    const s = await seed(sql)
+    const camp = await makeCampaign(s.userId)
+    await boundChannel(camp, s.userId, { type: 'preview', published: true })
+
+    expect((await loadCampaignHeader(sql, camp))?.channels).toEqual([
+      { channelType: 'test', versionNo: null },
+      { channelType: 'production', versionNo: null },
+    ])
+  })
+
+  it('บัญชีทดสอบที่ส่งขึ้นแล้ว โผล่พร้อมเลขเวอร์ชันล่าสุด · ช่องลูกค้ายังว่าง', async () => {
+    const s = await seed(sql)
+    const camp = await makeCampaign(s.userId)
+    const channelId = await boundChannel(camp, s.userId, { type: 'test', published: true })
+    await sql`
+      INSERT INTO config_version (campaign_id, channel_id, version_no, snapshot, published_by)
+      VALUES (${camp}, ${channelId}, 1, '{}'::jsonb, ${s.userId}),
+             (${camp}, ${channelId}, 2, '{}'::jsonb, ${s.userId})`
+
+    expect((await loadCampaignHeader(sql, camp))?.channels).toEqual([
+      { channelType: 'test', versionNo: 2 },
+      { channelType: 'production', versionNo: null },
+    ])
+  })
+
+  it('บัญชีทดสอบและบัญชีลูกค้าที่ส่งขึ้นทั้งคู่ โผล่ครบ คนละเลขเวอร์ชัน', async () => {
+    // version_no unique ต่อแคมเปญ ไม่ใช่ต่อบัญชี (UNIQUE (campaign_id, version_no))
+    // ส่งขึ้นสองบัญชีจึงได้เลขคนละตัวเสมอ แม้จะกดในวันเดียวกัน
+    const s = await seed(sql)
+    const camp = await makeCampaign(s.userId)
+    const testId = await boundChannel(camp, s.userId, { type: 'test', published: true })
+    const prodId = await boundChannel(camp, s.userId, { type: 'production', published: true })
+    await sql`
+      INSERT INTO config_version (campaign_id, channel_id, version_no, snapshot, published_by)
+      VALUES (${camp}, ${testId}, 1, '{}'::jsonb, ${s.userId}),
+             (${camp}, ${prodId}, 2, '{}'::jsonb, ${s.userId})`
+
+    const channels = (await loadCampaignHeader(sql, camp))?.channels
+    expect(channels).toHaveLength(2)
+    expect(channels).toEqual(expect.arrayContaining([
+      { channelType: 'test', versionNo: 1 },
+      { channelType: 'production', versionNo: 2 },
+    ]))
   })
 })

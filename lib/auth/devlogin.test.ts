@@ -2,7 +2,11 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 import { devLoginAllowed } from './devlogin'
 
 const original = { ...process.env }
-beforeEach(() => { delete process.env.ALLOW_DEV_LOGIN; delete process.env.VERCEL_ENV })
+beforeEach(() => {
+  delete process.env.ALLOW_DEV_LOGIN
+  delete process.env.VERCEL_ENV
+  delete process.env.DEV_LOGIN_EVEN_IN_PRODUCTION
+})
 afterEach(() => { process.env = { ...original } })
 
 describe('devLoginAllowed', () => {
@@ -39,5 +43,35 @@ describe('devLoginAllowed', () => {
     process.env.VERCEL_ENV = 'preview'
     expect(devLoginAllowed({ nodeEnv: 'production' })).toBe(false) // NODE_ENV ยังกันอยู่
     expect(devLoginAllowed({ nodeEnv: 'development' })).toBe(true)
+  })
+
+  // ประตูฉุกเฉิน — ตั้งใจให้เปิดยากกว่า ALLOW_DEV_LOGIN หนึ่งชั้น ชื่อขู่ไว้ไม่ให้เผลอ
+  // เปิดค้าง และต้องเปิดพร้อมกับ ALLOW_DEV_LOGIN เสมอ เปิดตัวเดียวไม่พอ
+  describe('DEV_LOGIN_EVEN_IN_PRODUCTION', () => {
+    it('เปิดทั้งสองตัวถึงจะผ่าน NODE_ENV production ได้', () => {
+      process.env.ALLOW_DEV_LOGIN = '1'
+      process.env.DEV_LOGIN_EVEN_IN_PRODUCTION = '1'
+      expect(devLoginAllowed({ nodeEnv: 'production' })).toBe(true)
+    })
+
+    it('เปิดทั้งสองตัวถึงจะผ่าน VERCEL_ENV production ได้', () => {
+      process.env.ALLOW_DEV_LOGIN = '1'
+      process.env.DEV_LOGIN_EVEN_IN_PRODUCTION = '1'
+      process.env.VERCEL_ENV = 'production'
+      expect(devLoginAllowed({ nodeEnv: 'production' })).toBe(true)
+    })
+
+    it('เปิดตัวนี้ตัวเดียวไม่พอ — ต้องมี ALLOW_DEV_LOGIN=1 ด้วยเสมอ', () => {
+      process.env.DEV_LOGIN_EVEN_IN_PRODUCTION = '1'
+      expect(devLoginAllowed({ nodeEnv: 'production' })).toBe(false)
+    })
+
+    it('ค่าอื่นที่ไม่ใช่ "1" ไม่นับว่าเปิด', () => {
+      process.env.ALLOW_DEV_LOGIN = '1'
+      for (const value of ['true', 'yes', '0', '']) {
+        process.env.DEV_LOGIN_EVEN_IN_PRODUCTION = value
+        expect(devLoginAllowed({ nodeEnv: 'production' }), `ค่า ${JSON.stringify(value)}`).toBe(false)
+      }
+    })
   })
 })

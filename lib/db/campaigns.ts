@@ -125,3 +125,48 @@ export async function loadCampaign(sql: postgres.Sql, id: string): Promise<Campa
     hasPlays: row.has_plays,
   }
 }
+
+export type CampaignHeaderChannel = {
+  channelType: 'test' | 'production'
+  versionNo: number | null
+}
+
+export type CampaignHeader = {
+  name: string
+  channels: CampaignHeaderChannel[]
+}
+
+const HEADER_SLOTS = ['test', 'production'] as const
+
+/**
+ * ที่มาของป้ายบนแถบชื่อแคมเปญที่ค้างอยู่บนหัวจอทุกจอ — สองช่องเสมอ (ทดสอบ ·
+ * ลูกค้า) ไม่ว่าแคมเปญจะผูกบัญชีไว้กี่ใบ เพราะต้นแบบก็ถามแค่สองคำถามตายตัว
+ * "ขึ้นบัญชีทดสอบหรือยัง" กับ "ขึ้นบัญชีลูกค้าหรือยัง" — `versionNo: null` คือ
+ * คำตอบ "ยังไม่ขึ้น" ไม่ใช่ "ไม่มีข้อมูล"
+ *
+ * นับเฉพาะบัญชีที่ *ส่งขึ้นแล้วจริง* (is_published) เท่านั้น บัญชีที่แค่เลือกไว้
+ * แต่ยังไม่กดส่งขึ้นยังไม่ใช่ความจริงของตอนนี้ หลักเดียวกับ BR-68 ที่
+ * listCampaigns ใช้กับ channelName
+ */
+export async function loadCampaignHeader(sql: postgres.Sql, id: string): Promise<CampaignHeader | null> {
+  const [row] = await sql<{ name: string }[]>`SELECT name FROM campaign WHERE id = ${id}`
+  if (!row) return null
+
+  const published = await sql<{ channel_type: 'test' | 'production'; version_no: number | null }[]>`
+    SELECT ch.channel_type,
+           (SELECT max(cv.version_no) FROM config_version cv
+             WHERE cv.channel_id = ch.id AND cv.campaign_id = ${id}) AS version_no
+      FROM campaign_channel cc
+      JOIN channel ch ON ch.id = cc.channel_id
+     WHERE cc.campaign_id = ${id} AND cc.is_published AND ch.channel_type != 'preview'`
+
+  const bySlot = new Map(published.map((c) => [c.channel_type, c.version_no]))
+
+  return {
+    name: row.name,
+    channels: HEADER_SLOTS.map((channelType) => ({
+      channelType,
+      versionNo: bySlot.get(channelType) ?? null,
+    })),
+  }
+}
