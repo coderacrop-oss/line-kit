@@ -90,6 +90,13 @@ function AreaBox({ area, index, data, menuId }: {
   area: RichMenuArea; index: number; data: RichMenuScreenData; menuId: string
 }) {
   const isEmpty = area.kind === ('none' as AreaKind)
+  // เตือนเฉพาะช่องที่ชี้ไปกิจกรรมที่ยังหาเจอ (กิจกรรมไม่เคยถูกลบจริง — ดู
+  // lib/db/activities.ts) และกิจกรรมนั้นถูกปิดใช้งานอยู่ · ช่องที่ชี้การ์ด/เมนู/ลิงก์
+  // หรือไม่ชี้ไปไหน ไม่เกี่ยวกับ is_enabled ของกิจกรรมเลย จึงไม่ควรขึ้นป้ายนี้
+  const targetActivity = area.kind === 'activity' && area.target
+    ? data.activities.find((a) => a.id === area.target)
+    : undefined
+  const activityDisabled = targetActivity !== undefined && !targetActivity.isEnabled
   return (
     <div style={boxStyle}>
       <div style={labelStyle}>ช่อง {index + 1}</div>
@@ -99,9 +106,11 @@ function AreaBox({ area, index, data, menuId }: {
           กดแล้วเงียบ (BR-01)
         </span>
       )}
-      <span style={{ fontSize: 10, color: 'var(--ink-3)', lineHeight: 1.4 }}>
-        กิจกรรมปลายทางถูกปิดใช้งาน
-      </span>
+      {activityDisabled && (
+        <span style={{ fontSize: 10, color: 'var(--ink-3)', lineHeight: 1.4 }}>
+          กิจกรรมปลายทางถูกปิดใช้งาน
+        </span>
+      )}
     </div>
   )
 }

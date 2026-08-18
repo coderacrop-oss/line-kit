@@ -152,6 +152,66 @@ describe('M4-S01 · การ์ดของเมนูหนึ่งใบ', 
   })
 })
 
+describe('M4-S01 · ป้าย "กิจกรรมปลายทางถูกปิดใช้งาน"', () => {
+  const WARNING = 'กิจกรรมปลายทางถูกปิดใช้งาน'
+  const disabledActivity = { id: 'act-1', code: 'quiz', name: 'ตอบคำถาม', isEnabled: false }
+  const enabledActivity = { id: 'act-2', code: 'draw', name: 'สุ่มรางวัล', isEnabled: true }
+
+  it('ช่องที่ไม่ชี้ไปไหน ไม่ขึ้นป้าย', async () => {
+    state.screen = {
+      ...state.screen, activities: [disabledActivity],
+      menus: [goodMenu({ areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }] })],
+    }
+    await open()
+    expect(screen.queryByText(WARNING)).toBeNull()
+  })
+
+  it('ช่องที่ชี้ไปกิจกรรมที่เปิดใช้งานอยู่ ไม่ขึ้นป้าย', async () => {
+    state.screen = {
+      ...state.screen, activities: [enabledActivity],
+      menus: [goodMenu({
+        areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'activity', target: enabledActivity.id }],
+      })],
+    }
+    await open()
+    expect(screen.queryByText(WARNING)).toBeNull()
+  })
+
+  it('ช่องที่ชี้ไปการ์ด/ลิงก์/เมนูอีกชุด ไม่ขึ้นป้าย แม้แคมเปญนี้จะมีกิจกรรมที่ปิดใช้งานอยู่ก็ตาม', async () => {
+    state.screen = {
+      ...state.screen, activities: [disabledActivity],
+      menus: [
+        goodMenu({ id: 'm1', areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'card', target: 'card-1' }] }),
+        goodMenu({ id: 'm2', areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'url', target: 'https://x.example' }] }),
+      ],
+    }
+    await open()
+    expect(screen.queryByText(WARNING)).toBeNull()
+  })
+
+  it('ช่องที่ชี้ไปกิจกรรมที่ถูกปิดใช้งานอยู่ ขึ้นป้ายเตือน', async () => {
+    state.screen = {
+      ...state.screen, activities: [disabledActivity],
+      menus: [goodMenu({
+        areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'activity', target: disabledActivity.id }],
+      })],
+    }
+    await open()
+    expect(screen.getByText(WARNING)).toBeDefined()
+  })
+
+  it('ช่องที่ชี้ไปกิจกรรมที่หาไม่เจอในรายการ (เช่นข้อมูลไม่ตรงกัน) ไม่ขึ้นป้าย — ไม่เดาว่าปิดใช้งานทั้งที่ยืนยันไม่ได้', async () => {
+    state.screen = {
+      ...state.screen, activities: [],
+      menus: [goodMenu({
+        areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'activity', target: 'ghost-id' }],
+      })],
+    }
+    await open()
+    expect(screen.queryByText(WARNING)).toBeNull()
+  })
+})
+
 describe('M4-S01 · ผังของฟอร์ม "+ เพิ่มเมนู" — สิบสามแบบ จัดกลุ่มภาพใหญ่/ภาพเล็ก', () => {
   it('มีทั้งแปดผังของภาพใหญ่และห้าผังของภาพเล็ก รวมสิบสามแบบ ไม่มีค่าซ้ำ', async () => {
     const { container } = await open()
