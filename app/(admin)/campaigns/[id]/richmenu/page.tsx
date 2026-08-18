@@ -150,14 +150,33 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
 
       <Panel.Row style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="ภาพเมนู (บังคับ · 2500×1686)">
-          <select form={formId} name="image_asset_id" defaultValue={menu.imageAssetId} disabled={!canEdit}>
-            <option value="">— เลือกภาพจากคลัง —</option>
-            {data.images.map((image) => (
-              <option key={image.id} value={image.id}>
-                {image.label} · {image.width}×{image.height}
-              </option>
-            ))}
-          </select>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* ไฟล์จริงที่อัปโหลดไป ไม่ใช่กล่องแทนภาพ */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={menu.imageUrl} alt=""
+                style={{
+                  width: 72, height: Math.round((72 * 1686) / 2500), objectFit: 'cover',
+                  borderRadius: 'var(--r-sm)', border: '1px solid var(--rule)', flexShrink: 0,
+                }}
+              />
+              {/* ขนาดโผล่ในป้ายเตือนข้างล่างอยู่แล้วเมื่อผิด — ไม่พิมพ์ตัวเลขซ้ำสองที่ตอนภาพพัง */}
+              {!badImage && (
+                <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                  {menu.imageWidth}×{menu.imageHeight}
+                </span>
+              )}
+            </div>
+            <input type="hidden" form={formId} name="image_asset_id" value={menu.imageAssetId} />
+            {canEdit && (
+              <input
+                form={formId} type="file" name="image_file" accept="image/png,image/jpeg"
+                aria-label="แทนที่ภาพเมนู"
+                style={{ fontSize: 11, marginTop: 6 }}
+              />
+            )}
+          </div>
         </Field>
         {badImage && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{badImage}</span>}
 
@@ -214,23 +233,21 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
   )
 }
 
-function NewMenuForm({ campaignId, data }: { campaignId: string; data: RichMenuScreenData }) {
+function NewMenuForm({ campaignId }: { campaignId: string }) {
   return (
     <details style={{ marginBottom: 16 }}>
       <summary style={summaryStyle}>+ เพิ่มเมนู</summary>
       <Panel style={{ marginTop: 10 }}>
         <Panel.Row>
-          <form action={createMenu.bind(null, campaignId)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form
+            action={createMenu.bind(null, campaignId)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          >
             <Field label="ชื่อเรียกเมนู (alias)" hint="ใช้ตอนลงทะเบียนปุ่มสลับแท็บ (BR-77) — ตั้งชื่อที่จำง่าย เช่น main, promo">
               <input name="alias" required placeholder="เช่น main" />
             </Field>
             <Field label="ภาพเมนู (บังคับ · 2500×1686)">
-              <select name="image_asset_id" required defaultValue="">
-                <option value="">— เลือกภาพจากคลัง —</option>
-                {data.images.map((image) => (
-                  <option key={image.id} value={image.id}>{image.label} · {image.width}×{image.height}</option>
-                ))}
-              </select>
+              <input type="file" name="image_file" required accept="image/png,image/jpeg" />
             </Field>
             <Field label="ผังช่อง">
               <select name="layout" defaultValue="one">
@@ -283,7 +300,7 @@ export default async function RichMenuPage({ params }: { params: Promise<{ id: s
         ตอนแคมเปญจบถอดออกรายคน เมนูเดิมกลับมาเอง
       </Note>
 
-      {canEdit && <NewMenuForm campaignId={campaign.id} data={data} />}
+      {canEdit && <NewMenuForm campaignId={campaign.id} />}
 
       {data.menus.length === 0 ? (
         <Empty

@@ -10,12 +10,17 @@ const state: {
    * ระบุ" จริงๆ ไม่ใช่แค่มี id ตรงในตารางไม่ว่าจะเป็นของแคมเปญไหน — ผูกคู่กันไว้
    * เพื่อให้เทสต์จับการหลุด `AND campaign_id = ...` ออกจากคิวรีได้ (ไม่ใช่แค่จับ
    * ว่า SQL text มีคำว่า campaign_id ซึ่งจับไม่ได้ว่าค่าที่ใช้จริงถูกหรือไม่)
+   *
+   * ใช้เฉพาะเส้นทาง "ไม่ได้อัปโหลดไฟล์ใหม่ ยังใช้ภาพเดิม" ของ saveMenu — เส้นทาง
+   * อัปโหลดใหม่ (createMenu เสมอ, saveMenu เมื่อมีไฟล์) ไม่แตะตารางนี้เลย เพราะ
+   * ขนาดถูกวัดจากไบต์ไฟล์ตรงๆ ก่อนจะมีแถว asset ด้วยซ้ำ
    */
   assets: Record<string, { width: number; height: number }>
   /** areas ปัจจุบันของเมนูที่ setAreaTarget/setLayout จะอ่านก่อนเขียน */
   areas: Array<{ x: number; y: number; width: number; height: number; kind: string; target: string | null }>
   failWith: unknown
   writes: Array<{ text: string; values: unknown[] }>
+  stored: Array<{ path: string; bytes: number }>
 } = {
   cookie: undefined,
   user: undefined,
@@ -26,6 +31,7 @@ const state: {
   areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }],
   failWith: undefined,
   writes: [],
+  stored: [],
 }
 
 const sql = Object.assign(
@@ -50,6 +56,9 @@ const sql = Object.assign(
     if (/INSERT INTO rich_menu/.test(text)) {
       return state.failWith ? Promise.reject(state.failWith) : Promise.resolve([{ id: 'menu-new' }])
     }
+    if (/INSERT INTO asset/.test(text)) {
+      return state.failWith ? Promise.reject(state.failWith) : Promise.resolve([{ id: 'new-asset' }])
+    }
     return state.failWith ? Promise.reject(state.failWith) : Promise.resolve([])
   },
   {
@@ -66,6 +75,19 @@ vi.mock('next/headers', () => ({
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
+vi.mock('@/lib/assets/store', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/assets/store')>()
+  return {
+    ...real,
+    assetStore: () => ({
+      describe: 'ที่เก็บของเทสต์',
+      put: async (path: string, data: Uint8Array) => {
+        state.stored.push({ path, bytes: data.byteLength })
+        return { storagePath: path, publicUrl: `/${path}` }
+      },
+    }),
+  }
+})
 
 const { changeLayout, createMenu, deleteMenu, saveMenu, setEntry } = await import('./actions')
 
@@ -74,14 +96,38 @@ const signedInAs = (role: string, isActive = true) => {
   state.user = { id: 'u1', email: 'someone@example.com', role, is_active: isActive }
 }
 
+/** PNG จริงขนาดที่กำหนด · ส่วนหัวพอให้ probeImage อ่านมิติออก แล้วถ่วงให้ยาวพอผ่านเพดานไฟล์ */
+const pngFile = (name: string, width: number, height: number, bytes = 40_000): File => {
+  const head = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+    (width >>> 24) & 255, (width >>> 16) & 255, (width >>> 8) & 255, width & 255,
+    (height >>> 24) & 255, (height >>> 16) & 255, (height >>> 8) & 255, height & 255,
+    8, 6, 0, 0, 0,
+  ]
+  const data = new Uint8Array(Math.max(bytes, head.length))
+  data.set(head)
+  return new File([data], name, { type: 'image/png' })
+}
+
+/** ภาพเมนูขนาดถูกต้องพอดี — ค่าเริ่มต้นของทุกฟอร์มที่ไม่ได้ตั้งใจทดสอบเรื่องขนาด */
+const goodImage = () => pngFile('menu.png', 2500, 1686)
+
 const form = (fields: Record<string, string>) => {
   const data = new FormData()
   for (const [key, value] of Object.entries(fields)) data.append(key, value)
   return data
 }
 
-const createForm = (patch: Record<string, string> = {}) =>
-  form({ alias: 'main', image_asset_id: 'asset-good', layout: 'one', ...patch })
+/** ฟอร์มของ "+ สร้างเมนูแรก" — ไม่มี select ให้เลือกจากคลังอีกต่อไป มีแต่ไฟล์ */
+const createForm = (
+  patch: Record<string, string> = {},
+  imageFile: File | null | undefined = goodImage(),
+) => {
+  const data = form({ alias: 'main', layout: 'one', ...patch })
+  if (imageFile) data.append('image_file', imageFile)
+  return data
+}
 
 const writesMatching = (pattern: RegExp) => state.writes.filter((w) => pattern.test(w.text))
 
@@ -95,6 +141,7 @@ beforeEach(() => {
   state.areas = [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }]
   state.failWith = undefined
   state.writes = []
+  state.stored = []
 })
 
 describe('createMenu · ด่านสิทธิ์', () => {
@@ -123,41 +170,26 @@ describe('createMenu · กรอกครบ', () => {
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
   })
 
-  it('ไม่ได้เลือกภาพ ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
+  it('ไม่ได้อัปโหลดภาพ ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
     signedInAs('configurator')
-    await expect(createMenu('c1', createForm({ image_asset_id: '' }))).rejects.toThrow('เลือกภาพเมนู')
-    expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
-  })
-
-  it('ภาพที่เลือกไม่มีอยู่ในคลังของแคมเปญนี้ ปฏิเสธ', async () => {
-    signedInAs('configurator')
-    await expect(createMenu('c1', createForm({ image_asset_id: 'ghost' })))
-      .rejects.toThrow('ไม่พบภาพนี้')
-  })
-
-  /**
-   * ภาพมีอยู่จริงแต่เป็นของ "อีกแคมเปญหนึ่ง" — ต้องปฏิเสธเหมือนไม่มีภาพเลย
-   * `assertValidImage` ต้องผูก `campaign_id` เข้ากับคิวรีด้วยเสมอ ไม่ใช่แค่หา
-   * asset จาก id เพียงอย่างเดียว ไม่งั้นแคมเปญหนึ่งจะเลือกภาพของอีกแคมเปญมาตั้ง
-   * เป็นเมนูของตัวเองได้ (คลังภาพผูกกับแคมเปญเดียวตาม lib/db/assets.ts)
-   */
-  it('ภาพมีอยู่จริงแต่เป็นของแคมเปญอื่น ปฏิเสธเหมือนไม่มีภาพเลย', async () => {
-    signedInAs('configurator')
-    await expect(createMenu('other-campaign', createForm({ image_asset_id: 'asset-good' })))
-      .rejects.toThrow('ไม่พบภาพนี้')
-    expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
+    await expect(createMenu('c1', createForm({}, null))).rejects.toThrow('อัปโหลดภาพเมนู')
+    expect(writesMatching(/INSERT INTO rich_menu|INSERT INTO asset/)).toEqual([])
   })
 
   /**
    * L2 §5.2 (v0.16) — "ต้องตรวจตั้งแต่ตอนอัปโหลดในหน้า M4-S01 ไม่ใช่ปล่อยให้ LINE
-   * ปฏิเสธตอน publish" — ภาพผิดขนาดจึงบล็อกตั้งแต่ตอนบันทึก ต่างจากช่องที่ไม่ชี้
-   * ไปไหน (BR-01) ซึ่งบันทึกได้ก่อนแล้วไปบล็อกตอน publish (ตัดสินใจข้อ 2 ของงานนี้)
+   * ปฏิเสธตอน publish" — ภาพผิดขนาดจึงบล็อกตั้งแต่ตอนอัปโหลด (ก่อนจะมีแถว asset
+   * ด้วยซ้ำ) ต่างจากช่องที่ไม่ชี้ไปไหน (BR-01) ซึ่งบันทึกได้ก่อนแล้วไปบล็อกตอน
+   * publish (ตัดสินใจข้อ 2 ของงานนี้)
    */
-  it('ภาพขนาดไม่ใช่ 2500×1686 พอดี ถูกบล็อกตอนบันทึก (ERR-037) — ไม่ใช่ปล่อยผ่านไปบล็อกตอน publish', async () => {
+  it('ภาพขนาดไม่ใช่ 2500×1686 พอดี ถูกบล็อกตอนอัปโหลด (ERR-037) — ไม่ใช่ปล่อยผ่านไปบล็อกตอน publish', async () => {
     signedInAs('configurator')
-    await expect(createMenu('c1', createForm({ image_asset_id: 'asset-bad' })))
+    await expect(createMenu('c1', createForm({}, pngFile('x.png', 1200, 400))))
       .rejects.toThrow('ERR-037')
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
+    // ภาพผิดขนาดไม่ควรถูกเก็บลงคลังเลยด้วยซ้ำ — ตรวจก่อนอัปโหลดจริง ไม่ใช่หลัง
+    expect(writesMatching(/INSERT INTO asset/)).toEqual([])
+    expect(state.stored).toEqual([])
   })
 
   it('ผังไม่ถูกต้อง ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
@@ -167,13 +199,114 @@ describe('createMenu · กรอกครบ', () => {
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
   })
 
-  it('กรอกครบทุกช่อง สร้างเมนูสำเร็จ', async () => {
+  it('กรอกครบทุกช่อง สร้างเมนูสำเร็จ — ภาพที่อัปโหลดกลายเป็นแถว asset ใหม่ ผูกกับเมนูทันที', async () => {
     signedInAs('configurator')
     await createMenu('c1', createForm())
+
+    expect(writesMatching(/INSERT INTO asset/)).toHaveLength(1)
+    expect(state.stored).toHaveLength(1)
+
     const insert = writesMatching(/INSERT INTO rich_menu/)[0]
     expect(insert.values).toContain('c1')
     expect(insert.values).toContain('main')
-    expect(insert.values).toContain('asset-good')
+    expect(insert.values).toContain('new-asset')
+  })
+})
+
+describe('saveMenu · ภาพ', () => {
+  const withOneArea = () => {
+    state.areas = [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }]
+  }
+
+  it('ไม่ได้เลือกไฟล์ใหม่ — ใช้ภาพเดิมต่อ (จากช่องซ่อนที่จอฝังค่าปัจจุบันไว้) ไม่อัปโหลดอะไรเพิ่ม', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({
+      alias: 'main', image_asset_id: 'asset-good', area_count: '1', area_target_0: '',
+    })
+    await saveMenu('c1', 'menu-1', data)
+
+    expect(writesMatching(/INSERT INTO asset/)).toEqual([])
+    expect(writesMatching(/UPDATE rich_menu SET/)[0].values).toContain('asset-good')
+  })
+
+  /**
+   * `<input type="file">` ที่ไม่ได้ถูกแตะเลยยังส่ง File มาด้วย — name ว่าง ขนาด
+   * ศูนย์ไบต์ ไม่ใช่ null · ต้องอ่านเป็น "ไม่ได้เลือกไฟล์ใหม่" เหมือนกัน ไม่งั้น
+   * ทุกครั้งที่กด "บันทึกเมนู" โดยไม่ได้ตั้งใจแตะไฟล์จะพยายามอัปโหลดไฟล์เปล่า
+   */
+  it('input ไฟล์ที่ไม่ได้แตะ (File ว่างขนาดศูนย์) ก็ยังนับว่าไม่ได้เลือกไฟล์ใหม่', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({
+      alias: 'main', image_asset_id: 'asset-good', area_count: '1', area_target_0: '',
+    })
+    data.append('image_file', new File([], '', { type: 'application/octet-stream' }))
+    await saveMenu('c1', 'menu-1', data)
+
+    expect(writesMatching(/INSERT INTO asset/)).toEqual([])
+    expect(writesMatching(/UPDATE rich_menu SET/)[0].values).toContain('asset-good')
+  })
+
+  it('เลือกไฟล์ใหม่ — อัปโหลดแล้วแทนที่ภาพเดิมทันที ไม่ต้องพึ่งช่องซ่อน', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({ alias: 'main', area_count: '1', area_target_0: '' })
+    data.append('image_file', goodImage())
+    await saveMenu('c1', 'menu-1', data)
+
+    expect(writesMatching(/INSERT INTO asset/)).toHaveLength(1)
+    expect(writesMatching(/UPDATE rich_menu SET/)[0].values).toContain('new-asset')
+  })
+
+  it('ไฟล์ใหม่ขนาดผิด บล็อกตอนอัปโหลด (ERR-037) เหมือนตอนสร้าง', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({ alias: 'main', area_count: '1', area_target_0: '' })
+    data.append('image_file', pngFile('x.png', 1200, 400))
+    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ERR-037')
+    expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
+    expect(writesMatching(/INSERT INTO asset/)).toEqual([])
+  })
+
+  it('ไม่มีไฟล์ใหม่และภาพเดิม (จากช่องซ่อน) ขนาดผิด บล็อกก่อนแตะฐานข้อมูล', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({
+      alias: 'main', image_asset_id: 'asset-bad', area_count: '1', area_target_0: '',
+    })
+    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ERR-037')
+    expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
+  })
+
+  /**
+   * ภาพเดิม (จากช่องซ่อน) อ้างถึง id ที่ไม่มีอยู่จริง — ปฏิเสธ ไม่ใช่ปล่อยให้เขียน
+   * NULL หรือค่าลอยๆ ลงคอลัมน์ NOT NULL
+   */
+  it('ภาพเดิมที่อ้างถึงไม่มีอยู่ในคลังของแคมเปญนี้ ปฏิเสธ', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({
+      alias: 'main', image_asset_id: 'ghost', area_count: '1', area_target_0: '',
+    })
+    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ไม่พบภาพนี้')
+    expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
+  })
+
+  /**
+   * ภาพเดิมมีอยู่จริงแต่เป็นของ "อีกแคมเปญหนึ่ง" — ต้องปฏิเสธเหมือนไม่มีภาพเลย
+   * `assertExistingImageValid` ต้องผูก `campaign_id` เข้ากับคิวรีด้วยเสมอ ไม่ใช่แค่
+   * หา asset จาก id เพียงอย่างเดียว ไม่งั้นแคมเปญหนึ่งจะเอาภาพของอีกแคมเปญมาผูกกับ
+   * เมนูของตัวเองได้ (คลังภาพผูกกับแคมเปญเดียวตาม lib/db/assets.ts)
+   */
+  it('ภาพเดิมมีอยู่จริงแต่เป็นของแคมเปญอื่น ปฏิเสธเหมือนไม่มีภาพเลย', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({
+      alias: 'main', image_asset_id: 'asset-good', area_count: '1', area_target_0: '',
+    })
+    await expect(saveMenu('other-campaign', 'menu-1', data)).rejects.toThrow('ไม่พบภาพนี้')
+    expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
   })
 })
 
@@ -181,14 +314,6 @@ describe('saveMenu · บันทึกช่องของเมนู', () =
   const withOneArea = () => {
     state.areas = [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }]
   }
-
-  it('ภาพขนาดผิด บล็อกก่อนแตะฐานข้อมูล เหมือนตอนสร้าง', async () => {
-    signedInAs('configurator')
-    withOneArea()
-    const data = form({ alias: 'main', image_asset_id: 'asset-bad', area_count: '1', area_target_0: '' })
-    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ERR-037')
-    expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
-  })
 
   it('เลือก "ไปลิงก์" (url) โดยไม่กรอก URL ปฏิเสธ', async () => {
     signedInAs('configurator')

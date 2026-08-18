@@ -2,6 +2,9 @@
 
 import { revalidatePath } from 'next/cache'
 import { requireRole } from '@/lib/auth/require'
+import { probeImage } from '@/lib/assets/probe'
+import { assetStore, storagePathFor } from '@/lib/assets/store'
+import { validateUpload } from '@/lib/assets/validate'
 import { db } from '@/lib/db/client'
 import {
   createRichMenu, deleteRichMenu, setAreaTarget, setEntryMenu, setLayout, updateRichMenu,
@@ -13,15 +16,56 @@ import { isValidMenuImageSize, menuImageSizeWarning } from '@/lib/richmenu/image
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
 
 /**
- * ต้องเลือกภาพก่อนเสมอ เพราะ `rich_menu.image_asset_id` เป็น NOT NULL (L2 §5.2)
- * และภาพต้องขนาด 2500×1686 พอดี — "ต้องตรวจตั้งแต่ตอนอัปโหลดในหน้า M4-S01 ไม่ใช่
- * ปล่อยให้ LINE ปฏิเสธตอน publish" (L2 §5.2 v0.16) จึงบล็อกตรงนี้ตั้งแต่ตอนบันทึก
- * ต่างจากช่องที่ไม่ชี้ไปไหน (BR-01) ซึ่งบันทึกได้แล้วไปบล็อกตอน publish แทน — สอง
- * กฎนี้คนละเรื่องกัน ภาพผิดขนาดคือของที่ผิดตั้งแต่ต้น ไม่ใช่สถานะที่ยังกรอกไม่ครบ
+ * ไฟล์หนึ่งไฟล์ กลายเป็นแถวของ asset ที่ใช้กับเมนูนี้ได้ทันที
+ *
+ * จอนี้ไม่มี "เลือกภาพจากคลัง" อีกต่อไป — อัปโหลดตรงนี้คือการเลือก ภาพเมนูจึง
+ * ต้องขนาด 2500×1686 พอดีตั้งแต่ตอนอัปโหลด ไม่ใช่หลังบันทึกแล้วค่อยรู้ว่าใช้ไม่ได้
+ * ("ต้องตรวจตั้งแต่ตอนอัปโหลดในหน้า M4-S01 ไม่ใช่ปล่อยให้ LINE ปฏิเสธตอน publish"
+ * — L2 §5.2 v0.16) ตัวตรวจรูปแบบ/ขนาดไฟล์ยังใช้ชุดเดียวกับคลังภาพ (probeImage ·
+ * validateUpload · assetStore) เพื่อไม่ให้มีกติกาความถูกต้องของไฟล์สองชุด
  */
-async function assertValidImage(campaignId: string, imageAssetId: string): Promise<void> {
-  if (!imageAssetId) throw new Error('ต้องเลือกภาพเมนูจากคลังก่อน (บังคับ · 2500×1686)')
+async function storeMenuImage(
+  campaignId: string, userId: string, file: File,
+): Promise<{ id: string }> {
+  const data = new Uint8Array(await file.arrayBuffer())
 
+  const probed = probeImage(data)
+  if (!probed.ok) throw new Error(probed.reason)
+
+  // ขนาดมาจากไบต์จริง ไม่ใช่จาก file.type ที่เบราว์เซอร์เดาจากนามสกุล
+  const verdict = validateUpload({
+    mime: probed.meta.mime, bytes: data.byteLength,
+    width: probed.meta.width, height: probed.meta.height,
+  })
+  if (!verdict.ok) throw new Error(verdict.reason)
+
+  if (!isValidMenuImageSize(probed.meta.width, probed.meta.height)) {
+    throw new Error(`ERR-037 · ${menuImageSizeWarning(probed.meta.width, probed.meta.height)}`)
+  }
+
+  const store = assetStore()
+  const path = storagePathFor(campaignId, file.name)
+  const stored = await store.put(path, data)
+
+  const sql = db()
+  const [asset] = await sql<{ id: string }[]>`
+    INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type,
+                       bytes, width, height, replaces_asset_id, uploaded_by)
+    VALUES (${campaignId}, ${stored.storagePath}, ${stored.publicUrl}, 'image',
+            ${probed.meta.mime}, ${data.byteLength}, ${probed.meta.width}, ${probed.meta.height},
+            null, ${userId})
+    RETURNING id`
+
+  revalidatePath(`/campaigns/${campaignId}/assets`)
+  return asset
+}
+
+/**
+ * ภาพเดิมของเมนูที่ไม่ได้ถูกแทนที่รอบนี้ — ต้องยังผ่านด่านขนาดเหมือนภาพที่เพิ่ง
+ * อัปโหลดใหม่ ไม่งั้นเมนูที่เคยมีภาพผิดขนาดติดมาจากรุ่นก่อนจะบันทึกอย่างอื่น (เช่น
+ * เปลี่ยนชื่อเรียก) ผ่านไปได้โดยไม่มีใครรู้ว่าภาพยังพังอยู่
+ */
+async function assertExistingImageValid(campaignId: string, imageAssetId: string): Promise<void> {
   const sql = db()
   const [asset] = await sql<{ width: number; height: number }[]>`
     SELECT width, height FROM asset WHERE id = ${imageAssetId} AND campaign_id = ${campaignId}`
@@ -69,21 +113,29 @@ function areaCountOf(formData: FormData): number {
   return Number.isInteger(n) && n >= 0 ? n : 0
 }
 
+/** ไฟล์ที่ผู้ใช้เลือกจริง — input ที่ไม่ได้แตะเลยก็ยังส่ง File ว่างขนาดศูนย์มาด้วย */
+function chosenFile(formData: FormData, key: string): File | null {
+  const file = formData.get(key)
+  return file instanceof File && file.size > 0 ? file : null
+}
+
 /**
- * สร้างเมนูใหม่ · ต้องกรอกชื่อเรียก ภาพ และผังตั้งแต่ตอนสร้าง
+ * สร้างเมนูใหม่ · ต้องกรอกชื่อเรียก อัปโหลดภาพ และเลือกผังตั้งแต่ตอนสร้าง
  *
  * ต่างจากต้นแบบที่วาดการ์ดว่างให้กรอกทีละช่องหลังจากกด "+ เพิ่มเมนู" — schema
  * บังคับ `image_asset_id NOT NULL` แถวที่ยังไม่มีภาพจึงไม่มีทางถูกสร้างขึ้นมาได้เลย
  * (ดูรายงานของงาน M4-S01 สำหรับเหตุผลเต็ม)
  */
 export async function createMenu(campaignId: string, formData: FormData): Promise<void> {
-  await requireRole('configurator', 'content_editor')
+  const session = await requireRole('configurator', 'content_editor')
 
   const alias = trimmed(formData, 'alias')
   if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
 
-  const imageAssetId = trimmed(formData, 'image_asset_id')
-  await assertValidImage(campaignId, imageAssetId)
+  const file = chosenFile(formData, 'image_file')
+  if (!file) throw new Error('ต้องอัปโหลดภาพเมนูก่อน (บังคับ · 2500×1686)')
+  const { id: imageAssetId } = await storeMenuImage(campaignId, session.userId, file)
+
   const layout = parseLayout(formData)
 
   // DuplicateAliasError (UNIQUE campaign_id+alias) มีข้อความที่อ่านรู้เรื่องอยู่แล้ว
@@ -96,18 +148,30 @@ export async function createMenu(campaignId: string, formData: FormData): Promis
 /**
  * บันทึกเมนู · alias · ภาพ · และปลายทางของทุกช่องพร้อมกัน (ปุ่ม "บันทึกเมนู" ของต้นแบบ)
  *
+ * ภาพเป็นช่องเลือกได้ว่าจะแตะหรือไม่ — เว้น input ไฟล์ไว้ = ใช้ภาพเดิมต่อ (ค่าเดิม
+ * มากับ hidden field `image_asset_id` ที่จอฝังไว้) เลือกไฟล์ใหม่ = แทนที่ทันที
+ * เหมือนโหมด "แทนที่ภาพเดิม" ของคลังภาพ (BR-25) — ไฟล์เก่าไม่ถูกลบ การ์ด/เมนูที่
+ * เคยส่งขึ้นไปแล้วยังอ้างถึง URL เดิม
+ *
  * ผังช่อง (จำนวนช่องกับพิกัด) แก้แยกผ่าน `changeLayout` ไม่ใช่ที่นี่ — สลับผังต้อง
  * เห็นจำนวนช่องใหม่ทันทีก่อนจะกรอกปลายทางของช่องเหล่านั้น ปุ่มนี้บันทึก "เนื้อหา"
  * ของผังที่เลือกไว้แล้วเท่านั้น ไม่ใช่ตัวผังเอง
  */
 export async function saveMenu(campaignId: string, menuId: string, formData: FormData): Promise<void> {
-  await requireRole('configurator', 'content_editor')
+  const session = await requireRole('configurator', 'content_editor')
 
   const alias = trimmed(formData, 'alias')
   if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
 
-  const imageAssetId = trimmed(formData, 'image_asset_id')
-  await assertValidImage(campaignId, imageAssetId)
+  const newFile = chosenFile(formData, 'image_file')
+  let imageAssetId: string
+  if (newFile) {
+    imageAssetId = (await storeMenuImage(campaignId, session.userId, newFile)).id
+  } else {
+    imageAssetId = trimmed(formData, 'image_asset_id')
+    if (!imageAssetId) throw new Error('ต้องมีภาพเมนูก่อน (บังคับ · 2500×1686)')
+    await assertExistingImageValid(campaignId, imageAssetId)
+  }
 
   await updateRichMenu(db(), { id: menuId, campaignId, alias, imageAssetId })
 
