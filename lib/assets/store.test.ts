@@ -107,7 +107,7 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
 
   it('ไฟล์ที่เขียนแล้วอ่านกลับได้ไบต์เดิมทุกไบต์', async () => {
     const path = storagePathFor('c1', 'real.png')
-    const stored = await store.put(path, bytes)
+    const stored = await store.put(path, bytes, 'image/png')
 
     expect(stored.storagePath).toBe(path)
     const written = await readFile(join(root, path))
@@ -116,7 +116,7 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
 
   it('get อ่านไฟล์ที่ put เขียนไว้กลับมาได้ไบต์เดิมทุกไบต์ — M4-S01 ใช้ตอนอัปโหลดภาพเมนูขึ้น LINE', async () => {
     const path = storagePathFor('c1', 'get-me.png', 'g1')
-    await store.put(path, bytes)
+    await store.put(path, bytes, 'image/png')
 
     expect(await store.get(path)).toEqual(bytes)
   })
@@ -127,21 +127,21 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
 
   it('สร้างโฟลเดอร์ที่ยังไม่มีให้เอง', async () => {
     const path = storagePathFor('campaign-ที่-ไม่-เคย-มี', 'a.png')
-    await store.put(path, bytes)
+    await store.put(path, bytes, 'image/png')
     expect((await stat(join(root, path))).isFile()).toBe(true)
   })
 
   it('URL ที่คืนมาเป็นที่อยู่ที่เบราว์เซอร์ขอได้ ไม่ใช่ที่อยู่บนดิสก์', async () => {
-    const stored = await store.put(storagePathFor('c1', 'b.png', 'u9'), bytes)
+    const stored = await store.put(storagePathFor('c1', 'b.png', 'u9'), bytes, 'image/png')
     expect(stored.publicUrl).toBe('/uploads/c1/u9/b.png')
     expect(stored.publicUrl).not.toContain(root)
   })
 
   it('ไม่เขียนทับของที่มีอยู่แล้ว · ไฟล์ที่การ์ดในแชทชี้อยู่ต้องอยู่ต่อ (BR-25)', async () => {
     const path = storagePathFor('c1', 'once.png', 'fixed')
-    await store.put(path, bytes)
+    await store.put(path, bytes, 'image/png')
 
-    await expect(store.put(path, Uint8Array.from([9, 9, 9]))).rejects.toThrow('ไม่เขียนทับ')
+    await expect(store.put(path, Uint8Array.from([9, 9, 9]), 'image/png')).rejects.toThrow('ไม่เขียนทับ')
 
     const still = await readFile(join(root, path))
     expect(Uint8Array.from(still)).toEqual(bytes)
@@ -149,7 +149,7 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
 
   it('ที่อยู่ที่พาออกไปนอกที่เก็บ ถูกปฏิเสธก่อนเขียน', async () => {
     for (const path of ['../escaped.png', 'uploads/../../escaped.png', '/etc/linekit-escaped']) {
-      await expect(store.put(path, bytes), path).rejects.toThrow('นอกที่เก็บ')
+      await expect(store.put(path, bytes, 'image/png'), path).rejects.toThrow('นอกที่เก็บ')
     }
   })
 
@@ -157,22 +157,22 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
     // /x/store-evil ขึ้นต้นด้วย /x/store ทุกตัวอักษร · การเทียบด้วยคำนำหน้าเปล่าๆ
     // จึงยอมให้เขียนลงโฟลเดอร์ที่อยู่ข้างนอกโดยไม่มีอะไรค้าน
     const neighbour = `../${basename(root)}-evil/x.png`
-    await expect(store.put(neighbour, bytes)).rejects.toThrow('นอกที่เก็บ')
+    await expect(store.put(neighbour, bytes, 'image/png')).rejects.toThrow('นอกที่เก็บ')
   })
 
   it('เขียนไม่ได้แล้วโยน ไม่ใช่รายงานว่าสำเร็จ · และบอกว่าที่เก็บอยู่ไหน', async () => {
     // ที่เก็บที่ชี้ไปยัง "โฟลเดอร์" ที่จริงๆ เป็นไฟล์ · สร้างโฟลเดอร์ข้างในไม่ได้
     // เป็นตัวแทนของดิสก์ที่เขียนไม่ได้ ซึ่งเป็นความล้มเหลวที่จะเจอจริงตอน deploy
-    await store.put('uploads/blocker/x/file.bin', bytes)
+    await store.put('uploads/blocker/x/file.bin', bytes, 'image/png')
     const blocked = localDiskStore(join(root, 'uploads', 'blocker', 'x', 'file.bin'))
 
-    await expect(blocked.put('uploads/c/u/a.png', bytes))
+    await expect(blocked.put('uploads/c/u/a.png', bytes, 'image/png'))
       .rejects.toThrow('เขียนไฟล์ลงที่เก็บไม่ได้')
   })
 
   it('ที่เก็บที่เขียนไม่ได้ ไม่ทิ้งไฟล์ครึ่งใบไว้ให้ใครไปเจอ', async () => {
     const blocked = localDiskStore(join(root, 'uploads', 'blocker', 'x', 'file.bin'))
-    await expect(blocked.put('uploads/c/u/a.png', bytes)).rejects.toThrow()
+    await expect(blocked.put('uploads/c/u/a.png', bytes, 'image/png')).rejects.toThrow()
     await expect(stat(join(root, 'uploads', 'blocker', 'x', 'file.bin', 'uploads')))
       .rejects.toThrow()
   })
@@ -187,9 +187,9 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
   })
 
   it('ข้อความตอนเขียนไม่ได้ ยังบอกที่อยู่เต็ม เพราะคนที่ต้องไปแก้คืออีกคน', async () => {
-    await store.put('uploads/blocker2/x/file.bin', bytes)
+    await store.put('uploads/blocker2/x/file.bin', bytes, 'image/png')
     const blocked = localDiskStore(join(root, 'uploads', 'blocker2', 'x', 'file.bin'))
-    await expect(blocked.put('uploads/c/u/a.png', bytes)).rejects.toThrow(root)
+    await expect(blocked.put('uploads/c/u/a.png', bytes, 'image/png')).rejects.toThrow(root)
   })
 })
 
@@ -211,7 +211,7 @@ describe('supabaseStorageStore · เก็บผ่าน Supabase Storage', ()
     fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
     const store = supabaseStorageStore(config)
 
-    const result = await store.put('uploads/c1/u1/a.png', bytes)
+    const result = await store.put('uploads/c1/u1/a.png', bytes, 'image/png')
 
     expect(result).toEqual({
       storagePath: 'uploads/c1/u1/a.png',
@@ -223,11 +223,21 @@ describe('supabaseStorageStore · เก็บผ่าน Supabase Storage', ()
     expect(init.headers['x-upsert']).toBe('false')
   })
 
+  it('ส่งชนิดไฟล์จริงเป็น Content-Type ไม่ใช่ค่าเดาตายตัว — bucket ที่จำกัด MIME type ไว้ (แนะนำให้ตั้งเอง) ปฏิเสธ application/octet-stream ด้วย 415', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
+    const store = supabaseStorageStore(config)
+
+    await store.put('uploads/c1/u1/clip.mp4', bytes, 'video/mp4')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers['Content-Type']).toBe('video/mp4')
+  })
+
   it('ชื่อไฟล์ที่มีอักษรไทย/ช่องว่าง ถูกเข้ารหัสเป็น URL ที่ใช้ได้จริง แต่ / คั่นโฟลเดอร์ยังอยู่', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
     const store = supabaseStorageStore(config)
 
-    await store.put('uploads/c1/u1/ภาพ รางวัล.png', bytes)
+    await store.put('uploads/c1/u1/ภาพ รางวัล.png', bytes, 'image/png')
 
     const [url] = fetchMock.mock.calls[0]
     expect(url).toBe('https://proj.supabase.co/storage/v1/object/assets/uploads/c1/u1/%E0%B8%A0%E0%B8%B2%E0%B8%9E%20%E0%B8%A3%E0%B8%B2%E0%B8%87%E0%B8%A7%E0%B8%B1%E0%B8%A5.png')
@@ -237,14 +247,14 @@ describe('supabaseStorageStore · เก็บผ่าน Supabase Storage', ()
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'Duplicate' }), { status: 409 }))
     const store = supabaseStorageStore(config)
 
-    await expect(store.put('uploads/c1/u1/a.png', bytes)).rejects.toThrow('ไม่เขียนทับ')
+    await expect(store.put('uploads/c1/u1/a.png', bytes, 'image/png')).rejects.toThrow('ไม่เขียนทับ')
   })
 
   it('เขียนไม่สำเร็จด้วยเหตุอื่น โยน error ที่มีสถานะ HTTP ติดมา', async () => {
     fetchMock.mockResolvedValue(new Response('bucket not found', { status: 404 }))
     const store = supabaseStorageStore(config)
 
-    await expect(store.put('uploads/c1/u1/a.png', bytes)).rejects.toThrow('404')
+    await expect(store.put('uploads/c1/u1/a.png', bytes, 'image/png')).rejects.toThrow('404')
   })
 
   it('get อ่านไฟล์กลับมาได้ไบต์เดิมทุกไบต์ พร้อม Authorization header', async () => {

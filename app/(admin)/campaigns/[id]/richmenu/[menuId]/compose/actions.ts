@@ -58,7 +58,7 @@ export async function uploadLayerImage(
 
   const store = assetStore()
   const path = storagePathFor(campaignId, file.name)
-  const stored = await store.put(path, data)
+  const stored = await store.put(path, data, probed.meta.mime)
 
   const sql = db()
   const [asset] = await sql<{ id: string }[]>`
@@ -122,7 +122,7 @@ export async function applyComposition(
   })
 
   const path = storagePathFor(campaignId, `compose-${menuId}.jpg`)
-  const stored = await store.put(path, flattened.data)
+  const stored = await store.put(path, flattened.data, flattened.mime)
 
   const [asset] = await sql<{ id: string }[]>`
     INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type,

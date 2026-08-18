@@ -62,7 +62,7 @@ async function storeMenuImage(
 
   const store = assetStore()
   const path = storagePathFor(campaignId, file.name)
-  const stored = await store.put(path, finalData)
+  const stored = await store.put(path, finalData, finalMime)
 
   const sql = db()
   const [asset] = await sql<{ id: string }[]>`

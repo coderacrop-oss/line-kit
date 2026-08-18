@@ -26,7 +26,13 @@ export type StoredFile = { storagePath: string; publicUrl: string }
 export type AssetStore = {
   /** ประโยคที่จอเอาไปบอกคนว่าไฟล์ไปอยู่ไหน · จอไม่ควรเดาเองว่าเบื้องหลังเป็นอะไร */
   readonly describe: string
-  put(storagePath: string, data: Uint8Array): Promise<StoredFile>
+  /**
+   * mime ต้องเป็นชนิดจริงของไฟล์ (มาจาก probeImage/flattenComposition เสมอ ไม่ใช่
+   * ค่าเดาเอง) — Supabase Storage เช็ค Content-Type กับรายการ MIME ที่อนุญาตของ
+   * bucket เอง ส่ง "application/octet-stream" ตายตัวจะโดนปฏิเสธ 415 ทันทีถ้า
+   * bucket จำกัดชนิดไฟล์ไว้ (ตั้งใจให้จำกัดไว้ — ดู supabaseStorageStore ด้านล่าง)
+   */
+  put(storagePath: string, data: Uint8Array, mime: string): Promise<StoredFile>
   /**
    * อ่านไฟล์กลับเป็นไบต์ · M4-S01 (Rich Menu) ใช้ตอนอัปโหลดภาพเมนูขึ้น LINE เพราะ
    * LINE ไม่รับ URL — ต้องส่งเนื้อไฟล์เข้าไปตรงๆ (`api-data.line.me`)
@@ -99,7 +105,7 @@ export function localDiskStore(root: string): AssetStore {
     // ของเครื่องที่รันระบบไม่ใช่ของที่จอต้องบอกใคร
     describe: `เก็บเป็นไฟล์จริงบนเครื่องที่รันระบบ ใต้โฟลเดอร์ ${PUBLIC_PREFIX}/`,
 
-    async put(storagePath, data) {
+    async put(storagePath, data, _mime) {
       const target = resolve(root, storagePath)
       // กันที่อยู่ที่พาออกไปนอก root · safeFileName กันชื่อไฟล์แล้ว แต่ที่อยู่
       // ทั้งเส้นประกอบขึ้นจากหลายท่อน และด่านสุดท้ายควรอยู่ตรงที่เขียนจริง
@@ -184,10 +190,10 @@ export function supabaseStorageStore({ url, serviceRoleKey, bucket }: SupabaseSt
   return {
     describe: `เก็บผ่าน Supabase Storage · bucket "${bucket}"`,
 
-    async put(storagePath, data) {
+    async put(storagePath, data, mime) {
       const res = await fetch(`${objectBase}/${bucket}/${encodePath(storagePath)}`, {
         method: 'POST',
-        headers: { ...authHeaders, 'Content-Type': 'application/octet-stream', 'x-upsert': 'false' },
+        headers: { ...authHeaders, 'Content-Type': mime, 'x-upsert': 'false' },
         body: Buffer.from(data),
       })
 

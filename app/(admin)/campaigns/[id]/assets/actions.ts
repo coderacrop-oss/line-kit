@@ -57,7 +57,7 @@ async function storeOne(
   if (!verdict.ok) return { file: file.name, why: verdict.reason }
 
   const path = storagePathFor(context.campaignId, file.name)
-  const stored = await store.put(path, data)
+  const stored = await store.put(path, data, probed.meta.mime)
 
   await sql`
     INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type,
