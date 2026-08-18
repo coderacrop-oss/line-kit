@@ -183,6 +183,16 @@ const encodePath = (path: string): string => path.split('/').map(encodeURICompon
  * bucket ต้องตั้งเป็น public ไว้ล่วงหน้าในแดชบอร์ด Supabase — publicUrl ที่คืนออกไป
  * ใช้แสดงภาพตรงในจอ (ตัวอย่างการ์ด, ภาพ Rich Menu) โดยไม่มี token แนบมาด้วย
  */
+/**
+ * ทุกคำสั่งเรียก LINE ใน lib/line/client.ts ใส่ AbortSignal.timeout กำกับไว้ทุกจุด
+ * เพราะ fetch ของ Node ไม่มีเพดานเวลาในตัวเอง — ปล่อยเปลือยไว้แล้วปลายทางไม่ตอบ
+ * (สะดุดของเครือข่ายชั่วครู่ก็พอ ไม่ต้องถึงกับล่ม) request จะค้างได้นานเท่าที่ปลายทาง
+ * ยอมค้าง ซึ่งอาจนานกว่าที่ใครจะรอ จุดนี้ต้องมีเพดานเดียวกัน เพราะ publishRichMenus
+ * เรียก get() ก่อนจะอัปโหลดต่อให้ LINE — ถ้าจุดนี้ค้าง ทั้งขั้นตอนส่งขึ้น LINE ค้างตาม
+ * ไปด้วยแบบไม่มีทาง error ให้เห็นเลย
+ */
+const SUPABASE_STORAGE_TIMEOUT_MS = 10_000
+
 export function supabaseStorageStore({ url, serviceRoleKey, bucket }: SupabaseStorageConfig): AssetStore {
   const objectBase = `${url}/storage/v1/object`
   const authHeaders = { Authorization: `Bearer ${serviceRoleKey}` }
@@ -195,6 +205,7 @@ export function supabaseStorageStore({ url, serviceRoleKey, bucket }: SupabaseSt
         method: 'POST',
         headers: { ...authHeaders, 'Content-Type': mime, 'x-upsert': 'false' },
         body: Buffer.from(data),
+        signal: AbortSignal.timeout(SUPABASE_STORAGE_TIMEOUT_MS),
       })
 
       if (!res.ok) {
@@ -212,7 +223,9 @@ export function supabaseStorageStore({ url, serviceRoleKey, bucket }: SupabaseSt
     },
 
     async get(storagePath) {
-      const res = await fetch(`${objectBase}/${bucket}/${encodePath(storagePath)}`, { headers: authHeaders })
+      const res = await fetch(`${objectBase}/${bucket}/${encodePath(storagePath)}`, {
+        headers: authHeaders, signal: AbortSignal.timeout(SUPABASE_STORAGE_TIMEOUT_MS),
+      })
       if (!res.ok) {
         throw new Error(`อ่านไฟล์จาก Supabase Storage ไม่ได้ (${res.status}) — ${storagePath}`)
       }
