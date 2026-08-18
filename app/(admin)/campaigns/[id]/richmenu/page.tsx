@@ -281,11 +281,16 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
             </div>
             <input type="hidden" form={formId} name="image_asset_id" value={menu.imageAssetId} />
             {canEdit && (
-              <input
-                form={formId} type="file" name="image_file" accept="image/png,image/jpeg"
-                aria-label="แทนที่ภาพเมนู"
-                style={{ fontSize: 11, marginTop: 6 }}
-              />
+              <>
+                <input
+                  form={formId} type="file" name="image_file" accept="image/png,image/jpeg"
+                  aria-label="แทนที่ภาพเมนู"
+                  style={{ fontSize: 11, marginTop: 6 }}
+                />
+                <span style={{ fontSize: 10, color: 'var(--ink-3)', display: 'block', marginTop: 3 }}>
+                  ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังปัจจุบันอัตโนมัติ
+                </span>
+              </>
             )}
           </div>
         </Field>
@@ -337,7 +342,10 @@ function NewMenuForm({ campaignId }: { campaignId: string }) {
             <Field label="ชื่อเรียกเมนู (alias)" hint="ใช้ตอนลงทะเบียนปุ่มสลับแท็บ (BR-77) — ตั้งชื่อที่จำง่าย เช่น main, promo">
               <input name="alias" required placeholder="เช่น main" />
             </Field>
-            <Field label="ภาพเมนู (บังคับ · 2500×1686 หรือ 2500×843 แล้วแต่ผังที่เลือก)">
+            <Field
+              label="ภาพเมนู (บังคับ)"
+              hint="ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังที่เลือกไว้อัตโนมัติ (เหมือนวิธี &quot;อัปโหลดรูปและนำไปใช้&quot; ของ LINE) ปฏิเสธเฉพาะภาพที่เล็กเกินจนต้องขยายจนเบลอ"
+            >
               <input type="file" name="image_file" required accept="image/png,image/jpeg" />
             </Field>
 

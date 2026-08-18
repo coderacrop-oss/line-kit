@@ -10,6 +10,7 @@ import {
   createRichMenu, deleteRichMenu, setAreaTarget, setEntryMenu, setLayout, updateRichMenu,
 } from '@/lib/db/richmenu'
 import { asAreaKind, type AreaKind, type RichMenuArea } from '@/lib/richmenu/areas'
+import { fitImageToCanvas } from '@/lib/richmenu/fit'
 import { asLayoutKey, canvasFor, identifyLayout, LAYOUT_KEYS, type LayoutKey } from '@/lib/richmenu/layouts'
 import { isValidMenuImageSize, menuImageSizeWarning } from '@/lib/richmenu/image'
 
@@ -18,15 +19,17 @@ const trimmed = (formData: FormData, key: string) => String(formData.get(key) ??
 /**
  * ไฟล์หนึ่งไฟล์ กลายเป็นแถวของ asset ที่ใช้กับเมนูนี้ได้ทันที
  *
- * จอนี้ไม่มี "เลือกภาพจากคลัง" อีกต่อไป — อัปโหลดตรงนี้คือการเลือก ภาพเมนูจึง
- * ต้องตรงกับขนาดผืนภาพของผังที่กำลังใช้อยู่พอดี (2500×1686 หรือ 2500×843 —
- * canvasFor() ของ lib/richmenu/layouts.ts) ตั้งแต่ตอนอัปโหลด ไม่ใช่หลังบันทึก
- * แล้วค่อยรู้ว่าใช้ไม่ได้ ("ต้องตรวจตั้งแต่ตอนอัปโหลดในหน้า M4-S01 ไม่ใช่ปล่อยให้
- * LINE ปฏิเสธตอน publish" — L2 §5.2 v0.16) ผังกับภาพต้องคู่กันเสมอ เพราะพิกัด
- * ของทุกช่องคำนวณจากผืนภาพขนาดนั้นเป๊ะๆ — ภาพผิดขนาดแปลว่าบางช่องจะไม่ตรงกับ
- * ตำแหน่งจริงบนภาพที่ผู้เล่นเห็น ตัวตรวจรูปแบบไฟล์ทั่วไปยังใช้ชุดเดียวกับคลังภาพ
- * (probeImage · validateUpload · assetStore) เพื่อไม่ให้มีกติกาความถูกต้องของ
- * ไฟล์สองชุด
+ * จอนี้ไม่มี "เลือกภาพจากคลัง" อีกต่อไป — อัปโหลดตรงนี้คือการเลือก ภาพเมนูต้องเป็น
+ * ขนาดผืนภาพของผังที่กำลังใช้อยู่พอดี (2500×1686 หรือ 2500×843 — canvasFor() ของ
+ * lib/richmenu/layouts.ts) เพราะพิกัดของทุกช่องคำนวณจากผืนภาพขนาดนั้นเป๊ะๆ — แต่
+ * ภาพที่ไม่ตรงเป๊ะไม่ได้ถูกปฏิเสธทันที · ตัด/ย่อให้พอดีอัตโนมัติก่อน (fitImageToCanvas)
+ * เหมือนตัวเลือก "อัปโหลดรูปและนำไปใช้" ของ LINE เอง ซึ่งรับได้หลายขนาดต่อกลุ่ม —
+ * ปฏิเสธเฉพาะตอนภาพเล็กเกินไปจนต้องขยายจนเบลอ หรือไฟล์ใหญ่เกินจะประมวลผล เพราะ
+ * สองกรณีนี้ไม่มีทางแก้ให้ด้วยการตัด/ย่ออย่างเดียว
+ *
+ * ภาพที่ขนาดตรงเป๊ะอยู่แล้วไม่ผ่าน fitImageToCanvas เลย — เก็บไฟล์เดิมตรงๆ ไม่ผ่าน
+ * การเข้ารหัสซ้ำที่ทำให้คุณภาพลดลงโดยไม่จำเป็น ยังคงผ่านด่านทั่วไปของคลังภาพ
+ * (validateUpload) เหมือนเดิมสำหรับกรณีนี้เท่านั้น
  */
 async function storeMenuImage(
   campaignId: string, userId: string, file: File, canvas: { width: number; height: number },
@@ -36,30 +39,37 @@ async function storeMenuImage(
   const probed = probeImage(data)
   if (!probed.ok) throw new Error(probed.reason)
 
-  // ขนาดมาจากไบต์จริง ไม่ใช่จาก file.type ที่เบราว์เซอร์เดาจากนามสกุล
-  const verdict = validateUpload({
-    mime: probed.meta.mime, bytes: data.byteLength,
-    width: probed.meta.width, height: probed.meta.height,
-  })
-  if (!verdict.ok) throw new Error(verdict.reason)
+  let finalData: Uint8Array = data
+  let finalMime: string = probed.meta.mime
+  let finalWidth = probed.meta.width
+  let finalHeight = probed.meta.height
 
-  if (probed.meta.width !== canvas.width || probed.meta.height !== canvas.height) {
-    throw new Error(
-      `ERR-037 · ภาพนี้ขนาด ${probed.meta.width}×${probed.meta.height} — ผังที่เลือกไว้ต้องใช้ภาพขนาด `
-      + `${canvas.width}×${canvas.height} พอดี`,
-    )
+  if (probed.meta.width === canvas.width && probed.meta.height === canvas.height) {
+    // ขนาดมาจากไบต์จริง ไม่ใช่จาก file.type ที่เบราว์เซอร์เดาจากนามสกุล
+    const verdict = validateUpload({
+      mime: probed.meta.mime, bytes: data.byteLength,
+      width: probed.meta.width, height: probed.meta.height,
+    })
+    if (!verdict.ok) throw new Error(verdict.reason)
+  } else {
+    const fitted = await fitImageToCanvas(data, canvas)
+    if (!fitted.ok) throw new Error(`ERR-037 · ${fitted.reason}`)
+    finalData = fitted.data
+    finalMime = fitted.mime
+    finalWidth = canvas.width
+    finalHeight = canvas.height
   }
 
   const store = assetStore()
   const path = storagePathFor(campaignId, file.name)
-  const stored = await store.put(path, data)
+  const stored = await store.put(path, finalData)
 
   const sql = db()
   const [asset] = await sql<{ id: string }[]>`
     INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type,
                        bytes, width, height, replaces_asset_id, uploaded_by)
     VALUES (${campaignId}, ${stored.storagePath}, ${stored.publicUrl}, 'image',
-            ${probed.meta.mime}, ${data.byteLength}, ${probed.meta.width}, ${probed.meta.height},
+            ${finalMime}, ${finalData.byteLength}, ${finalWidth}, ${finalHeight},
             null, ${userId})
     RETURNING id`
 

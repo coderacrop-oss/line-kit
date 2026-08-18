@@ -1,3 +1,4 @@
+import { createCanvas } from '@napi-rs/canvas'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 type UserRow = { id: string; email: string; role: string; is_active: boolean }
@@ -116,8 +117,21 @@ const pngFile = (name: string, width: number, height: number, bytes = 40_000): F
   return new File([data], name, { type: 'image/png' })
 }
 
-/** ภาพเมนูขนาดถูกต้องพอดี — ค่าเริ่มต้นของทุกฟอร์มที่ไม่ได้ตั้งใจทดสอบเรื่องขนาด */
+/** ภาพเมนูขนาดถูกต้องพอดี — ค่าเริ่มต้นของทุกฟอร์มที่ไม่ได้ตั้งใจทดสอบเรื่องขนาด (ไม่ผ่าน fitImageToCanvas เลย จึงยังใช้ PNG ปลอมของ pngFile ได้) */
 const goodImage = () => pngFile('menu.png', 2500, 1686)
+
+/**
+ * ภาพ JPEG ถอดรหัสได้จริง — ต่างจาก pngFile ที่มีแค่ส่วนหัวพอลวง probeImage
+ * ตรงนี้ต้องผ่าน @napi-rs/canvas ถอดรหัสจริงด้วย (fitImageToCanvas เรียก loadImage)
+ */
+const realJpeg = async (width: number, height: number): Promise<File> => {
+  const canvas = createCanvas(width, height)
+  const ctx = canvas.getContext('2d')
+  ctx.fillStyle = '#3366cc'
+  ctx.fillRect(0, 0, width, height)
+  const buffer = new Uint8Array(await canvas.encode('jpeg', 90))
+  return new File([buffer], 'real.jpg', { type: 'image/jpeg' })
+}
 
 const form = (fields: Record<string, string>) => {
   const data = new FormData()
@@ -189,14 +203,34 @@ describe('createMenu · กรอกครบ', () => {
    * ด้วยซ้ำ) ต่างจากช่องที่ไม่ชี้ไปไหน (BR-01) ซึ่งบันทึกได้ก่อนแล้วไปบล็อกตอน
    * publish (ตัดสินใจข้อ 2 ของงานนี้)
    */
-  it('ภาพขนาดไม่ใช่ 2500×1686 พอดี ถูกบล็อกตอนอัปโหลด (ERR-037) — ไม่ใช่ปล่อยผ่านไปบล็อกตอน publish', async () => {
+  /**
+   * ภาพไม่ตรงขนาดเป๊ะไม่ได้ถูกปฏิเสธทันทีอีกต่อไป — ตัด/ย่อให้พอดีผังก่อน (เหมือน
+   * ตัวเลือก "อัปโหลดรูปและนำไปใช้" ของ LINE เอง) ปฏิเสธเฉพาะตอนเล็กเกินจนต้อง
+   * ขยายเกิน MAX_UPSCALE ซึ่งจะเบลอเห็นได้ชัด
+   */
+  it('ภาพเล็กเกินไปสำหรับผังที่เลือก (ต้องขยายเกิน MAX_UPSCALE) ถูกบล็อกตอนอัปโหลด (ERR-037)', async () => {
     signedInAs('configurator')
-    await expect(createMenu('c1', createForm({}, pngFile('x.png', 1200, 400))))
+    // ผืนใหญ่กว้าง 2500 · ภาพต้นฉบับกว้าง 500 = ต้องขยาย 5 เท่า เกินเพดานแน่นอน
+    const tooSmall = await realJpeg(500, 338)
+    await expect(createMenu('c1', createForm({}, tooSmall)))
       .rejects.toThrow('ERR-037')
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
-    // ภาพผิดขนาดไม่ควรถูกเก็บลงคลังเลยด้วยซ้ำ — ตรวจก่อนอัปโหลดจริง ไม่ใช่หลัง
+    // ภาพที่เล็กเกินไปไม่ควรถูกเก็บลงคลังเลยด้วยซ้ำ — ตรวจก่อนอัปโหลดจริง ไม่ใช่หลัง
     expect(writesMatching(/INSERT INTO asset/)).toEqual([])
     expect(state.stored).toEqual([])
+  })
+
+  it('ภาพไม่ตรงขนาดเป๊ะแต่ไม่เล็กเกินไป — ตัด/ย่อให้พอดีผังแล้วสร้างเมนูสำเร็จ (ไม่ปฏิเสธเพราะแค่ขนาดไม่ตรง)', async () => {
+    signedInAs('configurator')
+    // สี่เหลี่ยมจัตุรัส 1300×1300 — สัดส่วนต่างจากผังใหญ่ (2500×1686) มาก แต่สเกลที่ต้องใช้ (~1.92×) ยังต่ำกว่าเพดาน
+    const squareish = await realJpeg(1300, 1300)
+    await createMenu('c1', createForm({}, squareish))
+
+    const assetInsert = writesMatching(/INSERT INTO asset/)[0]
+    expect(assetInsert.values).toContain(2500)
+    expect(assetInsert.values).toContain(1686)
+    expect(assetInsert.values).toContain('image/jpeg')
+    expect(writesMatching(/INSERT INTO rich_menu/)).toHaveLength(1)
   })
 
   it('ผังไม่ถูกต้อง ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
@@ -266,14 +300,25 @@ describe('saveMenu · ภาพ', () => {
     expect(writesMatching(/UPDATE rich_menu SET/)[0].values).toContain('new-asset')
   })
 
-  it('ไฟล์ใหม่ขนาดผิด บล็อกตอนอัปโหลด (ERR-037) เหมือนตอนสร้าง', async () => {
+  it('ไฟล์ใหม่เล็กเกินไปสำหรับผังปัจจุบัน บล็อกตอนอัปโหลด (ERR-037) เหมือนตอนสร้าง', async () => {
     signedInAs('configurator')
     withOneArea()
     const data = form({ alias: 'main', area_count: '1', area_target_0: '' })
-    data.append('image_file', pngFile('x.png', 1200, 400))
+    data.append('image_file', await realJpeg(500, 338))
     await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ERR-037')
     expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
     expect(writesMatching(/INSERT INTO asset/)).toEqual([])
+  })
+
+  it('ไฟล์ใหม่ไม่ตรงขนาดเป๊ะแต่ไม่เล็กเกินไป — ตัด/ย่อให้พอดีผังปัจจุบันแล้วบันทึกสำเร็จ', async () => {
+    signedInAs('configurator')
+    withOneArea()
+    const data = form({ alias: 'main', area_count: '1', area_target_0: '' })
+    data.append('image_file', await realJpeg(1300, 1300))
+    await saveMenu('c1', 'menu-1', data)
+
+    expect(writesMatching(/INSERT INTO asset/)).toHaveLength(1)
+    expect(writesMatching(/UPDATE rich_menu SET/)[0].values).toContain('new-asset')
   })
 
   it('ไม่มีไฟล์ใหม่และภาพเดิม (จากช่องซ่อน) ขนาดผิด บล็อกก่อนแตะฐานข้อมูล', async () => {
