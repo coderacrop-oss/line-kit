@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Button, Empty, Field, Note, PageHead, Panel, STATUS_TONES } from '@/components/ui'
+import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
 import {
   COPIED_LABELS, REFUSED_LABELS, countCopyable, describeCounts,
@@ -59,7 +60,9 @@ export default async function DuplicateCampaignPage({ searchParams }: {
   const counts = source ? await countCopyable(sql, source.id) : null
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 900, margin: '0 auto' }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 'calc(100vh - 56px)' }}>
+      <GlobalNav isAdmin />
+      <main style={{ flex: 1, minWidth: 0, padding: 'var(--page-y) var(--page-x)', maxWidth: 900, margin: '0 auto' }}>
       <a href="/campaigns" style={{ fontSize: 12, color: 'var(--ink-3)', display: 'inline-block', marginBottom: 10 }}>
         ← แคมเปญทั้งหมด
       </a>
@@ -167,6 +170,7 @@ export default async function DuplicateCampaignPage({ searchParams }: {
           </div>
         </div>
       )}
-    </main>
+      </main>
+    </div>
   )
 }

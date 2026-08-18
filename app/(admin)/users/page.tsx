@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, Button, Field, Note, PageHead, Panel, STATUS_TONES } from '@/components/ui'
+import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
 import { db } from '@/lib/db/client'
 import {
@@ -121,7 +122,9 @@ export default async function UsersPage() {
   const canManage = session.role === 'configurator'
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 940, margin: '0 auto' }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 'calc(100vh - 56px)' }}>
+      <GlobalNav isAdmin={canManage} />
+      <main style={{ flex: 1, minWidth: 0, padding: 'var(--page-y) var(--page-x)', maxWidth: 940, margin: '0 auto' }}>
       <PageHead
         code="M13-S02 · Internal users"
         title="ผู้ใช้ภายใน"
@@ -210,6 +213,7 @@ export default async function UsersPage() {
           </div>
         </Panel.Row>
       </Panel>
-    </main>
+      </main>
+    </div>
   )
 }

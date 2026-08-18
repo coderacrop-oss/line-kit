@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, type BadgeTone, Empty, Note, PageHead, Panel } from '@/components/ui'
+import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
 import {
   type ChannelGroup, type ChannelSummary, type ChannelType, describeLastUsed, describePublished,
@@ -130,7 +131,9 @@ export default async function ChannelsPage() {
   const live = channels.filter((channel) => describePublished(channel).isLive)
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 820, margin: '0 auto' }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 'calc(100vh - 56px)' }}>
+      <GlobalNav isAdmin={canEdit} />
+      <main style={{ flex: 1, minWidth: 0, padding: 'var(--page-y) var(--page-x)', maxWidth: 820, margin: '0 auto' }}>
       <PageHead
         code="M6-S01 · LINE Channels"
         title="บัญชี LINE"
@@ -166,6 +169,7 @@ export default async function ChannelsPage() {
       <div style={{ fontSize: 11, color: 'var(--ink-3)', marginTop: 14, lineHeight: 1.6 }}>
         กุญแจถูกเก็บแบบเข้ารหัสและแสดงเฉพาะ 4 ตัวท้ายเสมอ (BR-16) — ไม่มีปุ่มเปิดดูค่าเต็ม
       </div>
-    </main>
+      </main>
+    </div>
   )
 }

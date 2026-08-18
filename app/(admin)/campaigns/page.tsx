@@ -1,5 +1,6 @@
 import { redirect } from 'next/navigation'
 import { Badge, type BadgeTone, Button, Empty, Field, PageHead, Panel, Rows, STATUS_TONES } from '@/components/ui'
+import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
 import { listCampaigns, type CampaignStatus, type CampaignSummary } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
@@ -168,7 +169,9 @@ export default async function CampaignsPage() {
   const canCreate = session.role === 'configurator'
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 1060, margin: '0 auto' }}>
+    <div style={{ display: 'flex', alignItems: 'stretch', minHeight: 'calc(100vh - 56px)' }}>
+      <GlobalNav isAdmin={session.role === 'configurator'} />
+      <main style={{ flex: 1, minWidth: 0, padding: 'var(--page-y) var(--page-x)', maxWidth: 1060, margin: '0 auto' }}>
       <PageHead
         code="M1-S01 · Campaigns"
         title="แคมเปญ"
@@ -197,6 +200,7 @@ export default async function CampaignsPage() {
           />
         }
       />
-    </main>
+      </main>
+    </div>
   )
 }
