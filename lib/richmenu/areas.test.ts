@@ -6,29 +6,29 @@ import { layoutRects } from './layouts'
 
 describe('buildAreas · สลับผังแล้วคงปลายทางเดิมไว้ตามตำแหน่ง', () => {
   it('ผังใหม่ไม่มีของเดิมเลย ทุกช่องเริ่มที่ none', () => {
-    const areas = buildAreas('two')
+    const areas = buildAreas('large_2h')
     expect(areas).toHaveLength(2)
     expect(areas.every((a) => a.kind === 'none' && a.target === null)).toBe(true)
   })
 
   it('พิกัดตรงกับ layoutRects เป๊ะ', () => {
-    const areas = buildAreas('six')
+    const areas = buildAreas('large_6')
     expect(areas.map(({ x, y, width, height }) => ({ x, y, width, height })))
-      .toEqual(layoutRects('six'))
+      .toEqual(layoutRects('large_6'))
   })
 
   it('สลับจากผังเล็กไปใหญ่ — ตำแหน่งเดิมยังอยู่ ตำแหน่งใหม่เป็น none', () => {
-    const two = setAreaTarget(buildAreas('two'), 0, 'url', 'https://a.example')
-    const six = buildAreas('six', two)
+    const two = setAreaTarget(buildAreas('large_2h'), 0, 'url', 'https://a.example')
+    const six = buildAreas('large_6', two)
     expect(six[0]).toMatchObject({ kind: 'url', target: 'https://a.example' })
     expect(six[1].kind).toBe('none')
     expect(six[5].kind).toBe('none')
   })
 
   it('สลับจากผังใหญ่ไปเล็ก — ตำแหน่งที่หายไปถูกตัดทิ้งไปเงียบๆ ไม่มีข้อมูลตกค้าง', () => {
-    let six = buildAreas('six')
+    let six = buildAreas('large_6')
     six = setAreaTarget(six, 5, 'url', 'https://last.example')
-    const one = buildAreas('one', six)
+    const one = buildAreas('large_1', six)
     expect(one).toHaveLength(1)
     expect(one[0].kind).toBe('none')
   })
@@ -36,17 +36,17 @@ describe('buildAreas · สลับผังแล้วคงปลายท�
 
 describe('countEmpty · BR-01 · ป้าย "N ช่องไม่ชี้ไปไหน"', () => {
   it('ทุกช่องว่างตอนสร้างใหม่', () => {
-    expect(countEmpty(buildAreas('three'))).toBe(3)
+    expect(countEmpty(buildAreas('large_3top1'))).toBe(3)
   })
 
   it('นับเฉพาะ none ไม่นับชนิดอื่น', () => {
-    let areas = buildAreas('three')
+    let areas = buildAreas('large_3top1')
     areas = setAreaTarget(areas, 0, 'url', 'https://x.example')
     expect(countEmpty(areas)).toBe(2)
   })
 
   it('ครบทุกช่องแล้วนับเป็นศูนย์', () => {
-    let areas = buildAreas('two')
+    let areas = buildAreas('large_2h')
     areas = setAreaTarget(areas, 0, 'url', 'https://a.example')
     areas = setAreaTarget(areas, 1, 'url', 'https://b.example')
     expect(countEmpty(areas)).toBe(0)
@@ -55,18 +55,18 @@ describe('countEmpty · BR-01 · ป้าย "N ช่องไม่ชี้�
 
 describe('setAreaTarget', () => {
   it('เปลี่ยนชนิดแล้วเก็บ target ใหม่', () => {
-    const areas = setAreaTarget(buildAreas('one'), 0, 'menu', 'menu-id-1')
+    const areas = setAreaTarget(buildAreas('large_1'), 0, 'menu', 'menu-id-1')
     expect(areas[0]).toMatchObject({ kind: 'menu', target: 'menu-id-1' })
   })
 
   it('เปลี่ยนกลับเป็น none แล้ว target ต้องถูกล้างเป็น null เสมอ — กันปลายทางเก่าตกค้าง', () => {
-    let areas = setAreaTarget(buildAreas('one'), 0, 'url', 'https://x.example')
+    let areas = setAreaTarget(buildAreas('large_1'), 0, 'url', 'https://x.example')
     areas = setAreaTarget(areas, 0, 'none', 'https://x.example')
     expect(areas[0]).toMatchObject({ kind: 'none', target: null })
   })
 
   it('ไม่แก้ช่องอื่น', () => {
-    const before = buildAreas('two')
+    const before = buildAreas('large_2h')
     const after = setAreaTarget(before, 0, 'url', 'https://x.example')
     expect(after[1]).toEqual(before[1])
   })

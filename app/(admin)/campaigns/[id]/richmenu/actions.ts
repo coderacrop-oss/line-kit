@@ -9,8 +9,8 @@ import { db } from '@/lib/db/client'
 import {
   createRichMenu, deleteRichMenu, setAreaTarget, setEntryMenu, setLayout, updateRichMenu,
 } from '@/lib/db/richmenu'
-import { asAreaKind, type AreaKind } from '@/lib/richmenu/areas'
-import { asLayoutKey, LAYOUT_KEYS, type LayoutKey } from '@/lib/richmenu/layouts'
+import { asAreaKind, type AreaKind, type RichMenuArea } from '@/lib/richmenu/areas'
+import { asLayoutKey, canvasFor, identifyLayout, LAYOUT_KEYS, type LayoutKey } from '@/lib/richmenu/layouts'
 import { isValidMenuImageSize, menuImageSizeWarning } from '@/lib/richmenu/image'
 
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
@@ -19,13 +19,17 @@ const trimmed = (formData: FormData, key: string) => String(formData.get(key) ??
  * ไฟล์หนึ่งไฟล์ กลายเป็นแถวของ asset ที่ใช้กับเมนูนี้ได้ทันที
  *
  * จอนี้ไม่มี "เลือกภาพจากคลัง" อีกต่อไป — อัปโหลดตรงนี้คือการเลือก ภาพเมนูจึง
- * ต้องขนาด 2500×1686 พอดีตั้งแต่ตอนอัปโหลด ไม่ใช่หลังบันทึกแล้วค่อยรู้ว่าใช้ไม่ได้
- * ("ต้องตรวจตั้งแต่ตอนอัปโหลดในหน้า M4-S01 ไม่ใช่ปล่อยให้ LINE ปฏิเสธตอน publish"
- * — L2 §5.2 v0.16) ตัวตรวจรูปแบบ/ขนาดไฟล์ยังใช้ชุดเดียวกับคลังภาพ (probeImage ·
- * validateUpload · assetStore) เพื่อไม่ให้มีกติกาความถูกต้องของไฟล์สองชุด
+ * ต้องตรงกับขนาดผืนภาพของผังที่กำลังใช้อยู่พอดี (2500×1686 หรือ 2500×843 —
+ * canvasFor() ของ lib/richmenu/layouts.ts) ตั้งแต่ตอนอัปโหลด ไม่ใช่หลังบันทึก
+ * แล้วค่อยรู้ว่าใช้ไม่ได้ ("ต้องตรวจตั้งแต่ตอนอัปโหลดในหน้า M4-S01 ไม่ใช่ปล่อยให้
+ * LINE ปฏิเสธตอน publish" — L2 §5.2 v0.16) ผังกับภาพต้องคู่กันเสมอ เพราะพิกัด
+ * ของทุกช่องคำนวณจากผืนภาพขนาดนั้นเป๊ะๆ — ภาพผิดขนาดแปลว่าบางช่องจะไม่ตรงกับ
+ * ตำแหน่งจริงบนภาพที่ผู้เล่นเห็น ตัวตรวจรูปแบบไฟล์ทั่วไปยังใช้ชุดเดียวกับคลังภาพ
+ * (probeImage · validateUpload · assetStore) เพื่อไม่ให้มีกติกาความถูกต้องของ
+ * ไฟล์สองชุด
  */
 async function storeMenuImage(
-  campaignId: string, userId: string, file: File,
+  campaignId: string, userId: string, file: File, canvas: { width: number; height: number },
 ): Promise<{ id: string }> {
   const data = new Uint8Array(await file.arrayBuffer())
 
@@ -39,8 +43,11 @@ async function storeMenuImage(
   })
   if (!verdict.ok) throw new Error(verdict.reason)
 
-  if (!isValidMenuImageSize(probed.meta.width, probed.meta.height)) {
-    throw new Error(`ERR-037 · ${menuImageSizeWarning(probed.meta.width, probed.meta.height)}`)
+  if (probed.meta.width !== canvas.width || probed.meta.height !== canvas.height) {
+    throw new Error(
+      `ERR-037 · ภาพนี้ขนาด ${probed.meta.width}×${probed.meta.height} — ผังที่เลือกไว้ต้องใช้ภาพขนาด `
+      + `${canvas.width}×${canvas.height} พอดี`,
+    )
   }
 
   const store = assetStore()
@@ -132,11 +139,11 @@ export async function createMenu(campaignId: string, formData: FormData): Promis
   const alias = trimmed(formData, 'alias')
   if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
 
-  const file = chosenFile(formData, 'image_file')
-  if (!file) throw new Error('ต้องอัปโหลดภาพเมนูก่อน (บังคับ · 2500×1686)')
-  const { id: imageAssetId } = await storeMenuImage(campaignId, session.userId, file)
-
   const layout = parseLayout(formData)
+
+  const file = chosenFile(formData, 'image_file')
+  if (!file) throw new Error('ต้องอัปโหลดภาพเมนูก่อน (ขนาดตามผังที่เลือกไว้)')
+  const { id: imageAssetId } = await storeMenuImage(campaignId, session.userId, file, canvasFor(layout))
 
   // DuplicateAliasError (UNIQUE campaign_id+alias) มีข้อความที่อ่านรู้เรื่องอยู่แล้ว
   // จากชั้น lib/db/richmenu.ts — ปล่อยให้หลุดขึ้นไปตรงๆ ไม่ต้องห่อซ้ำ
@@ -166,10 +173,19 @@ export async function saveMenu(campaignId: string, menuId: string, formData: For
   const newFile = chosenFile(formData, 'image_file')
   let imageAssetId: string
   if (newFile) {
-    imageAssetId = (await storeMenuImage(campaignId, session.userId, newFile)).id
+    // ผังของเมนูนี้ไม่ได้เปลี่ยนในแอ็กชันนี้ (สลับผังแยกอยู่ที่ changeLayout) — ภาพ
+    // ใหม่จึงต้องขนาดตรงกับผังปัจจุบันที่หาได้จากช่องที่มีอยู่จริง ไม่ใช่เชื่อค่าจาก
+    // ฟอร์มตรงๆ (ผังปัจจุบันคำนวณจากพิกัดช่องจริงเหมือนที่จอ M4-S01 ใช้แสดงผล)
+    const sql = db()
+    const [current] = await sql<{ areas: RichMenuArea[] }[]>`
+      SELECT areas FROM rich_menu WHERE id = ${menuId} AND campaign_id = ${campaignId}`
+    if (!current) throw new Error('ไม่พบเมนูนี้ในแคมเปญนี้')
+    const canvas = canvasFor(identifyLayout(current.areas ?? []))
+
+    imageAssetId = (await storeMenuImage(campaignId, session.userId, newFile, canvas)).id
   } else {
     imageAssetId = trimmed(formData, 'image_asset_id')
-    if (!imageAssetId) throw new Error('ต้องมีภาพเมนูก่อน (บังคับ · 2500×1686)')
+    if (!imageAssetId) throw new Error('ต้องมีภาพเมนูก่อน')
     await assertExistingImageValid(campaignId, imageAssetId)
   }
 
@@ -186,13 +202,34 @@ export async function saveMenu(campaignId: string, menuId: string, formData: For
   revalidatePath(`/campaigns/${campaignId}/richmenu`)
 }
 
-/** ปุ่มเลือกผัง — มีผลทันที ไม่ต้องรอกด "บันทึกเมนู" (เหมือนปุ่ม "+ เพิ่มเงื่อนไข" ของ BlockForm) */
+/**
+ * ปุ่มเลือกผัง — มีผลทันที ไม่ต้องรอกด "บันทึกเมนู" (เหมือนปุ่ม "+ เพิ่มเงื่อนไข" ของ BlockForm)
+ *
+ * สลับได้เฉพาะผังที่ใช้ผืนภาพขนาดเดียวกับภาพที่เมนูนี้ใช้อยู่ตอนนี้ — จอกรองปุ่ม
+ * ให้เหลือแต่ผังกลุ่มเดียวกับภาพปัจจุบันอยู่แล้ว แต่ยังตรวจซ้ำที่นี่เผื่อฟอร์มที่
+ * แต่งเองข้ามการกรองนั้นมา สลับข้ามขนาดผืนภาพได้ทางเดียวคือแทนที่ภาพผ่าน "บันทึก
+ * เมนู" ซึ่งอัปโหลดภาพกับผังคู่กันเสมอ (ดู storeMenuImage)
+ */
 export async function changeLayout(campaignId: string, menuId: string, layout: string): Promise<void> {
   await requireRole('configurator', 'content_editor')
   const key = asLayoutKey(layout)
   if (!key) throw new Error(`ผังช่องไม่ถูกต้อง — ต้องเป็นหนึ่งใน ${LAYOUT_KEYS.join(', ')}`)
 
-  await setLayout(db(), { id: menuId, campaignId, layout: key })
+  const sql = db()
+  const [current] = await sql<{ width: number; height: number }[]>`
+    SELECT a.width, a.height FROM rich_menu rm JOIN asset a ON a.id = rm.image_asset_id
+     WHERE rm.id = ${menuId} AND rm.campaign_id = ${campaignId}`
+  if (!current) throw new Error('ไม่พบเมนูนี้ในแคมเปญนี้')
+
+  const canvas = canvasFor(key)
+  if (current.width !== canvas.width || current.height !== canvas.height) {
+    throw new Error(
+      `ผังนี้ใช้กับภาพขนาด ${canvas.width}×${canvas.height} — ภาพปัจจุบันของเมนูนี้คือ `
+      + `${current.width}×${current.height} เปลี่ยนภาพก่อนถึงจะสลับไปผังกลุ่มนี้ได้`,
+    )
+  }
+
+  await setLayout(sql, { id: menuId, campaignId, layout: key })
   revalidatePath(`/campaigns/${campaignId}/richmenu`)
 }
 

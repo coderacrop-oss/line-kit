@@ -45,7 +45,7 @@ const goodMenu = (patch: Partial<RichMenuScreenData['menus'][number]> = {}) => (
   isEntry: false,
   lineRichMenuId: null,
   chatBarText: 'เมนู',
-  layout: 'one' as const,
+  layout: 'large_1' as const,
   emptyCount: 1,
   imageBad: false,
   ...patch,
@@ -112,12 +112,60 @@ describe('M4-S01 · การ์ดของเมนูหนึ่งใบ', 
     expect(screen.getByText(/1200×400/)).toBeDefined()
   })
 
-  it('ปุ่มเลือกผังแสดงครบสี่แบบ (1 · 2 · 3 · 6 ช่อง)', async () => {
-    state.screen = { ...state.screen, menus: [goodMenu()] }
+  it('เมนูที่ใช้ภาพใหญ่ (2500×1686) เห็นปุ่มสลับผังครบเจ็ดแบบของกลุ่มภาพใหญ่เท่านั้น', async () => {
+    state.screen = { ...state.screen, menus: [goodMenu({ layout: 'large_1' })] }
     await open()
-    for (const label of ['1', '2', '3', '6']) {
+    for (const label of [
+      'เต็มภาพ', '2 ช่อง (บน–ล่าง)', '2 ช่อง (ซ้าย–ขวา)', '3 ช่อง (บน 1 ใหญ่ + ล่าง 2)',
+      '3 ช่อง (บน 2 + ล่าง 1 ใหญ่)', '4 ช่อง (ซ้าย 1 ใหญ่ + ขวา 3)', '6 ช่อง (ตาราง 2×3)',
+    ]) {
       expect(screen.getByRole('button', { name: label })).toBeDefined()
     }
+    // ผังของกลุ่มภาพเล็กต้องไม่ปนมาด้วย — สลับข้ามขนาดผืนภาพจากปุ่มนี้ไม่ได้
+    // (เทียบเฉพาะ role="button" เพราะฟอร์ม "+ เพิ่มเมนู" มีป้ายเดียวกันเป็นตัวเลือก radio อยู่แล้วเสมอ)
+    expect(screen.queryByRole('button', { name: '3 ช่อง (แนวตั้ง 3 คอลัมน์)' })).toBeNull()
+  })
+
+  it('เมนูที่ใช้ภาพเล็ก (2500×843) เห็นปุ่มสลับผังครบห้าแบบของกลุ่มภาพเล็กเท่านั้น', async () => {
+    state.screen = {
+      ...state.screen,
+      menus: [goodMenu({
+        layout: 'small_1', imageWidth: 2500, imageHeight: 843,
+        areas: [{ x: 0, y: 0, width: 2500, height: 843, kind: 'none' as const, target: null }],
+      })],
+    }
+    await open()
+    for (const label of [
+      'เต็มภาพ', '2 ช่อง (ซ้าย–ขวา)', '3 ช่อง (แนวตั้ง 3 คอลัมน์)',
+      '3 ช่อง (ซ้าย 1 ใหญ่ + ขวา 2)', '3 ช่อง (ซ้าย 2 + ขวา 1 ใหญ่)',
+    ]) {
+      expect(screen.getByRole('button', { name: label })).toBeDefined()
+    }
+    // ผังของกลุ่มภาพใหญ่ที่นับช่องต่างกันต้องไม่ปนมาด้วย
+    expect(screen.queryByRole('button', { name: '6 ช่อง (ตาราง 2×3)' })).toBeNull()
+  })
+
+  it('บอกด้วยว่าสลับข้ามขนาดผืนภาพจากปุ่มนี้ไม่ได้ ต้องเปลี่ยนภาพก่อน', async () => {
+    state.screen = { ...state.screen, menus: [goodMenu({ layout: 'large_1' })] }
+    await open()
+    expect(screen.getByText(/สลับข้ามขนาดผืนภาพ.*ต้องอัปโหลดภาพขนาดนั้นก่อน/)).toBeDefined()
+  })
+})
+
+describe('M4-S01 · ผังของฟอร์ม "+ เพิ่มเมนู" — ครบสิบสองแบบ จัดกลุ่มภาพใหญ่/ภาพเล็ก', () => {
+  it('มีทั้งเจ็ดผังของภาพใหญ่และห้าผังของภาพเล็ก พร้อมป้าย "แบบ LINE" กำกับทั้งสองกลุ่ม', async () => {
+    const { container } = await open()
+    const radios = Array.from(container.querySelectorAll('input[name="layout"]')) as HTMLInputElement[]
+    const values = radios.map((r) => r.value)
+    expect(values).toHaveLength(12)
+    expect(new Set(values).size).toBe(12)
+    expect(screen.getAllByText('แบบ LINE')).toHaveLength(2)
+  })
+
+  it('ผังเริ่มต้นคือเต็มภาพของภาพใหญ่ (large_1)', async () => {
+    const { container } = await open()
+    const checked = container.querySelector('input[name="layout"]:checked') as HTMLInputElement
+    expect(checked.value).toBe('large_1')
   })
 })
 

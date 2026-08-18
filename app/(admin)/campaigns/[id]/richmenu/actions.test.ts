@@ -16,8 +16,10 @@ const state: {
    * ขนาดถูกวัดจากไบต์ไฟล์ตรงๆ ก่อนจะมีแถว asset ด้วยซ้ำ
    */
   assets: Record<string, { width: number; height: number }>
-  /** areas ปัจจุบันของเมนูที่ setAreaTarget/setLayout จะอ่านก่อนเขียน */
+  /** areas ปัจจุบันของเมนูที่ setAreaTarget/setLayout/saveMenu(อัปโหลดใหม่) จะอ่านก่อนเขียน */
   areas: Array<{ x: number; y: number; width: number; height: number; kind: string; target: string | null }>
+  /** ขนาดภาพปัจจุบันของแต่ละเมนู — changeLayout ใช้เทียบกับผังใหม่ที่จะสลับไป */
+  menuImage: { width: number; height: number }
   failWith: unknown
   writes: Array<{ text: string; values: unknown[] }>
   stored: Array<{ path: string; bytes: number }>
@@ -29,6 +31,7 @@ const state: {
     'c1:asset-bad': { width: 100, height: 100 },
   },
   areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }],
+  menuImage: { width: 2500, height: 1686 },
   failWith: undefined,
   writes: [],
   stored: [],
@@ -45,6 +48,9 @@ const sql = Object.assign(
         const campaignId = String(values[1])
         const key = `${campaignId}:${assetId}`
         return Promise.resolve(state.assets[key] ? [state.assets[key]] : [])
+      }
+      if (/rich_menu rm JOIN asset a/.test(text)) {
+        return Promise.resolve([state.menuImage])
       }
       if (/SELECT areas FROM rich_menu/.test(text)) {
         return Promise.resolve([{ areas: state.areas }])
@@ -124,7 +130,7 @@ const createForm = (
   patch: Record<string, string> = {},
   imageFile: File | null | undefined = goodImage(),
 ) => {
-  const data = form({ alias: 'main', layout: 'one', ...patch })
+  const data = form({ alias: 'main', layout: 'large_1', ...patch })
   if (imageFile) data.append('image_file', imageFile)
   return data
 }
@@ -139,6 +145,7 @@ beforeEach(() => {
     'c1:asset-bad': { width: 100, height: 100 },
   }
   state.areas = [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'none', target: null }]
+  state.menuImage = { width: 2500, height: 1686 }
   state.failWith = undefined
   state.writes = []
   state.stored = []
@@ -381,10 +388,37 @@ describe('changeLayout', () => {
     expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
   })
 
-  it('ผังที่รู้จัก เขียน areas ใหม่', async () => {
+  it('ผังที่รู้จัก อยู่ผืนภาพเดียวกับภาพปัจจุบัน เขียน areas ใหม่', async () => {
     signedInAs('content_editor')
-    await changeLayout('c1', 'menu-1', 'six')
+    state.menuImage = { width: 2500, height: 1686 } // ผืนใหญ่ — ตรงกับ large_6
+    await changeLayout('c1', 'menu-1', 'large_6')
     expect(writesMatching(/UPDATE rich_menu SET areas/)).toHaveLength(1)
+  })
+
+  /**
+   * ผังของผืนเล็ก (small_*) ใช้กับภาพผืนใหญ่ไม่ได้ — ครึ่งล่างของภาพจะไม่มีช่อง
+   * ให้กดเลย เพราะพิกัดของผังคำนวณจากผืนเล็กเท่านั้น สลับข้ามผืนต้องเปลี่ยนภาพ
+   * ก่อน (ผ่าน "บันทึกเมนู") ไม่ใช่กดปุ่มผังเฉยๆ
+   */
+  it('ผังที่อยู่คนละผืนภาพกับภาพปัจจุบัน ปฏิเสธ ไม่เขียนอะไรเลย', async () => {
+    signedInAs('configurator')
+    state.menuImage = { width: 2500, height: 1686 } // ผืนใหญ่
+    await expect(changeLayout('c1', 'menu-1', 'small_2')).rejects.toThrow('2500×843')
+    expect(writesMatching(/UPDATE rich_menu SET areas/)).toEqual([])
+  })
+
+  it('เมนูที่มีภาพผืนเล็กอยู่แล้ว สลับไปผังผืนเล็กด้วยกันได้ปกติ', async () => {
+    signedInAs('configurator')
+    state.menuImage = { width: 2500, height: 843 } // ผืนเล็ก
+    await changeLayout('c1', 'menu-1', 'small_3')
+    expect(writesMatching(/UPDATE rich_menu SET areas/)).toHaveLength(1)
+  })
+
+  it('ไม่พบเมนูนี้ (ลบไปแล้ว หรือของแคมเปญอื่น) ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
+    signedInAs('configurator')
+    state.menuImage = undefined as never
+    await expect(changeLayout('c1', 'menu-1', 'large_6')).rejects.toThrow('ไม่พบเมนูนี้')
+    expect(writesMatching(/UPDATE rich_menu SET areas/)).toEqual([])
   })
 })
 

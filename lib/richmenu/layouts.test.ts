@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
-  asLayoutKey, identifyLayout, LAYOUT_KEYS, LAYOUTS, layoutRects, MAX_AREAS,
-  MENU_IMAGE_HEIGHT, MENU_IMAGE_WIDTH,
+  asLayoutKey, canvasFor, identifyLayout, LAYOUT_KEYS, LAYOUTS, layoutRects, layoutsOfSize,
+  MAX_AREAS, MENU_CANVAS,
 } from './layouts'
 
 describe('layoutRects · §5.2 พิกัดต้องเป็นจำนวนเต็มล้วน ไม่มีเปอร์เซ็นต์', () => {
@@ -13,18 +13,20 @@ describe('layoutRects · §5.2 พิกัดต้องเป็นจำน�
     }
   })
 
-  it.each(LAYOUT_KEYS)('ผัง "%s" ไม่ล้นขอบภาพ 2500×1686', (key) => {
+  it.each(LAYOUT_KEYS)('ผัง "%s" ไม่ล้นขอบผืนภาพของตัวเอง', (key) => {
+    const canvas = canvasFor(key)
     for (const rect of layoutRects(key)) {
       expect(rect.x).toBeGreaterThanOrEqual(0)
       expect(rect.y).toBeGreaterThanOrEqual(0)
-      expect(rect.x + rect.width).toBeLessThanOrEqual(MENU_IMAGE_WIDTH)
-      expect(rect.y + rect.height).toBeLessThanOrEqual(MENU_IMAGE_HEIGHT)
+      expect(rect.x + rect.width).toBeLessThanOrEqual(canvas.width)
+      expect(rect.y + rect.height).toBeLessThanOrEqual(canvas.height)
     }
   })
 
-  it.each(LAYOUT_KEYS)('ผัง "%s" เติมเต็มผืนภาพพอดี ไม่มีช่องว่างเหลือ', (key) => {
+  it.each(LAYOUT_KEYS)('ผัง "%s" เติมเต็มผืนภาพของตัวเองพอดี ไม่มีช่องว่างเหลือ', (key) => {
+    const canvas = canvasFor(key)
     const total = layoutRects(key).reduce((sum, r) => sum + r.width * r.height, 0)
-    expect(total).toBe(MENU_IMAGE_WIDTH * MENU_IMAGE_HEIGHT)
+    expect(total).toBe(canvas.width * canvas.height)
   })
 
   it.each(LAYOUT_KEYS)('ผัง "%s" ไม่มีช่องซ้อนทับกัน', (key) => {
@@ -47,43 +49,80 @@ describe('layoutRects · §5.2 พิกัดต้องเป็นจำน�
   })
 
   it('คืนอาเรย์ใหม่ทุกครั้ง — แก้ค่าที่คืนมาไม่กระทบผังต้นฉบับ', () => {
-    const first = layoutRects('two')
+    const first = layoutRects('large_2h')
     first[0].x = 999
-    expect(layoutRects('two')[0].x).toBe(0)
+    expect(layoutRects('large_2h')[0].x).toBe(0)
   })
 })
 
 describe('LAYOUTS · รายการสำหรับปุ่มเลือกผัง', () => {
-  it('มีสี่แบบตรงกับ LAYOUT_KEYS', () => {
+  it('มีสิบสองแบบตรงกับ LAYOUT_KEYS', () => {
     expect(LAYOUTS.map((l) => l.key)).toEqual([...LAYOUT_KEYS])
   })
 
-  it('ป้ายบนปุ่มคือจำนวนช่องของผังนั้น', () => {
+  it('จำนวนช่องตรงกับพิกัดจริงของผังนั้น', () => {
     for (const option of LAYOUTS) {
-      expect(option.label).toBe(String(option.count))
       expect(option.count).toBe(layoutRects(option.key).length)
+    }
+  })
+
+  it('ทุกผังมีป้ายเป็นข้อความ ไม่ใช่สตริงว่าง', () => {
+    for (const option of LAYOUTS) {
+      expect(option.label.length).toBeGreaterThan(0)
+    }
+  })
+
+  it('ผังที่นับช่องเท่ากันแต่แบ่งคนละแบบ ต้องมีป้ายไม่ซ้ำกัน — ไม่งั้นแยกไม่ออกว่ากดอันไหน', () => {
+    const bySize = new Map<string, string[]>()
+    for (const option of LAYOUTS) {
+      const key = `${option.size}:${option.count}`
+      bySize.set(key, [...(bySize.get(key) ?? []), option.label])
+    }
+    for (const [group, labels] of bySize) {
+      expect(new Set(labels).size, group).toBe(labels.length)
+    }
+  })
+
+  it('เจ็ดผังเป็นของผืนใหญ่ ห้าผังเป็นของผืนเล็ก — ตรงกับที่ LINE เสนอเอง', () => {
+    expect(layoutsOfSize('large')).toHaveLength(7)
+    expect(layoutsOfSize('small')).toHaveLength(5)
+  })
+})
+
+describe('canvasFor · ขนาดผืนภาพที่ผังนั้นบังคับ', () => {
+  it('ผังของผืนใหญ่ทุกอันต้องการภาพ 2500×1686', () => {
+    for (const option of layoutsOfSize('large')) {
+      expect(canvasFor(option.key)).toEqual(MENU_CANVAS.large)
+    }
+  })
+
+  it('ผังของผืนเล็กทุกอันต้องการภาพ 2500×843', () => {
+    for (const option of layoutsOfSize('small')) {
+      expect(canvasFor(option.key)).toEqual(MENU_CANVAS.small)
     }
   })
 })
 
-describe('identifyLayout · หาผังจากจำนวนช่องที่มีอยู่จริง', () => {
-  it.each([
-    [1, 'one'], [2, 'two'], [3, 'three'], [6, 'six'],
-  ] as const)('%i ช่อง → ผัง %s', (count, key) => {
-    expect(identifyLayout(count)).toBe(key)
+describe('identifyLayout · หาผังจากพิกัดช่องที่มีอยู่จริง', () => {
+  it.each(LAYOUT_KEYS)('พิกัดของผัง "%s" หาผังกลับมาได้ตรงตัว', (key) => {
+    expect(identifyLayout(layoutRects(key))).toBe(key)
   })
 
-  it('จำนวนที่ไม่ตรงผังไหนเลย กลับเป็น one แทนการไม่มีสถานะ', () => {
-    expect(identifyLayout(0)).toBe('one')
-    expect(identifyLayout(4)).toBe('one')
-    expect(identifyLayout(99)).toBe('one')
+  it('ลำดับของช่องไม่มีผลต่อการหาผัง — เทียบเป็นชุด ไม่ใช่เทียบทีละตำแหน่ง', () => {
+    const reversed = [...layoutRects('large_6')].reverse()
+    expect(identifyLayout(reversed)).toBe('large_6')
+  })
+
+  it('พิกัดที่ไม่ตรงผังไหนเลย กลับเป็น large_1 แทนการไม่มีสถานะ', () => {
+    expect(identifyLayout([])).toBe('large_1')
+    expect(identifyLayout([{ x: 0, y: 0, width: 10, height: 10 }])).toBe('large_1')
   })
 })
 
 describe('asLayoutKey', () => {
   it('รับเฉพาะค่าที่อยู่ใน LAYOUT_KEYS', () => {
-    expect(asLayoutKey('six')).toBe('six')
-    expect(asLayoutKey('seven')).toBeNull()
+    expect(asLayoutKey('large_6')).toBe('large_6')
+    expect(asLayoutKey('six')).toBeNull()
     expect(asLayoutKey(null)).toBeNull()
     expect(asLayoutKey(undefined)).toBeNull()
   })
