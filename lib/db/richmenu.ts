@@ -164,6 +164,20 @@ export async function updateRichMenu(
   }
 }
 
+/**
+ * แก้เฉพาะภาพของเมนู ไม่แตะชื่อเรียก — ใช้ตอนกด "ใช้" บนตัวจัดวางภาพหลายชั้น
+ * (M4-S02) ซึ่งจอนั้นไม่มีช่องแก้ชื่อเรียกเลย ต่างจาก updateRichMenu ที่มาจากฟอร์ม
+ * บันทึกหลักของ M4-S01 ซึ่งแก้สองอย่างพร้อมกันเสมอตามแบบของจอนั้น
+ */
+export async function setMenuImage(
+  sql: postgres.Sql, input: { id: string; campaignId: string; imageAssetId: string },
+): Promise<void> {
+  const [row] = await sql<{ id: string }[]>`
+    SELECT id FROM rich_menu WHERE id = ${input.id} AND campaign_id = ${input.campaignId}`
+  if (!row) throw new Error('ไม่พบเมนูนี้ในแคมเปญนี้')
+  await sql`UPDATE rich_menu SET image_asset_id = ${input.imageAssetId} WHERE id = ${input.id}`
+}
+
 /** เปลี่ยนผังช่อง — เก็บปลายทางเดิมไว้ตามตำแหน่งเท่าที่ยังมีช่องเหลือ (buildAreas) */
 export async function setLayout(
   sql: postgres.Sql, input: { id: string; campaignId: string; layout: LayoutKey },

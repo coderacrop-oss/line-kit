@@ -384,8 +384,9 @@ describe('ไม่มีค่าสีเขียนตรงในไฟล�
     const offenders: string[] = []
     for (const file of [...files('components'), ...files('app')]) {
       const source = readFileSync(file, 'utf8')
-      // ค่าเริ่มต้นของธีมแคมเปญเป็นข้อมูล ไม่ใช่สีของหน้าจอ
-      const stripped = source.replace(/const DEFAULT_CAMPAIGN_PRIMARY = '#[0-9A-Fa-f]{6}'/, '')
+      // ค่าเริ่มต้นของข้อมูล (ธีมแคมเปญ · สีตั้งต้นของชั้นข้อความ ฯลฯ) ไม่ใช่สีของหน้าจอ
+      // ต้องตั้งชื่อเป็นค่าคงที่ DEFAULT_* เสมอ เพื่อให้ grep เจอง่ายว่ามีข้อยกเว้นตรงไหนบ้าง
+      const stripped = source.replace(/const DEFAULT_[A-Z0-9_]+ = '#[0-9A-Fa-f]{3,8}'/g, '')
       const hits = stripped.match(/#[0-9A-Fa-f]{3,8}\b/g)
       if (hits) offenders.push(`${file}: ${hits.join(', ')}`)
     }
