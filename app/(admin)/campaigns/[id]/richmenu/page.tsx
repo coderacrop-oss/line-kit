@@ -50,13 +50,13 @@ function areaSelectValue(area: RichMenuArea): string {
   return `${area.kind}:${area.target ?? ''}`
 }
 
-function AreaTargetSelect({ area, index, data, menuId }: {
-  area: RichMenuArea; index: number; data: RichMenuScreenData; menuId: string
+function AreaTargetSelect({ area, index, data, menuId, formId }: {
+  area: RichMenuArea; index: number; data: RichMenuScreenData; menuId: string; formId: string
 }) {
   const current = areaSelectValue(area)
   return (
     <>
-      <select name={`area_target_${index}`} defaultValue={current} style={{ width: '100%' }}>
+      <select name={`area_target_${index}`} defaultValue={current} form={formId} style={{ width: '100%' }}>
         <option value="">— ไม่ชี้ไปไหน —</option>
         <optgroup label="กิจกรรม">
           {data.activities.length === 0 && <option value="" disabled>— เลือกกิจกรรม —</option>}
@@ -80,14 +80,15 @@ function AreaTargetSelect({ area, index, data, menuId }: {
         name={`area_url_${index}`}
         placeholder="https://…"
         defaultValue={area.kind === 'url' ? area.target ?? '' : ''}
+        form={formId}
         style={{ fontFamily: 'var(--mono)', fontSize: 11 }}
       />
     </>
   )
 }
 
-function AreaBox({ area, index, data, menuId }: {
-  area: RichMenuArea; index: number; data: RichMenuScreenData; menuId: string
+function AreaBox({ area, index, data, menuId, formId }: {
+  area: RichMenuArea; index: number; data: RichMenuScreenData; menuId: string; formId: string
 }) {
   const isEmpty = area.kind === ('none' as AreaKind)
   // เตือนเฉพาะช่องที่ชี้ไปกิจกรรมที่ยังหาเจอ (กิจกรรมไม่เคยถูกลบจริง — ดู
@@ -100,7 +101,7 @@ function AreaBox({ area, index, data, menuId }: {
   return (
     <div style={boxStyle}>
       <div style={labelStyle}>ช่อง {index + 1}</div>
-      <AreaTargetSelect area={area} index={index} data={data} menuId={menuId} />
+      <AreaTargetSelect area={area} index={index} data={data} menuId={menuId} formId={formId} />
       {isEmpty && (
         <span style={{ fontSize: 10, color: 'var(--danger)', lineHeight: 1.4 }}>
           กดแล้วเงียบ (BR-01)
@@ -312,7 +313,7 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
 
         <div style={{ ...gridStyle, gridTemplateColumns: `repeat(${layoutCols}, 1fr)` }}>
           {menu.areas.map((area, index) => (
-            <AreaBox key={index} area={area} index={index} data={data} menuId={menu.id} />
+            <AreaBox key={index} area={area} index={index} data={data} menuId={menu.id} formId={formId} />
           ))}
         </div>
 

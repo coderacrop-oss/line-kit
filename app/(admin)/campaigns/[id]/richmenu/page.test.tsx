@@ -212,6 +212,28 @@ describe('M4-S01 · ป้าย "กิจกรรมปลายทางถ�
   })
 })
 
+describe('M4-S01 · ช่องเลือกปลายทางผูกกับฟอร์ม "บันทึกเมนู" จริง (form=)', () => {
+  // ช่องเลือกปลายทาง (select + input url) วาดอยู่นอก <form> ทางโครงสร้าง JSX — ถ้า
+  // ขาด attribute form= ที่ชี้กลับไปยัง id ของฟอร์มบันทึกเมนู เบราว์เซอร์จะไม่ส่งค่า
+  // ที่เลือกไปกับฟอร์มเลย กดบันทึกกี่ครั้งก็รีเซ็ตทุกช่องกลับเป็น "ไม่ชี้ไปไหน" เสมอ
+  // (บั๊กจริงที่เจอจากการใช้งานจริง ไม่ใช่สมมติ)
+  it('select และ input ของช่องปลายทาง ผูก form= ตรงกับ id ของฟอร์มบันทึกเมนู', async () => {
+    state.screen = {
+      ...state.screen,
+      menus: [goodMenu({ areas: [{ x: 0, y: 0, width: 2500, height: 1686, kind: 'url', target: 'https://x.example' }] })],
+    }
+    const { container } = await open()
+
+    const form = container.querySelector('form#rm-save-m1') as HTMLFormElement
+    expect(form).not.toBeNull()
+
+    const select = container.querySelector('select[name="area_target_0"]') as HTMLSelectElement
+    const urlInput = container.querySelector('input[name="area_url_0"]') as HTMLInputElement
+    expect(select.getAttribute('form')).toBe('rm-save-m1')
+    expect(urlInput.getAttribute('form')).toBe('rm-save-m1')
+  })
+})
+
 describe('M4-S01 · ผังของฟอร์ม "+ เพิ่มเมนู" — สิบสามแบบ จัดกลุ่มภาพใหญ่/ภาพเล็ก', () => {
   it('มีทั้งแปดผังของภาพใหญ่และห้าผังของภาพเล็ก รวมสิบสามแบบ ไม่มีค่าซ้ำ', async () => {
     const { container } = await open()
