@@ -1,4 +1,7 @@
+'use client'
+
 import type { ButtonHTMLAttributes, CSSProperties } from 'react'
+import { useFormStatus } from 'react-dom'
 import { STATUS_TONES } from './tokens'
 
 export type ButtonVariant = 'primary' | 'ghost' | 'danger'
@@ -13,6 +16,9 @@ const base: CSSProperties = {
   fontFamily: 'inherit',
   cursor: 'pointer',
   whiteSpace: 'nowrap',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
 }
 
 const VARIANTS: Record<ButtonVariant, CSSProperties> = {
@@ -23,6 +29,21 @@ const VARIANTS: Record<ButtonVariant, CSSProperties> = {
   danger: { background: 'var(--panel)', color: STATUS_TONES.danger.fg, border: `1px solid ${STATUS_TONES.danger.border}` },
 }
 
+/** หมุนตลอดกาลด้วย CSS animation ที่ประกาศไว้ใน globals.css — ไม่ต้องมี JS ขับ */
+function Spinner() {
+  return (
+    <span
+      aria-hidden="true"
+      className="ui-spin"
+      style={{
+        width: 12, height: 12, borderRadius: '50%',
+        border: '2px solid currentColor', borderTopColor: 'transparent',
+        display: 'inline-block', flexShrink: 0,
+      }}
+    />
+  )
+}
+
 /**
  * ปุ่มเดียวของทั้งระบบ · สามแบบ ไม่มีแบบที่สี่
  *
@@ -30,19 +51,32 @@ const VARIANTS: Record<ButtonVariant, CSSProperties> = {
  * these screens goes through a Server Action inside a form, so a stray button
  * that defaults to submitting is a silent write nobody asked for; a button that
  * means to submit says so.
+ *
+ * `useFormStatus` reads the pending state of the nearest enclosing `<form>`.
+ * Outside one it is always false, so this is safe on every button in the app,
+ * not only the ones inside a form — a plain `disabled` render never becomes
+ * `disabled: true` on its own. Only a submit button reacts, because a cancel
+ * button sitting next to it did not ask the form to do anything.
  */
-export function Button({ variant = 'primary', disabled, style, type = 'button', ...rest }: ButtonProps) {
+export function Button({ variant = 'primary', disabled, style, type = 'button', children, ...rest }: ButtonProps) {
+  const { pending } = useFormStatus()
+  const isPending = type === 'submit' && pending
+
   return (
     <button
       {...rest}
       type={type}
-      disabled={disabled}
+      disabled={disabled || isPending}
+      aria-busy={isPending || undefined}
       style={{
         ...base,
         ...VARIANTS[variant],
-        ...(disabled ? { opacity: 0.5, cursor: 'not-allowed' } : null),
+        ...((disabled || isPending) ? { opacity: 0.5, cursor: 'not-allowed' } : null),
         ...style,
       }}
-    />
+    >
+      {isPending && <Spinner />}
+      {children}
+    </button>
   )
 }

@@ -92,6 +92,49 @@ describe('Button', () => {
     expect(screen.getByRole('button', { name: 'บันทึก' }).getAttribute('type')).toBe('submit')
   })
 
+  it('อยู่นอกฟอร์ม ไม่มี form action ให้ฟัง — ไม่ค้างว่า pending ตลอดกาล', () => {
+    render(<Button type="submit">บันทึก</Button>)
+    const button = screen.getByRole('button', { name: 'บันทึก' }) as HTMLButtonElement
+    expect(button.disabled).toBe(false)
+    expect(button.getAttribute('aria-busy')).toBeNull()
+  })
+
+  it('อยู่ในฟอร์มที่ Server Action ยังไม่ตอบ — ปิดปุ่มเองและบอกว่ากำลังทำอยู่ (aria-busy)', async () => {
+    let resolveAction: () => void = () => {}
+    const pending = new Promise<void>((resolve) => { resolveAction = resolve })
+    const action = () => pending
+
+    render(
+      <form action={action}>
+        <Button type="submit">บันทึกกิจกรรม</Button>
+      </form>,
+    )
+    const button = screen.getByRole('button', { name: /บันทึกกิจกรรม/ }) as HTMLButtonElement
+    fireEvent.click(button)
+
+    // React ต้องมีเวลาให้ Server Action ทำงานตัวหนึ่งรอบก่อนสถานะ pending จะเข้ามาถึง DOM
+    await vi.waitFor(() => expect(button.disabled).toBe(true))
+    expect(button.getAttribute('aria-busy')).toBe('true')
+
+    resolveAction()
+    await vi.waitFor(() => expect(button.disabled).toBe(false))
+  })
+
+  it('ปุ่มที่ type="button" (ไม่ submit) ไม่ถูกทำให้ pending ตามฟอร์มที่ห่ออยู่ — มันไม่ใช่ปุ่มที่สั่งบันทึก', async () => {
+    const pending = new Promise<void>(() => {}) // ไม่ resolve เลยตลอดเทสต์
+    render(
+      <form action={() => pending}>
+        <Button type="button">ยกเลิก</Button>
+        <Button type="submit">บันทึก</Button>
+      </form>,
+    )
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    await vi.waitFor(() => {
+      expect((screen.getByRole('button', { name: 'บันทึก' }) as HTMLButtonElement).disabled).toBe(true)
+    })
+    expect((screen.getByRole('button', { name: 'ยกเลิก' }) as HTMLButtonElement).disabled).toBe(false)
+  })
+
   it('ส่งต่อ prop ของปุ่มจริง เช่น name กับ title', () => {
     render(<Button name="action" value="publish" title="ส่งขึ้น LINE">ส่ง</Button>)
     const button = screen.getByRole('button', { name: 'ส่ง' }) as HTMLButtonElement
