@@ -40,6 +40,9 @@ function campaign(over: Partial<LiveCampaign> = {}): LiveCampaign {
     defaultCardId: 'card-default',
     greetingCardId: 'card-greeting',
     greetingEnabled: true,
+    // ค่าเริ่มต้นเป็น null โดยตั้งใจ — เทสต์เดิมส่วนใหญ่ไม่เกี่ยวกับการผูกเมนูตัวเข้า
+    // เลย ตั้งเป็นค่าจริงเฉพาะกลุ่มเทสต์ที่ตรวจพฤติกรรมนี้โดยตรงแทน
+    entryRichMenuLineId: null,
     ...over,
   }
 }
@@ -51,6 +54,10 @@ function ports(over: Partial<Ports> = {}, live: LiveCampaign | null = campaign()
     })) as never
   const logEvent: Ports['logEvent'] & { mock: { calls: Parameters<Ports['logEvent']>[] } } =
     vi.fn(async (_args: Parameters<Ports['logEvent']>[0]) => {}) as never
+  const hasRichMenuLinked: Ports['hasRichMenuLinked'] & { mock: { calls: Parameters<Ports['hasRichMenuLinked']>[] } } =
+    vi.fn(async (_participantId: string) => false) as never
+  const markRichMenuLinked: Ports['markRichMenuLinked'] & { mock: { calls: Parameters<Ports['markRichMenuLinked']>[] } } =
+    vi.fn(async (_participantId: string) => {}) as never
   const base: Ports = {
     findLiveCampaign: async () => live,
     ensureParticipant: async () => 'p-1',
@@ -60,9 +67,11 @@ function ports(over: Partial<Ports> = {}, live: LiveCampaign | null = campaign()
     playsThisPeriod: async () => 0,
     play,
     logEvent,
+    hasRichMenuLinked,
+    markRichMenuLinked,
     ...over,
   }
-  return { ports: base, play, logEvent }
+  return { ports: base, play, logEvent, hasRichMenuLinked, markRichMenuLinked }
 }
 
 const userEvent = (over: Partial<IncomingEvent> & { type: string }): IncomingEvent => ({
@@ -204,6 +213,51 @@ describe('พิมพ์ข้อความ', () => {
     const { ports: p } = ports({}, campaign({ defaultCardId: null }))
     const out = await run(userEvent({ type: 'message', message: { type: 'text', text: 'สวัสดี' } }), p)
     expect(out?.message).toEqual({ type: 'text', text: FALLBACK.systemDown })
+  })
+})
+
+describe('ผูกเมนูตัวเข้าตอนพิมพ์คีย์เวิร์ดครั้งแรก (BR-78 ฝั่งผู้เล่น)', () => {
+  const live = campaign({ entryRichMenuLineId: 'line-rm-entry' })
+
+  it('คีย์เวิร์ดที่ชี้ไปกิจกรรม ยังไม่เคยผูก → ติดคำสั่งผูกเมนูมาด้วย', async () => {
+    const hasRichMenuLinked = vi.fn(async () => false)
+    const { ports: p } = ports({ hasRichMenuLinked }, live)
+    const out = await run(userEvent({ type: 'message', message: { type: 'text', text: 'เล่น' } }), p)
+
+    expect(hasRichMenuLinked).toHaveBeenCalledWith('p-1')
+    expect(out?.linkRichMenu).toEqual({ participantId: 'p-1', lineUid: 'U1', richMenuId: 'line-rm-entry' })
+  })
+
+  it('คีย์เวิร์ดที่ชี้ไปการ์ด ยังไม่เคยผูก → ติดคำสั่งผูกเมนูมาด้วยเหมือนกัน', async () => {
+    const live2 = campaign({ entryRichMenuLineId: 'line-rm-entry', keywordTargets: { k1: { cardId: 'card-greeting' } } })
+    const { ports: p } = ports({ hasRichMenuLinked: async () => false }, live2)
+    const out = await run(userEvent({ type: 'message', message: { type: 'text', text: 'เล่น' } }), p)
+
+    expect(out?.linkRichMenu).toEqual({ participantId: 'p-1', lineUid: 'U1', richMenuId: 'line-rm-entry' })
+  })
+
+  it('เคยผูกไปแล้ว → ไม่ติดคำสั่งผูกซ้ำ', async () => {
+    const { ports: p } = ports({ hasRichMenuLinked: async () => true }, live)
+    const out = await run(userEvent({ type: 'message', message: { type: 'text', text: 'เล่น' } }), p)
+
+    expect(out?.linkRichMenu).toBeUndefined()
+  })
+
+  it('แคมเปญนี้ไม่มีเมนูตัวเข้า (entryRichMenuLineId เป็น null) → ไม่ติดคำสั่งผูก และไม่เช็คด้วยซ้ำ', async () => {
+    const { ports: p, hasRichMenuLinked } = ports({}, campaign({ entryRichMenuLineId: null }))
+    const out = await run(userEvent({ type: 'message', message: { type: 'text', text: 'เล่น' } }), p)
+
+    expect(hasRichMenuLinked).not.toHaveBeenCalled()
+    expect(out?.linkRichMenu).toBeUndefined()
+  })
+
+  it('ข้อความไม่ตรงคีย์เวิร์ดไหนเลย → ไม่ติดคำสั่งผูก แม้ยังไม่เคยผูกและแคมเปญมีเมนูตัวเข้าก็ตาม', async () => {
+    const hasRichMenuLinked = vi.fn(async () => false)
+    const { ports: p } = ports({ hasRichMenuLinked }, live)
+    const out = await run(userEvent({ type: 'message', message: { type: 'text', text: 'ไม่มีคำนี้ในกติกา' } }), p)
+
+    expect(hasRichMenuLinked).not.toHaveBeenCalled()
+    expect(out?.linkRichMenu).toBeUndefined()
   })
 })
 

@@ -36,6 +36,13 @@ export type LiveCampaign = {
   defaultCardId: string | null
   greetingCardId: string | null
   greetingEnabled: boolean
+  /**
+   * LINE-side id ของเมนูตัวเข้า (BR-78) — null ถ้าแคมเปญนี้ไม่ได้ใช้ Rich Menu เลย
+   * หรือยังไม่เคย publish เมนูตัวเข้า มาจาก rich_menu.line_rich_menu_id ของแถวที่
+   * is_entry=true จึงเป็นส่วนหนึ่งของ config ที่ publish แต่ละครั้งสแนปช็อตไว้แล้ว
+   * (เหมือน activity/card) — ไม่ต้องคิวรีแยกทุกครั้งที่มีคนพิมพ์คีย์เวิร์ด
+   */
+  entryRichMenuLineId: string | null
 }
 
 export type PlayOutcome =
@@ -73,4 +80,12 @@ export type Ports = {
     result: unknown
     durationMs: number
   }): Promise<void>
+  /** เคยผูกเมนูตัวเข้าให้ผู้เล่นคนนี้ไปแล้วหรือยัง — เช็คก่อนทุกครั้งกันยิง LINE API ซ้ำทุกข้อความ */
+  hasRichMenuLinked(participantId: string): Promise<boolean>
+  /**
+   * บันทึกว่าผูกเมนูตัวเข้าให้ผู้เล่นคนนี้แล้ว — เรียกหลังยิง linkRichMenu ไปหา LINE
+   * สำเร็จจริงเท่านั้น (ที่ route.ts) ไม่ใช่ก่อนยิง เพื่อให้ข้อความถัดไปยังลองผูกใหม่
+   * ได้ถ้าครั้งนี้ล้ม
+   */
+  markRichMenuLinked(participantId: string): Promise<void>
 }

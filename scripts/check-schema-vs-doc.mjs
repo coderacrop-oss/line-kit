@@ -84,6 +84,7 @@ const INTENTIONAL_EXTRAS = {
   rich_menu: ['chat_bar_text'], // LINE caps this at 14 characters; enforced in SQL
   quiz_round: ['expires_at'],   // BR-85 · pending answers expire at end of day
   export_log: ['reason'],       // cannot be backfilled once files have gone out
+  participant: ['rich_menu_linked_at'], // BR-78 ฝั่งผู้เล่น · เคยผูกเมนูตัวเข้าให้คนนี้แล้วหรือยัง
 }
 
 const doc = parseDoc(readFileSync(DOC, 'utf8'))

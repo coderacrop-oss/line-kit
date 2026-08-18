@@ -1,6 +1,6 @@
 import { db } from '@/lib/db/client'
 import { makePorts } from '@/lib/db/queries'
-import { getChannelSecret, replyMessage } from '@/lib/line/client'
+import { getAccessToken, getChannelSecret, linkRichMenu, replyMessage } from '@/lib/line/client'
 import { verifySignature } from '@/lib/line/verify'
 import { handleEvent, type IncomingEvent } from '@/lib/webhook/handle'
 
@@ -47,6 +47,19 @@ export async function POST(request: Request): Promise<Response> {
     try {
       const handled = await handleEvent(event, channelId, ports, now, Math.random)
       if (handled) await replyMessage(handled.replyToken, handled.message)
+
+      // ผูกเมนูตัวเข้าให้ผู้เล่นแยกจากการตอบ — คนละความเสี่ยง (BR-01 ต้องได้คำตอบ
+      // เสมอ ไม่ว่าเรื่องนี้จะสำเร็จหรือไม่) mark ว่าผูกแล้วเฉพาะตอนยิงสำเร็จจริง
+      // เท่านั้น ล้มแล้วไม่ mark ข้อความถัดไปจะลองผูกใหม่เอง
+      if (handled?.linkRichMenu) {
+        try {
+          const { participantId, lineUid, richMenuId } = handled.linkRichMenu
+          await linkRichMenu(getAccessToken(), lineUid, richMenuId)
+          await ports.markRichMenuLinked(participantId)
+        } catch (error) {
+          console.error('link entry rich menu failed', error)
+        }
+      }
     } catch (error) {
       console.error('webhook event failed', error)
       // One event failing must not swallow the rest of the batch.

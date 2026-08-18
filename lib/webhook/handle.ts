@@ -16,7 +16,19 @@ export type IncomingEvent = {
   postback?: { data?: string; params?: Record<string, unknown> };
 };
 
-export type Handled = { replyToken: string; message: LineMessage } | null;
+export type Handled =
+  | {
+      replyToken: string;
+      message: LineMessage;
+      /**
+       * Set only the first time this participant's message matches a keyword
+       * (BR-78's per-user side). The actual LINE call and the "linked" write
+       * both happen at the route, after the reply is sent — never here, so a
+       * handler under test never touches the network.
+       */
+      linkRichMenu?: { participantId: string; lineUid: string; richMenuId: string };
+    }
+  | null;
 
 type Reply = (
   message: LineMessage,
@@ -156,40 +168,58 @@ export async function handleEvent(
     const rule = matchKeyword(said, campaign.keywordRules);
     const target = rule ? campaign.keywordTargets[rule.id] : undefined;
 
+    // A keyword actually matched (not the unmatched-text fallback below) and
+    // this campaign has an entry menu on LINE — link it the first time only.
+    // The real LINE call happens at the route; a handler under test never
+    // touches the network, and a failed call never gets marked as done, so
+    // the very next message tries again.
+    const linkRichMenu =
+      rule && campaign.entryRichMenuLineId && !(await ports.hasRichMenuLinked(participantId))
+        ? { participantId, lineUid, richMenuId: campaign.entryRichMenuLineId }
+        : undefined;
+    const withLink = (handled: Handled): Handled =>
+      handled && linkRichMenu ? { ...handled, linkRichMenu } : handled;
+
     if (target?.activityId) {
       const activity = campaign.activities.find(
         (a) => a.id === target.activityId,
       );
       if (activity)
-        return playActivity({
-          activity,
-          raw: null,
-          campaign,
-          participantId,
-          state,
-          today,
-          now,
-          rng,
-          ports,
-          reply,
-        });
+        return withLink(
+          await playActivity({
+            activity,
+            raw: null,
+            campaign,
+            participantId,
+            state,
+            today,
+            now,
+            rng,
+            ports,
+            reply,
+          }),
+        );
     }
     if (target?.cardId) {
-      return reply(
-        cardMessage(campaign, target.cardId, state, FALLBACK.systemDown),
-        {
-          activityId: null,
-          eventType: "keyword_card",
-        },
+      return withLink(
+        await reply(
+          cardMessage(campaign, target.cardId, state, FALLBACK.systemDown),
+          {
+            activityId: null,
+            eventType: "keyword_card",
+          },
+        ),
       );
     }
 
-    return reply(
-      cardMessage(campaign, campaign.defaultCardId, state, FALLBACK.systemDown),
-      {
-        activityId: null,
-        eventType: "text_unmatched",
-      },
+    return withLink(
+      await reply(
+        cardMessage(campaign, campaign.defaultCardId, state, FALLBACK.systemDown),
+        {
+          activityId: null,
+          eventType: "text_unmatched",
+        },
+      ),
     );
   }
 
