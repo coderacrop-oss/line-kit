@@ -114,6 +114,17 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
     expect(Uint8Array.from(written)).toEqual(bytes)
   })
 
+  it('get อ่านไฟล์ที่ put เขียนไว้กลับมาได้ไบต์เดิมทุกไบต์ — M4-S01 ใช้ตอนอัปโหลดภาพเมนูขึ้น LINE', async () => {
+    const path = storagePathFor('c1', 'get-me.png', 'g1')
+    await store.put(path, bytes)
+
+    expect(await store.get(path)).toEqual(bytes)
+  })
+
+  it('get ที่อยู่ที่พาออกไปนอกที่เก็บ ถูกปฏิเสธเหมือน put', async () => {
+    await expect(store.get('../escaped.png')).rejects.toThrow('นอกที่เก็บ')
+  })
+
   it('สร้างโฟลเดอร์ที่ยังไม่มีให้เอง', async () => {
     const path = storagePathFor('campaign-ที่-ไม่-เคย-มี', 'a.png')
     await store.put(path, bytes)

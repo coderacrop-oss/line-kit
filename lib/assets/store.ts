@@ -1,4 +1,4 @@
-import { mkdir, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, writeFile } from 'node:fs/promises'
 import { dirname, join, resolve, sep } from 'node:path'
 import { randomUUID } from 'node:crypto'
 
@@ -27,6 +27,11 @@ export type AssetStore = {
   /** ประโยคที่จอเอาไปบอกคนว่าไฟล์ไปอยู่ไหน · จอไม่ควรเดาเองว่าเบื้องหลังเป็นอะไร */
   readonly describe: string
   put(storagePath: string, data: Uint8Array): Promise<StoredFile>
+  /**
+   * อ่านไฟล์กลับเป็นไบต์ · M4-S01 (Rich Menu) ใช้ตอนอัปโหลดภาพเมนูขึ้น LINE เพราะ
+   * LINE ไม่รับ URL — ต้องส่งเนื้อไฟล์เข้าไปตรงๆ (`api-data.line.me`)
+   */
+  get(storagePath: string): Promise<Uint8Array>
 }
 
 /** โฟลเดอร์ที่ Next เสิร์ฟเป็นไฟล์นิ่ง · ต่อท้าย root ที่ตั้งไว้ */
@@ -117,6 +122,14 @@ export function localDiskStore(root: string): AssetStore {
       }
 
       return { storagePath, publicUrl: `/${storagePath}` }
+    },
+
+    async get(storagePath) {
+      const target = resolve(root, storagePath)
+      if (target !== resolve(root) && !target.startsWith(resolve(root) + sep)) {
+        throw new Error('ที่อยู่ของไฟล์พาออกไปนอกที่เก็บ — ไม่อ่าน')
+      }
+      return new Uint8Array(await readFile(target))
     },
   }
 }

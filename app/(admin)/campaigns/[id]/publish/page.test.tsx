@@ -70,6 +70,7 @@ const goodBase = (): PublishScreenData['base'] => ({
   keywordRules: [{ id: 'k1', keyword: 'เล่น', targetActivityId: 'a1', targetCardId: null }],
   rewards: [],
   counters: [],
+  richMenus: [],
 })
 
 const aScreen = (patch: Partial<PublishScreenData> = {}): PublishScreenData => ({
@@ -77,6 +78,7 @@ const aScreen = (patch: Partial<PublishScreenData> = {}): PublishScreenData => (
   channels: [aChannel()],
   latestVersion: 0,
   campaignDayLengthSec: 86_400,
+  campaignCode: 'summer',
   ...patch,
 })
 

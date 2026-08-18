@@ -1,8 +1,8 @@
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs'
-import { cleanup, render, screen, within } from '@testing-library/react'
+import { cleanup, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { CampaignNav, NAV_GROUPS } from './CampaignNav'
+import { CampaignNav, Item, NAV_GROUPS } from './CampaignNav'
 
 // vitest ไม่ได้เปิด globals ไว้ RTL จึงเก็บกวาดเองอัตโนมัติไม่ได้
 afterEach(cleanup)
@@ -97,6 +97,8 @@ describe('ปลายทางที่มีจริงกับที่ย�
       .toBe('/campaigns/c1/selectors')
     expect(screen.getByRole('link', { name: 'ส่งขึ้น LINE' }).getAttribute('href'))
       .toBe('/campaigns/c1/publish')
+    expect(screen.getByRole('link', { name: 'Rich Menu' }).getAttribute('href'))
+      .toBe('/campaigns/c1/richmenu')
   })
 
   /**
@@ -129,20 +131,22 @@ describe('ปลายทางที่มีจริงกับที่ย�
     expect(links).toEqual([
       'ข้อมูลแคมเปญ', 'กิจกรรม', 'การ์ด', 'คลังภาพ',
       'ค่าสะสม', 'รางวัล', 'ชุดเนื้อหา', 'คีย์เวิร์ด',
-      'บัญชี LINE', 'ส่งขึ้น LINE', 'ทดลองเล่น',
+      'Rich Menu', 'บัญชี LINE', 'ส่งขึ้น LINE', 'ทดลองเล่น',
     ])
   })
 
-  it('ทุกจอที่ยังไม่มีติดป้ายรอบถัดไปไว้ทุกอัน', () => {
+  /**
+   * M4-S01 (Rich Menu) คือรายการสุดท้ายที่เคยติดป้าย "รอบถัดไป" — ตอนนี้จอเสร็จ
+   * แล้วจึงไม่เหลือรายการปิดสักอันในสี่กลุ่มนี้ · การทดสอบว่า "ทุกจอที่ยังไม่มี
+   * ติดป้ายไว้ครบ" ยังคงมีความหมายแม้ตัวเลขจะเป็นศูนย์ — ยืนยันว่าไม่มีรายการไหน
+   * แอบเป็นลิงก์ไปหน้าที่ยังไม่มีจริง (ไม่มี path แต่ก็ไม่มีป้ายเตือน)
+   */
+  it('ไม่มีจอไหนเหลือค้างเป็นรอบถัดไปแล้ว — M4-S01 ปิดจ๊อบสุดท้าย', () => {
     at('/campaigns/c1')
     const { container } = render(<CampaignNav campaignId="c1" />)
     const soon = Array.from(container.querySelectorAll('[data-nav-item]'))
       .filter((i) => i.querySelector('a, [href]') === null && i.tagName !== 'A')
-    expect(soon.length).toBe(1)
-    for (const item of soon) {
-      expect(within(item as HTMLElement).getByText('รอบถัดไป'), item.textContent ?? '').toBeDefined()
-      expect(item.getAttribute('aria-disabled')).toBe('true')
-    }
+    expect(soon).toEqual([])
   })
 
   it('จอที่มีจริงไม่ติดป้ายรอบถัดไป', () => {
@@ -159,22 +163,27 @@ describe('ปลายทางที่มีจริงกับที่ย�
     expect(itemNamed('กิจกรรม').textContent).toBe('กิจกรรม')
     expect(itemNamed('ทดลองเล่น').textContent).toBe('ทดลองเล่น')
     expect(itemNamed('ส่งขึ้น LINE').textContent).toBe('ส่งขึ้น LINE')
+    expect(itemNamed('Rich Menu').textContent).toBe('Rich Menu')
   })
 
+  /**
+   * ไม่มีรายการไหนใน NAV_GROUPS ปิดอยู่แล้ว (M4-S01 ปิดจ๊อบสุดท้าย) จึงเรียก
+   * `Item` ตรงๆ ด้วยรายการสังเคราะห์ที่ไม่มี path — ยืนยันทรงของป้ายได้โดยไม่ต้อง
+   * รอให้มีจอใหม่ที่ยังไม่สร้างเพิ่มเข้ามาก่อน
+   */
   it('ป้ายรอบถัดไปใช้ทรงเดียวกับต้นแบบ', () => {
-    at('/campaigns/c1')
-    render(<CampaignNav campaignId="c1" />)
-    const pill = screen.getAllByText('รอบถัดไป')[0] as HTMLElement
+    render(<Item item={{ label: 'จอในอนาคต' }} campaignId="c1" pathname="/campaigns/c1" />)
+    const pill = screen.getByText('รอบถัดไป') as HTMLElement
     expect(pill.style.fontFamily).toBe('var(--mono)')
     expect(pill.style.fontSize).toBe('8px')
     expect(pill.style.borderRadius).toBe('var(--r-pill)')
     expect(pill.style.padding).toBe('2px 7px')
   })
 
-  it('เปิดจอใหม่ได้ด้วยการเติม path ให้รายการเดียว', () => {
+  it('เปิดจอใหม่ได้ด้วยการเติม path ให้รายการเดียว — ไม่เหลือรายการปิดใน NAV_GROUPS แล้ว', () => {
     // รายการที่ยังไม่มีปลายทางคือรายการที่ไม่มี path — เติมบรรทัดเดียวก็เปิด
     const closed = NAV_GROUPS.flatMap((g) => g.items).filter((i) => i.path === undefined)
-    expect(closed.map((i) => i.label)).toEqual(['Rich Menu'])
+    expect(closed).toEqual([])
   })
 })
 

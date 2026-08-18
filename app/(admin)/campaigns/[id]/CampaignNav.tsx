@@ -51,7 +51,7 @@ export const NAV_GROUPS: NavGroup[] = [
   {
     head: 'Channel · เชื่อมต่อ',
     items: [
-      { label: 'Rich Menu' },
+      { label: 'Rich Menu', path: 'richmenu' },
       { label: 'บัญชี LINE', path: '/channels' },
       { label: 'ส่งขึ้น LINE', path: 'publish' },
     ],
@@ -116,7 +116,13 @@ export function isActive(pathname: string, href: string, isRoot: boolean): boole
   return !isRoot && pathname.startsWith(`${href}/`)
 }
 
-function Item({ item, campaignId, pathname }: {
+/**
+ * exported เพื่อให้เทสต์ยืนยันทรงของป้าย "รอบถัดไป" ได้ตรงๆ โดยไม่ต้องพึ่งว่า
+ * NAV_GROUPS บังเอิญมีรายการที่ path เป็น undefined อยู่หรือไม่ — วันที่จอสุดท้าย
+ * เปิดหมด (อย่างตอนนี้) ก็ยังพิสูจน์ได้ว่าทรงของป้ายยังถูกต้องอยู่ ถ้าวันหนึ่งมี
+ * จอใหม่ที่ยังไม่สร้างเพิ่มเข้ามาอีก
+ */
+export function Item({ item, campaignId, pathname }: {
   item: NavItem
   campaignId: string
   pathname: string

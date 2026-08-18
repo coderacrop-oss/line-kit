@@ -2,9 +2,11 @@
 
 import { revalidatePath } from 'next/cache'
 import { redirect } from 'next/navigation'
+import { assetStore } from '@/lib/assets/store'
 import { requireRole } from '@/lib/auth/require'
 import { db } from '@/lib/db/client'
 import { configFor, loadPublishScreen, snapshotOf, writePublish } from '@/lib/db/publish'
+import { publishRichMenus } from '@/lib/db/richmenu'
 import { readChannelSecret } from '@/lib/db/tokens'
 import { setWebhookEndpoint } from '@/lib/line/client'
 import { isConfirmed, validateForPublish } from '@/lib/publish/validate'
@@ -60,8 +62,8 @@ function webhookEndpoint(): string {
 /**
  * ส่งแคมเปญขึ้น LINE · ลำดับตาม §4.4 ของ L2
  *
- * ตรวจ → ยืนยันถ้าเป็น production → กันชนบัญชี → สร้าง version → ตั้ง webhook
- * ขั้นที่เกี่ยวกับริชเมนู (4b · 5 · 5a · 5b · 5c) ไม่อยู่ในสไลซ์นี้
+ * ตรวจ → ยืนยันถ้าเป็น production → กันชนบัญชี → สร้าง version → เมนู (4b·5·5b·5c) → ตั้ง webhook
+ * ขั้น 5a (วาดภาพล่วงหน้าของริชเมสเสจ) ไม่อยู่ในงานนี้ — ดู docs/HANDOFF.md
  *
  * ลำดับไม่ใช่เรื่องของความสวยงาม · ด่านตรวจอยู่ก่อนการอ่านกุญแจ เพราะกุญแจที่ถูก
  * ถอดรหัสคือเหตุการณ์ที่ถูกบันทึกถาวรและย้อนไม่ได้ · กันชนบัญชีอยู่ก่อนการเขียน
@@ -77,7 +79,7 @@ export async function publish(campaignId: string, formData: FormData): Promise<v
   const channelId = trimmed(formData, 'channel_id')
   if (!channelId) throw new Error('ต้องเลือกบัญชี LINE ปลายทางก่อนจึงจะส่งขึ้นได้')
 
-  const { base, channels } = await loadPublishScreen(sql, campaignId)
+  const { base, channels, campaignCode } = await loadPublishScreen(sql, campaignId)
 
   // ชั้นของบัญชีถูกอ่านจากแถวจริง ไม่ใช่จากฟอร์ม · ไม่งั้น BR-18 จะเป็นด่านที่
   // ปลดได้ด้วยการพิมพ์ channel_type=test ลงไปเอง
@@ -128,7 +130,13 @@ export async function publish(campaignId: string, formData: FormData): Promise<v
     channelId: channel.id,
     publishedBy: session.userId,
     snapshot: snapshotOf(base, channel),
-    runAtLine: () => setWebhookEndpoint(accessToken, endpoint),
+    // §4.4 ขั้น 4b·5·5b·5c ก่อนขั้น 6 (ตั้ง webhook) เสมอ — ทั้งหมดอยู่ในธุรกรรม
+    // เดียวกับ config_version ผ่าน `tx` ที่ writePublish ส่งเข้ามา · ขั้นไหนล้ม
+    // ธุรกรรมทั้งก้อนย้อนกลับหมด ไม่เหลือเมนูที่อัปโหลดไปแล้วครึ่งๆ กลางๆ
+    runAtLine: async (tx) => {
+      await publishRichMenus(tx, { campaignId, campaignCode, accessToken, store: assetStore() })
+      await setWebhookEndpoint(accessToken, endpoint)
+    },
   })
 
   revalidatePath('/campaigns')

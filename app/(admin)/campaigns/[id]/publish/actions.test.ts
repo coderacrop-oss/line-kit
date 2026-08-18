@@ -115,10 +115,12 @@ const goodScreen = (channels: PublishChannel[]): PublishScreenData => ({
     keywordRules: [{ id: 'k1', keyword: 'เล่น', targetActivityId: 'a1', targetCardId: null }],
     rewards: [],
     counters: [],
+    richMenus: [],
   },
   channels,
   latestVersion: 3,
   campaignDayLengthSec: 86_400,
+  campaignCode: 'summer',
 })
 
 const signedInAs = (role: string, isActive = true) => {
