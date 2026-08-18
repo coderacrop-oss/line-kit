@@ -43,7 +43,7 @@ export type RichMenuView = {
 }
 
 export type RichMenuImageOption = { id: string; label: string; url: string; width: number; height: number }
-export type RichMenuActivityOption = { id: string; code: string; name: string }
+export type RichMenuActivityOption = { id: string; code: string; name: string; isEnabled: boolean }
 export type RichMenuCardOption = { id: string; code: string }
 export type RichMenuTargetOption = { id: string; alias: string }
 
@@ -102,7 +102,7 @@ export async function loadRichMenuScreen(sql: postgres.Sql, campaignId: string):
   return {
     menus: rows.map((row) => toView(row, imagesById)),
     images,
-    activities: activities.map((a) => ({ id: a.id, code: a.code, name: a.name })),
+    activities: activities.map((a) => ({ id: a.id, code: a.code, name: a.name, isEnabled: a.isEnabled })),
     cards: cards.map((c) => ({ id: c.id, code: c.code })),
   }
 }
