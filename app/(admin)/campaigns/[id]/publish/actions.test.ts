@@ -11,6 +11,7 @@ const state: {
   events: string[]
   redirectedTo: string | null
   lineFails: boolean
+  campaignCardIds: string[]
 } = {
   cookie: undefined,
   user: undefined,
@@ -19,6 +20,7 @@ const state: {
   events: [],
   redirectedTo: null,
   lineFails: false,
+  campaignCardIds: ['c1'],
 }
 
 /** ทุกคำสั่งที่เขียนของ · การอ่านไม่นับ เพราะสิ่งที่ต้องพิสูจน์คือ "ไม่ได้แตะอะไรเลย" */
@@ -31,6 +33,12 @@ const sql = Object.assign(
     if (/INSERT/i.test(text)) state.events.push('write')
     if (/FROM app_user/.test(text)) return Promise.resolve(state.user ? [state.user] : [])
     if (/INSERT INTO config_version/.test(text)) return Promise.resolve([{ version_no: 4 }])
+    if (/FROM card WHERE/.test(text)) {
+      const [cardId] = values
+      return Promise.resolve(
+        state.campaignCardIds.includes(String(cardId)) ? [{ id: cardId }] : [],
+      )
+    }
     return Promise.resolve([])
   },
   {
@@ -74,7 +82,7 @@ vi.mock('@/lib/line/client', () => ({
   }),
 }))
 
-const { publish } = await import('./actions')
+const { publish, saveDefaultCard } = await import('./actions')
 const { CONFIRM_WORD } = await import('@/lib/publish/validate')
 const { readChannelSecret } = await import('@/lib/db/tokens')
 const { setWebhookEndpoint } = await import('@/lib/line/client')
@@ -136,6 +144,7 @@ beforeEach(() => {
   state.redirectedTo = null
   state.lineFails = false
   state.screen = goodScreen([aChannel()])
+  state.campaignCardIds = ['c1']
   vi.stubEnv('PUBLIC_BASE_URL', 'https://flex.example.com')
   vi.mocked(setWebhookEndpoint).mockClear()
   vi.mocked(readChannelSecret).mockClear()
@@ -428,5 +437,56 @@ describe('publish · ฟอร์มแต่งเองแล้วข้า�
     const forged = form({ channel_id: 'ch-prod', channel_type: 'test' })
     await expect(publish('camp-1', forged)).rejects.toThrow('ยังส่งขึ้นไม่ได้')
     expect(writes()).toEqual([])
+  })
+})
+
+/**
+ * BR-39 · การ์ดตั้งต้นเมื่อผู้เล่นพิมพ์ลอยๆ (channel.default_card_id)
+ *
+ * ไม่มีจอไหนในระบบเคยให้กรอกค่านี้มาก่อน (ตรวจแล้วทั้งโปรเจกต์) ทั้งที่ webhook
+ * และด่านตรวจก่อนส่งขึ้นอ่านมันอยู่แล้ว — จอนี้เป็นทางเดียวที่ค่านี้เขียนได้
+ */
+describe('saveDefaultCard', () => {
+  beforeEach(() => { signedInAs('configurator') })
+
+  it('ต้องเข้าสู่ระบบและมีสิทธิ์ configurator เท่านั้น', async () => {
+    state.cookie = undefined
+    await expect(saveDefaultCard('camp-1', 'ch-test', form({ default_card_id: 'c1' })))
+      .rejects.toThrow()
+    expect(writes()).toEqual([])
+  })
+
+  it('reporter ทำไม่ได้', async () => {
+    signedInAs('reporter')
+    await expect(saveDefaultCard('camp-1', 'ch-test', form({ default_card_id: 'c1' })))
+      .rejects.toThrow()
+    expect(writes()).toEqual([])
+  })
+
+  it('บันทึกการ์ดของแคมเปญนี้ลงบัญชีที่ระบุได้จริง', async () => {
+    await saveDefaultCard('camp-1', 'ch-test', form({ default_card_id: 'c1' }))
+    const update = writes().find((w) => /UPDATE channel/.test(w.text))!
+    expect(update.text).toContain('default_card_id')
+    expect(update.values).toContain('c1')
+    expect(update.values).toContain('ch-test')
+  })
+
+  it('การ์ดที่ไม่ใช่ของแคมเปญนี้ ปฏิเสธ ไม่เขียน — กันการ์ดของแคมเปญอื่นหลุดเข้ามา', async () => {
+    await expect(saveDefaultCard('camp-1', 'ch-test', form({ default_card_id: 'ของแคมเปญอื่น' })))
+      .rejects.toThrow()
+    expect(writes()).toEqual([])
+  })
+
+  it('เว้นว่างไว้ = ล้างค่าเดิม ไม่ใช่ error', async () => {
+    await saveDefaultCard('camp-1', 'ch-test', form({ default_card_id: '' }))
+    const update = writes().find((w) => /UPDATE channel/.test(w.text))!
+    expect(update.values).toContain(null)
+  })
+
+  it('channel_id มาจากที่เรียก action ไม่ใช่จากฟอร์ม — ฟอร์มแต่งเองข้ามไปบัญชีอื่นไม่ได้', async () => {
+    await saveDefaultCard('camp-1', 'ch-test', form({ default_card_id: 'c1', channel_id: 'ch-อื่น' }))
+    const update = writes().find((w) => /UPDATE channel/.test(w.text))!
+    expect(update.values).toContain('ch-test')
+    expect(update.values).not.toContain('ch-อื่น')
   })
 })

@@ -12,6 +12,34 @@ import { isConfirmed, validateForPublish } from '@/lib/publish/validate'
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
 
 /**
+ * การ์ดตั้งต้นเมื่อผู้เล่นพิมพ์ลอยๆ (BR-39) — ไม่มีจอไหนเคยให้กรอกค่านี้มาก่อน
+ * ทั้งที่ webhook (`lib/webhook/handle.ts`) และด่านตรวจ BR-39 อ่านมันอยู่แล้ว
+ *
+ * channel_id ผูกมากับตัว action เหมือน publish ข้างบน ไม่ใช่ให้ฟอร์มส่งมาเอง —
+ * เหตุผลเดียวกัน: ฟอร์มเป็นของที่ผู้ส่งแต่งเองได้ทั้งใบ
+ *
+ * การ์ดต้องตรวจว่าเป็นของแคมเปญนี้จริง ไม่ใช่ id ที่ปลอมมา เพราะ channel ไม่มี
+ * FK ผูกกับแคมเปญตรงๆ (ผูกทีละแคมเปญผ่าน campaign_channel แทน) คอลัมน์นี้ยอมรับ
+ * id อะไรก็ได้ที่มีอยู่ในตาราง card ถ้าไม่ตรวจเอง
+ */
+export async function saveDefaultCard(
+  campaignId: string, channelId: string, formData: FormData,
+): Promise<void> {
+  await requireRole('configurator')
+  const sql = db()
+
+  const cardId = trimmed(formData, 'default_card_id')
+  if (cardId) {
+    const [card] = await sql<{ id: string }[]>`
+      SELECT id FROM card WHERE id = ${cardId} AND campaign_id = ${campaignId}`
+    if (!card) throw new Error('การ์ดที่เลือกไม่ใช่ของแคมเปญนี้')
+  }
+
+  await sql`UPDATE channel SET default_card_id = ${cardId || null} WHERE id = ${channelId}`
+  revalidatePath(`/campaigns/${campaignId}/publish`)
+}
+
+/**
  * ที่อยู่ที่ LINE จะยิง event มา
  *
  * เป็น env ไม่ใช่ค่าที่คนกรอกบนจอ เพราะมันเป็นคุณสมบัติของที่ที่ระบบนี้ถูกติดตั้ง

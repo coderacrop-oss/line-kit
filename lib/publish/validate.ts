@@ -147,6 +147,8 @@ export const WHERE = {
   channels: '/channels',
   /** จอนี้เอง · ช่องยืนยันอยู่ล่างสุด จึงพาไปที่จุดยึดไม่ใช่หัวจอ */
   confirm: 'publish#confirm',
+  /** จอนี้เอง · ตั้งการ์ดตั้งต้นของบัญชีที่กำลังเลือกอยู่ในแผงขวา (BR-39) */
+  defaultCard: 'publish#default-card',
 } as const
 
 /**
@@ -444,7 +446,7 @@ export function checkPublish(config: PublishConfig): Check[] {
         : 'ยังไม่ได้ตั้งการ์ดตั้งต้นเมื่อผู้เล่นพิมพ์ลอยๆ (BR-39)',
       detail: 'บังคับเพราะแคมเปญนี้มีกิจกรรมที่รับข้อความ — คำที่ไม่ตรงกติกาจะไม่มีอะไรตอบ',
       tone: has ? 'ok' : 'blocked',
-      where: WHERE.channels,
+      where: WHERE.defaultCard,
     })
   }
 
