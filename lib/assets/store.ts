@@ -140,7 +140,77 @@ export function localDiskStore(root: string): AssetStore {
  * ASSET_STORAGE_ROOT exists so a test can point this somewhere disposable. The
  * default is the project's `public` directory because that is the one place Next
  * serves files from without a route handler, and this slice adds no routes.
+ *
+ * Vercel's serverless functions run on a read-only filesystem — `public/uploads`
+ * only ever worked locally. SUPABASE_URL + SUPABASE_SERVICE_ROLE_KEY switches the
+ * backend to Supabase Storage (the object storage bucket in the same Supabase
+ * project this app already uses for Postgres); unset, it falls back to disk so
+ * local dev and the test suite need no extra setup.
  */
 export function assetStore(): AssetStore {
+  const url = process.env.SUPABASE_URL
+  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
+  if (url && serviceRoleKey) {
+    return supabaseStorageStore({
+      url, serviceRoleKey, bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'assets',
+    })
+  }
   return localDiskStore(process.env.ASSET_STORAGE_ROOT ?? join(process.cwd(), 'public'))
+}
+
+export type SupabaseStorageConfig = { url: string; serviceRoleKey: string; bucket: string }
+
+/** ตัวคั่นเดียวที่ต้องรอดจากการเข้ารหัส — ที่เหลือ (อักษรไทย ช่องว่าง ฯลฯ) ต้องเข้ารหัสเป็น URL ที่ใช้ได้จริง */
+const encodePath = (path: string): string => path.split('/').map(encodeURIComponent).join('/')
+
+/**
+ * เก็บไฟล์ผ่าน Supabase Storage — เรียก REST API ตรงๆ ด้วย fetch แทนที่จะเพิ่ม
+ * @supabase/supabase-js เป็น dependency ใหม่ เพราะสิ่งที่ต้องใช้มีแค่สองคำสั่ง
+ * (อัปโหลด/อ่านกลับ) ตรงกับธรรมเนียมของโปรเจกต์นี้ที่ชั้น DB ก็เรียก postgres.js
+ * ตรงๆ ไม่ผ่าน ORM
+ *
+ * ใช้ service role key เท่านั้น ไม่ใช่ anon key — เขียนจาก Server Action ที่รันบน
+ * เซิร์ฟเวอร์ ไม่มีบริบทผู้ใช้ปลายทางให้ RLS ตรวจสิทธิ์ต่อไฟล์อยู่แล้ว การกันคนนอก
+ * จึงอยู่ที่ requireRole() ในแต่ละ Server Action ไม่ใช่ที่ชั้น Storage — เหมือนที่
+ * DATABASE_URL ต่อฐานข้อมูลด้วยสิทธิ์เต็มอยู่แล้วเช่นกัน
+ *
+ * bucket ต้องตั้งเป็น public ไว้ล่วงหน้าในแดชบอร์ด Supabase — publicUrl ที่คืนออกไป
+ * ใช้แสดงภาพตรงในจอ (ตัวอย่างการ์ด, ภาพ Rich Menu) โดยไม่มี token แนบมาด้วย
+ */
+export function supabaseStorageStore({ url, serviceRoleKey, bucket }: SupabaseStorageConfig): AssetStore {
+  const objectBase = `${url}/storage/v1/object`
+  const authHeaders = { Authorization: `Bearer ${serviceRoleKey}` }
+
+  return {
+    describe: `เก็บผ่าน Supabase Storage · bucket "${bucket}"`,
+
+    async put(storagePath, data) {
+      const res = await fetch(`${objectBase}/${bucket}/${encodePath(storagePath)}`, {
+        method: 'POST',
+        headers: { ...authHeaders, 'Content-Type': 'application/octet-stream', 'x-upsert': 'false' },
+        body: Buffer.from(data),
+      })
+
+      if (!res.ok) {
+        const body = await res.text().catch(() => '')
+        // เหมือน EEXIST ของ localDiskStore — ไฟล์เดิมของการ์ด/เมนูที่ส่งขึ้น LINE
+        // ไปแล้วต้องอยู่ต่อ (BR-25) storagePathFor สุ่มโฟลเดอร์ใหม่ทุกครั้งอยู่แล้ว
+        // จึงแทบไม่ชนจริง แต่ต้องโยนให้เห็นถ้าชน ไม่ใช่รายงานว่าสำเร็จ
+        if (res.status === 409 || body.includes('Duplicate')) {
+          throw new Error('มีไฟล์อยู่ที่เดิมแล้ว — ไม่เขียนทับ')
+        }
+        throw new Error(`เขียนไฟล์ลง Supabase Storage ไม่ได้ (${res.status}) — ${body || res.statusText}`)
+      }
+
+      return { storagePath, publicUrl: `${url}/storage/v1/object/public/${bucket}/${storagePath}` }
+    },
+
+    async get(storagePath) {
+      const res = await fetch(`${objectBase}/${bucket}/${encodePath(storagePath)}`, { headers: authHeaders })
+      if (!res.ok) {
+        throw new Error(`อ่านไฟล์จาก Supabase Storage ไม่ได้ (${res.status}) — ${storagePath}`)
+      }
+      return new Uint8Array(await res.arrayBuffer())
+    },
+  }
 }

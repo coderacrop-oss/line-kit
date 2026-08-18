@@ -1,9 +1,9 @@
 import { mkdtemp, readFile, rm, stat } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
-import { afterAll, beforeAll, describe, expect, it } from 'vitest'
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  type AssetStore, fileNameOf, localDiskStore, safeFileName, storagePathFor,
+  type AssetStore, fileNameOf, localDiskStore, safeFileName, storagePathFor, supabaseStorageStore,
 } from './store'
 
 describe('safeFileName', () => {
@@ -190,5 +190,85 @@ describe('localDiskStore · เขียนลงดิสก์จริง', (
     await store.put('uploads/blocker2/x/file.bin', bytes)
     const blocked = localDiskStore(join(root, 'uploads', 'blocker2', 'x', 'file.bin'))
     await expect(blocked.put('uploads/c/u/a.png', bytes)).rejects.toThrow(root)
+  })
+})
+
+describe('supabaseStorageStore · เก็บผ่าน Supabase Storage', () => {
+  const config = { url: 'https://proj.supabase.co', serviceRoleKey: 'sr-key', bucket: 'assets' }
+  const bytes = Uint8Array.from([1, 2, 3, 4, 5])
+  let fetchMock: ReturnType<typeof vi.fn>
+
+  beforeEach(() => {
+    fetchMock = vi.fn()
+    vi.stubGlobal('fetch', fetchMock)
+  })
+
+  afterEach(() => {
+    vi.unstubAllGlobals()
+  })
+
+  it('put ยิงไปที่ path ของ bucket พร้อม service role key แล้วคืน publicUrl', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
+    const store = supabaseStorageStore(config)
+
+    const result = await store.put('uploads/c1/u1/a.png', bytes)
+
+    expect(result).toEqual({
+      storagePath: 'uploads/c1/u1/a.png',
+      publicUrl: 'https://proj.supabase.co/storage/v1/object/public/assets/uploads/c1/u1/a.png',
+    })
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://proj.supabase.co/storage/v1/object/assets/uploads/c1/u1/a.png')
+    expect(init.headers.Authorization).toBe('Bearer sr-key')
+    expect(init.headers['x-upsert']).toBe('false')
+  })
+
+  it('ชื่อไฟล์ที่มีอักษรไทย/ช่องว่าง ถูกเข้ารหัสเป็น URL ที่ใช้ได้จริง แต่ / คั่นโฟลเดอร์ยังอยู่', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 200 }))
+    const store = supabaseStorageStore(config)
+
+    await store.put('uploads/c1/u1/ภาพ รางวัล.png', bytes)
+
+    const [url] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://proj.supabase.co/storage/v1/object/assets/uploads/c1/u1/%E0%B8%A0%E0%B8%B2%E0%B8%9E%20%E0%B8%A3%E0%B8%B2%E0%B8%87%E0%B8%A7%E0%B8%B1%E0%B8%A5.png')
+  })
+
+  it('ไฟล์ซ้ำที่เดิม (409 Duplicate) ขึ้นข้อความเดียวกับ localDiskStore — ไม่เขียนทับ (BR-25)', async () => {
+    fetchMock.mockResolvedValue(new Response(JSON.stringify({ error: 'Duplicate' }), { status: 409 }))
+    const store = supabaseStorageStore(config)
+
+    await expect(store.put('uploads/c1/u1/a.png', bytes)).rejects.toThrow('ไม่เขียนทับ')
+  })
+
+  it('เขียนไม่สำเร็จด้วยเหตุอื่น โยน error ที่มีสถานะ HTTP ติดมา', async () => {
+    fetchMock.mockResolvedValue(new Response('bucket not found', { status: 404 }))
+    const store = supabaseStorageStore(config)
+
+    await expect(store.put('uploads/c1/u1/a.png', bytes)).rejects.toThrow('404')
+  })
+
+  it('get อ่านไฟล์กลับมาได้ไบต์เดิมทุกไบต์ พร้อม Authorization header', async () => {
+    fetchMock.mockResolvedValue(new Response(bytes, { status: 200 }))
+    const store = supabaseStorageStore(config)
+
+    const result = await store.get('uploads/c1/u1/a.png')
+
+    expect(result).toEqual(bytes)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://proj.supabase.co/storage/v1/object/assets/uploads/c1/u1/a.png')
+    expect(init.headers.Authorization).toBe('Bearer sr-key')
+  })
+
+  it('get ไฟล์ที่ไม่มีอยู่ โยน error ที่บอก path', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 404 }))
+    const store = supabaseStorageStore(config)
+
+    await expect(store.get('uploads/c1/u1/missing.png')).rejects.toThrow('uploads/c1/u1/missing.png')
+  })
+
+  it('บอกได้ว่าไฟล์ไปอยู่ไหน · รวมชื่อ bucket', () => {
+    const store = supabaseStorageStore(config)
+    expect(store.describe).toContain('Supabase Storage')
+    expect(store.describe).toContain('assets')
   })
 })
