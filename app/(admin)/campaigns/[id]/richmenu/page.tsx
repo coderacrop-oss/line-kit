@@ -8,7 +8,9 @@ import {
   loadRichMenuScreen, type RichMenuScreenData, type RichMenuView,
 } from '@/lib/db/richmenu'
 import { type AreaKind, type RichMenuArea } from '@/lib/richmenu/areas'
-import { LAYOUTS } from '@/lib/richmenu/layouts'
+import {
+  canvasFor, LAYOUTS, type LayoutKey, layoutRects, layoutsOfSize, MENU_CANVAS, type MenuSize,
+} from '@/lib/richmenu/layouts'
 import { menuImageSizeWarning } from '@/lib/richmenu/image'
 import { changeLayout, createMenu, deleteMenu, saveMenu, setEntry } from './actions'
 
@@ -104,6 +106,115 @@ function AreaBox({ area, index, data, menuId }: {
   )
 }
 
+const SIZE_LABEL: Record<MenuSize, string> = { large: 'ภาพใหญ่', small: 'ภาพเล็ก' }
+
+/** ผังหนึ่งแบบเป็นรูปสี่เหลี่ยมย่อส่วน — เทียบกับหน้าเลือกเทมเพลตจริงของ LINE ที่วาดผังเป็นรูปแบบนี้ ไม่ใช่แค่ตัวเลขจำนวนช่อง */
+function LayoutDiagram({ layoutKey }: { layoutKey: LayoutKey }) {
+  const canvas = canvasFor(layoutKey)
+  const width = 56
+  const height = Math.round((width * canvas.height) / canvas.width)
+  return (
+    <div style={{
+      position: 'relative', width, height, flexShrink: 0,
+      background: 'var(--ground)', border: '1px solid var(--rule)', borderRadius: 3, overflow: 'hidden',
+    }}>
+      {layoutRects(layoutKey).map((r, i) => (
+        <div
+          key={i}
+          style={{
+            position: 'absolute',
+            left: `${(r.x / canvas.width) * 100}%`, top: `${(r.y / canvas.height) * 100}%`,
+            width: `${(r.width / canvas.width) * 100}%`, height: `${(r.height / canvas.height) * 100}%`,
+            border: '1px solid var(--panel)', background: 'var(--rule)', boxSizing: 'border-box',
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+const layoutChoiceStyle: CSSProperties = {
+  display: 'flex', alignItems: 'center', gap: 8,
+  border: '1px solid var(--rule)', borderRadius: 'var(--r)', padding: '7px 10px',
+  cursor: 'pointer', fontSize: 11,
+}
+
+/**
+ * ผังทั้งชุดของขนาดผืนภาพหนึ่งขนาด — จัดกลุ่ม "ภาพใหญ่"/"ภาพเล็ก" แยกกันเหมือน
+ * หน้าเลือกเทมเพลตจริงของ LINE Official Account Manager
+ *
+ * ป้ายกำกับอยู่ที่ "ตัวเลือก" ไม่ใช่ที่หัวกลุ่ม เพราะกลุ่มหนึ่งมีทั้งผังที่ลอกมาจาก
+ * LINE ตรงๆ ("แบบ LINE") และผังที่ระบบนี้เพิ่มเอง ("แบบกำหนดเอง" — เช่นตาราง 2×4
+ * ที่ไม่มีอยู่ในหน้าเลือกเทมเพลตของ LINE) ปนกันอยู่ — ป้ายเดียวที่หัวกลุ่มจะโกหก
+ * ผังใดผังหนึ่งในกลุ่มเสมอ
+ */
+function LayoutSizeGroup({ size, current, onFormId }: {
+  size: MenuSize; current?: LayoutKey; onFormId?: string
+}) {
+  const canvas = MENU_CANVAS[size]
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={labelStyle}>{SIZE_LABEL[size]} · {canvas.width}×{canvas.height}</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {layoutsOfSize(size).map((option) => (
+          <label key={option.key} style={layoutChoiceStyle}>
+            <input
+              type="radio" name="layout" value={option.key} required
+              defaultChecked={current === option.key}
+              form={onFormId}
+            />
+            <LayoutDiagram layoutKey={option.key} />
+            <span>{option.label}</span>
+            <Badge tone={option.origin === 'line' ? 'mute' : 'info'}>
+              {option.origin === 'line' ? 'แบบ LINE' : 'แบบกำหนดเอง'}
+            </Badge>
+          </label>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+/**
+ * สลับผังได้เฉพาะกลุ่มขนาดผืนภาพเดียวกับภาพปัจจุบันของเมนูนี้ — มีผลทันทีไม่ต้อง
+ * รอกด "บันทึกเมนู" (`changeLayout` เป็นแอ็กชันของตัวเอง) สลับข้ามผืนภาพทำที่นี่
+ * ไม่ได้เพราะพิกัดของผังต้องคำนวณจากขนาดภาพที่ใช้อยู่จริง — ต้องอัปโหลดภาพขนาดใหม่
+ * ผ่าน "บันทึกเมนู" ก่อน ผังของขนาดนั้นถึงจะเลือกได้ (`actions.ts:changeLayout`
+ * ปฏิเสธถ้าขนาดไม่ตรงอยู่ดี ตรงนี้กรองไว้ล่วงหน้าเพื่อไม่ให้กดแล้วเจอ error เฉยๆ)
+ */
+function LayoutSwitcher({ campaignId, menu, canEdit }: {
+  campaignId: string; menu: RichMenuView; canEdit: boolean
+}) {
+  const size = LAYOUTS.find((option) => option.key === menu.layout)?.size ?? 'large'
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      <span style={labelStyle}>ผังช่อง</span>
+      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
+        {layoutsOfSize(size).map((option) => (
+          <form key={option.key} action={changeLayout.bind(null, campaignId, menu.id, option.key)}>
+            <button
+              type="submit"
+              disabled={!canEdit}
+              style={{
+                ...layoutChoiceStyle,
+                cursor: canEdit ? 'pointer' : 'default',
+                background: menu.layout === option.key ? 'var(--ink)' : 'var(--panel)',
+                color: menu.layout === option.key ? 'var(--panel)' : 'var(--ink)',
+              }}
+            >
+              <LayoutDiagram layoutKey={option.key} />
+              <span>{option.label}</span>
+            </button>
+          </form>
+        ))}
+      </div>
+      <span style={{ fontSize: 10, color: 'var(--ink-3)', lineHeight: 1.4 }}>
+        สลับข้ามขนาดผืนภาพ ({size === 'large' ? 'ภาพเล็ก 2500×843' : 'ภาพใหญ่ 2500×1686'}) ต้องอัปโหลดภาพขนาดนั้นก่อน — เปลี่ยนภาพด้านบนแล้วกด &quot;บันทึกเมนู&quot;
+      </span>
+    </div>
+  )
+}
+
 function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
   campaignId: string; menu: RichMenuView; data: RichMenuScreenData; canEdit: boolean; canDelete: boolean
 }) {
@@ -150,38 +261,42 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
 
       <Panel.Row style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         <Field label="ภาพเมนู (บังคับ · 2500×1686)">
-          <select form={formId} name="image_asset_id" defaultValue={menu.imageAssetId} disabled={!canEdit}>
-            <option value="">— เลือกภาพจากคลัง —</option>
-            {data.images.map((image) => (
-              <option key={image.id} value={image.id}>
-                {image.label} · {image.width}×{image.height}
-              </option>
-            ))}
-          </select>
+          <div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              {/* ไฟล์จริงที่อัปโหลดไป ไม่ใช่กล่องแทนภาพ */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={menu.imageUrl} alt=""
+                style={{
+                  width: 72, height: Math.round((72 * 1686) / 2500), objectFit: 'cover',
+                  borderRadius: 'var(--r-sm)', border: '1px solid var(--rule)', flexShrink: 0,
+                }}
+              />
+              {/* ขนาดโผล่ในป้ายเตือนข้างล่างอยู่แล้วเมื่อผิด — ไม่พิมพ์ตัวเลขซ้ำสองที่ตอนภาพพัง */}
+              {!badImage && (
+                <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
+                  {menu.imageWidth}×{menu.imageHeight}
+                </span>
+              )}
+            </div>
+            <input type="hidden" form={formId} name="image_asset_id" value={menu.imageAssetId} />
+            {canEdit && (
+              <>
+                <input
+                  form={formId} type="file" name="image_file" accept="image/png,image/jpeg"
+                  aria-label="แทนที่ภาพเมนู"
+                  style={{ fontSize: 11, marginTop: 6 }}
+                />
+                <span style={{ fontSize: 10, color: 'var(--ink-3)', display: 'block', marginTop: 3 }}>
+                  ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังปัจจุบันอัตโนมัติ
+                </span>
+              </>
+            )}
+          </div>
         </Field>
         {badImage && <span style={{ fontSize: 11, color: 'var(--danger)' }}>{badImage}</span>}
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
-          <span style={labelStyle}>ผังช่อง</span>
-          <div style={{ display: 'flex', border: '1px solid var(--rule)', borderRadius: 'var(--r)', width: 'fit-content', overflow: 'hidden' }}>
-            {LAYOUTS.map((option) => (
-              <form key={option.key} action={changeLayout.bind(null, campaignId, menu.id, option.key)}>
-                <button
-                  type="submit"
-                  disabled={!canEdit}
-                  style={{
-                    border: 0, borderRight: '1px solid var(--rule)', padding: '8px 15px',
-                    fontSize: 12, fontWeight: 600, fontFamily: 'var(--mono)', cursor: 'pointer',
-                    background: menu.layout === option.key ? 'var(--ink)' : 'var(--panel)',
-                    color: menu.layout === option.key ? 'var(--panel)' : 'var(--ink)',
-                  }}
-                >
-                  {option.label}
-                </button>
-              </form>
-            ))}
-          </div>
-        </div>
+        <LayoutSwitcher campaignId={campaignId} menu={menu} canEdit={canEdit} />
 
         <div style={{ ...gridStyle, gridTemplateColumns: `repeat(${layoutCols}, 1fr)` }}>
           {menu.areas.map((area, index) => (
@@ -214,31 +329,32 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
   )
 }
 
-function NewMenuForm({ campaignId, data }: { campaignId: string; data: RichMenuScreenData }) {
+function NewMenuForm({ campaignId }: { campaignId: string }) {
   return (
     <details style={{ marginBottom: 16 }}>
       <summary style={summaryStyle}>+ เพิ่มเมนู</summary>
       <Panel style={{ marginTop: 10 }}>
         <Panel.Row>
-          <form action={createMenu.bind(null, campaignId)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <form
+            action={createMenu.bind(null, campaignId)}
+            style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
+          >
             <Field label="ชื่อเรียกเมนู (alias)" hint="ใช้ตอนลงทะเบียนปุ่มสลับแท็บ (BR-77) — ตั้งชื่อที่จำง่าย เช่น main, promo">
               <input name="alias" required placeholder="เช่น main" />
             </Field>
-            <Field label="ภาพเมนู (บังคับ · 2500×1686)">
-              <select name="image_asset_id" required defaultValue="">
-                <option value="">— เลือกภาพจากคลัง —</option>
-                {data.images.map((image) => (
-                  <option key={image.id} value={image.id}>{image.label} · {image.width}×{image.height}</option>
-                ))}
-              </select>
+            <Field
+              label="ภาพเมนู (บังคับ)"
+              hint="ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังที่เลือกไว้อัตโนมัติ (เหมือนวิธี &quot;อัปโหลดรูปและนำไปใช้&quot; ของ LINE) ปฏิเสธเฉพาะภาพที่เล็กเกินจนต้องขยายจนเบลอ"
+            >
+              <input type="file" name="image_file" required accept="image/png,image/jpeg" />
             </Field>
-            <Field label="ผังช่อง">
-              <select name="layout" defaultValue="one">
-                {LAYOUTS.map((option) => (
-                  <option key={option.key} value={option.key}>{option.label} ช่อง</option>
-                ))}
-              </select>
-            </Field>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
+              <span style={labelStyle}>ผังช่อง</span>
+              <LayoutSizeGroup size="large" current="large_1" />
+              <LayoutSizeGroup size="small" />
+            </div>
+
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button type="submit">+ สร้างเมนูแรก</Button>
             </div>
@@ -283,7 +399,7 @@ export default async function RichMenuPage({ params }: { params: Promise<{ id: s
         ตอนแคมเปญจบถอดออกรายคน เมนูเดิมกลับมาเอง
       </Note>
 
-      {canEdit && <NewMenuForm campaignId={campaign.id} data={data} />}
+      {canEdit && <NewMenuForm campaignId={campaign.id} />}
 
       {data.menus.length === 0 ? (
         <Empty

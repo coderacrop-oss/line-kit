@@ -8,7 +8,8 @@ import {
 import { menusNeedingAlias } from '../richmenu/alias'
 import { type AreaKind, asAreaKind, buildAreas, countEmpty, type RichMenuArea, toLineArea } from '../richmenu/areas'
 import { buildLinkOperations, chunkOperations } from '../richmenu/batch'
-import { identifyLayout, type LayoutKey, MENU_IMAGE_HEIGHT, MENU_IMAGE_WIDTH } from '../richmenu/layouts'
+import { identifyLayout, type LayoutKey } from '../richmenu/layouts'
+import { isValidMenuImageSize } from '../richmenu/image'
 import { listActivities } from './activities'
 import { listAssets } from './assets'
 import { listCards } from './cards'
@@ -67,9 +68,9 @@ function toView(row: RichMenuRow, imagesById: Map<string, RichMenuImageOption>):
     isEntry: row.is_entry,
     lineRichMenuId: row.line_rich_menu_id,
     chatBarText: row.chat_bar_text,
-    layout: identifyLayout(areas.length),
+    layout: identifyLayout(areas),
     emptyCount: countEmpty(areas),
-    imageBad: !(image && image.width === 2500 && image.height === 1686),
+    imageBad: !(image && isValidMenuImageSize(image.width, image.height)),
   }
 }
 
@@ -243,9 +244,11 @@ export async function publishRichMenus(
   tx: Queryable,
   input: { campaignId: string; campaignCode: string; accessToken: string; store: AssetStore },
 ): Promise<void> {
-  const rows = await tx<Array<RichMenuRow & { storage_path: string; mime_type: string }>>`
+  const rows = await tx<Array<RichMenuRow & {
+    storage_path: string; mime_type: string; width: number; height: number
+  }>>`
     SELECT rm.id, rm.campaign_id, rm.alias, rm.image_asset_id, rm.areas, rm.is_entry,
-           rm.line_rich_menu_id, rm.chat_bar_text, a.storage_path, a.mime_type
+           rm.line_rich_menu_id, rm.chat_bar_text, a.storage_path, a.mime_type, a.width, a.height
       FROM rich_menu rm JOIN asset a ON a.id = rm.image_asset_id
      WHERE rm.campaign_id = ${input.campaignId}
      ORDER BY rm.created_at`
@@ -277,7 +280,9 @@ export async function publishRichMenus(
     }))
 
     const payload: LineRichMenuPayload = {
-      size: { width: MENU_IMAGE_WIDTH, height: MENU_IMAGE_HEIGHT },
+      // ผืนใหญ่ (2500×1686) หรือผืนเล็ก (2500×843) — มาจากภาพจริงที่เลือกไว้ ไม่ใช่
+      // ค่าคงที่ เพราะตอนนี้เมนูหนึ่งใบเลือกได้สองขนาด ไม่ใช่ผืนใหญ่อย่างเดียวแล้ว
+      size: { width: row.width, height: row.height },
       // ไม่ผูกกับ is_entry (BR-78) โดยตั้งใจ — `selected` ของ LINE คือ "เมนู
       // เริ่มต้นของทั้งบัญชี" ซึ่งเป็นกลไกคนละตัวกับเมนูตัวเข้าของแคมเปญนี้
       // (BR-71 · channel.set_default_menu ปิดไว้เป็นค่าเริ่มต้นอยู่แล้ว) การผูก

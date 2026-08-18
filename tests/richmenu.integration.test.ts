@@ -54,7 +54,7 @@ describe('createRichMenu / updateRichMenu · ฐานข้อมูลจร�
   it('สร้างเมนูใหม่ด้วยผัง one ได้หนึ่งช่อง ไม่ชี้ไปไหนตั้งต้น', async () => {
     const s = await scene()
     const { id } = await createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId, layout: 'one',
+      campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId, layout: 'large_1',
     })
 
     const data = await loadRichMenuScreen(sql, s.campaignId)
@@ -67,9 +67,9 @@ describe('createRichMenu / updateRichMenu · ฐานข้อมูลจร�
 
   it('UNIQUE (campaign_id, alias) ของตารางถูกแปลเป็น DuplicateAliasError', async () => {
     const s = await scene()
-    await createRichMenu(sql, { campaignId: s.campaignId, alias: 'dup', imageAssetId: s.assetId, layout: 'one' })
+    await createRichMenu(sql, { campaignId: s.campaignId, alias: 'dup', imageAssetId: s.assetId, layout: 'large_1' })
     await expect(createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'dup', imageAssetId: s.assetId2, layout: 'one',
+      campaignId: s.campaignId, alias: 'dup', imageAssetId: s.assetId2, layout: 'large_1',
     })).rejects.toThrow(DuplicateAliasError)
   })
 
@@ -82,7 +82,7 @@ describe('createRichMenu / updateRichMenu · ฐานข้อมูลจร�
               1200, 405, ${s.userId})
       RETURNING id`
     const { id } = await createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'bad-img', imageAssetId: badAsset.id, layout: 'one',
+      campaignId: s.campaignId, alias: 'bad-img', imageAssetId: badAsset.id, layout: 'large_1',
     })
     const data = await loadRichMenuScreen(sql, s.campaignId)
     expect(data.menus.find((m) => m.id === id)?.imageBad).toBe(true)
@@ -91,7 +91,7 @@ describe('createRichMenu / updateRichMenu · ฐานข้อมูลจร�
   it('updateRichMenu แก้ alias และภาพ', async () => {
     const s = await scene()
     const { id } = await createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'old', imageAssetId: s.assetId, layout: 'one',
+      campaignId: s.campaignId, alias: 'old', imageAssetId: s.assetId, layout: 'large_1',
     })
     await updateRichMenu(sql, { id, campaignId: s.campaignId, alias: 'new', imageAssetId: s.assetId2 })
     const data = await loadRichMenuScreen(sql, s.campaignId)
@@ -105,22 +105,22 @@ describe('setLayout / setAreaTarget · ฐานข้อมูลจริง',
   it('เปลี่ยนผังแล้วจำนวนช่องเปลี่ยนตาม และค่าที่ตั้งไว้ตำแหน่งเดิมยังอยู่', async () => {
     const s = await scene()
     const { id } = await createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'layout', imageAssetId: s.assetId, layout: 'two',
+      campaignId: s.campaignId, alias: 'layout', imageAssetId: s.assetId, layout: 'large_2h',
     })
     await setAreaTarget(sql, { id, campaignId: s.campaignId, index: 0, kind: 'url', target: 'https://x.example' })
-    await setLayout(sql, { id, campaignId: s.campaignId, layout: 'six' })
+    await setLayout(sql, { id, campaignId: s.campaignId, layout: 'large_6' })
 
     const data = await loadRichMenuScreen(sql, s.campaignId)
     const menu = data.menus.find((m) => m.id === id)
     expect(menu?.areas).toHaveLength(6)
     expect(menu?.areas[0]).toMatchObject({ kind: 'url', target: 'https://x.example' })
-    expect(menu?.layout).toBe('six')
+    expect(menu?.layout).toBe('large_6')
   })
 
   it('setAreaTarget เปลี่ยนกลับเป็น none ล้าง target เป็น null', async () => {
     const s = await scene()
     const { id } = await createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'clear', imageAssetId: s.assetId, layout: 'one',
+      campaignId: s.campaignId, alias: 'clear', imageAssetId: s.assetId, layout: 'large_1',
     })
     await setAreaTarget(sql, { id, campaignId: s.campaignId, index: 0, kind: 'url', target: 'https://x.example' })
     await setAreaTarget(sql, { id, campaignId: s.campaignId, index: 0, kind: 'none', target: null })
@@ -132,7 +132,7 @@ describe('setLayout / setAreaTarget · ฐานข้อมูลจริง',
   it('setAreaTarget กับ index ที่ไม่มีอยู่ในผังปัจจุบัน ถูกปฏิเสธ ไม่เขียนอะไรเงียบๆ', async () => {
     const s = await scene()
     const { id } = await createRichMenu(sql, {
-      campaignId: s.campaignId, alias: 'oob', imageAssetId: s.assetId, layout: 'one',
+      campaignId: s.campaignId, alias: 'oob', imageAssetId: s.assetId, layout: 'large_1',
     })
     await expect(setAreaTarget(sql, {
       id, campaignId: s.campaignId, index: 5, kind: 'url', target: 'https://x.example',
@@ -154,8 +154,8 @@ describe('BR-78 · เมนูตัวเข้าพอดีหนึ่ง�
 
   it('setEntryMenu สลับแล้วตัวเก่าหลุดอัตโนมัติ ตัวใหม่ถูกตั้ง (ทีละครั้ง ไม่ชนกันเอง)', async () => {
     const s = await scene()
-    const a = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'a', imageAssetId: s.assetId, layout: 'one' })
-    const b = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'b', imageAssetId: s.assetId2, layout: 'one' })
+    const a = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'a', imageAssetId: s.assetId, layout: 'large_1' })
+    const b = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'b', imageAssetId: s.assetId2, layout: 'large_1' })
 
     await setEntryMenu(sql, { campaignId: s.campaignId, id: a.id })
     let data = await loadRichMenuScreen(sql, s.campaignId)
@@ -172,7 +172,7 @@ describe('BR-78 · เมนูตัวเข้าพอดีหนึ่ง�
 describe('deleteRichMenu · ฐานข้อมูลจริง', () => {
   it('ลบเมนูที่ไม่มีใครอ้างถึงได้ปกติ', async () => {
     const s = await scene()
-    const { id } = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'del', imageAssetId: s.assetId, layout: 'one' })
+    const { id } = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'del', imageAssetId: s.assetId, layout: 'large_1' })
     await deleteRichMenu(sql, { id, campaignId: s.campaignId })
     const data = await loadRichMenuScreen(sql, s.campaignId)
     expect(data.menus.find((m) => m.id === id)).toBeUndefined()
@@ -180,7 +180,7 @@ describe('deleteRichMenu · ฐานข้อมูลจริง', () => {
 
   it('ลบเมนูที่บัญชี LINE ตั้งเป็นเมนูเริ่มต้นอยู่ (channel.base_richmenu_id) ถูกปฏิเสธเป็น RichMenuInUseError', async () => {
     const s = await scene()
-    const { id } = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'inuse', imageAssetId: s.assetId, layout: 'one' })
+    const { id } = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'inuse', imageAssetId: s.assetId, layout: 'large_1' })
     await sql`
       INSERT INTO channel (name, channel_type, base_richmenu_id, encrypted_token,
                             encrypted_secret, token_last4, key_version, created_by)
@@ -240,7 +240,7 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
 
   it('ตัดสินใจข้อ 4 — การส่งขึ้นครั้งแรก (line_rich_menu_id เดิมเป็น null ทุกแถว) ไม่เรียก batch', async () => {
     const s = await scene()
-    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId, layout: 'one' })
+    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId, layout: 'large_1' })
     await fillArea(menu.id, s.campaignId)
 
     await publishRichMenus(sql, { campaignId: s.campaignId, campaignCode: 'x', accessToken: 't', store: fakeStore })
@@ -255,7 +255,7 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
 
   it('ตัดสินใจข้อ 4 — ส่งขึ้นซ้ำ (มี line_rich_menu_id เดิมอยู่แล้ว) เรียก batch หนึ่งครั้งพร้อม operation ย้ายรุ่นเก่าไปรุ่นใหม่', async () => {
     const s = await scene()
-    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId, layout: 'one' })
+    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId, layout: 'large_1' })
     await fillArea(menu.id, s.campaignId)
     await sql`UPDATE rich_menu SET line_rich_menu_id = 'old-line-id' WHERE id = ${menu.id}`
 
@@ -269,7 +269,7 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
 
   it('เมนูที่ไม่มีปุ่มสลับแท็บชี้ถึง ไม่ถูกลงทะเบียน alias เลย (5b เฉพาะที่จำเป็น)', async () => {
     const s = await scene()
-    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'solo', imageAssetId: s.assetId, layout: 'one' })
+    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'solo', imageAssetId: s.assetId, layout: 'large_1' })
     await fillArea(menu.id, s.campaignId)
 
     await publishRichMenus(sql, { campaignId: s.campaignId, campaignCode: 'x', accessToken: 't', store: fakeStore })
@@ -280,8 +280,8 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
 
   it('เมนูที่มีปุ่มสลับแท็บชี้ถึงจริง ถูกลงทะเบียน alias (5b)', async () => {
     const s = await scene()
-    const target = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'promo', imageAssetId: s.assetId, layout: 'one' })
-    const source = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId2, layout: 'one' })
+    const target = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'promo', imageAssetId: s.assetId, layout: 'large_1' })
+    const source = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId2, layout: 'large_1' })
     await fillArea(target.id, s.campaignId)
     await setAreaTarget(sql, { id: source.id, campaignId: s.campaignId, index: 0, kind: 'menu', target: target.id })
 
@@ -295,7 +295,7 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
 
   it('LINE ปฏิเสธตอน validate (4b) — โยน error พร้อมรหัส ERR-044 และไม่เขียน line_rich_menu_id', async () => {
     const s = await scene()
-    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'bad', imageAssetId: s.assetId, layout: 'one' })
+    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'bad', imageAssetId: s.assetId, layout: 'large_1' })
     await fillArea(menu.id, s.campaignId)
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith('/richmenu/validate')) return { ok: false, status: 422, text: async () => 'areas invalid' }
@@ -313,7 +313,7 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
 
   it('ล้มที่ 5c (batch) — โยน error พร้อมรหัส ERR-045', async () => {
     const s = await scene()
-    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'batch-fail', imageAssetId: s.assetId, layout: 'one' })
+    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'batch-fail', imageAssetId: s.assetId, layout: 'large_1' })
     await fillArea(menu.id, s.campaignId)
     await sql`UPDATE rich_menu SET line_rich_menu_id = 'old-id' WHERE id = ${menu.id}`
     fetchMock.mockImplementation(async (url: string) => {
@@ -339,7 +339,7 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
    */
   it('ขั้นเมนูล้ม (4b) ทำให้ทั้งธุรกรรม publish ย้อนกลับหมด — ไม่เหลือ version หรือการผูกบัญชีค้าง', async () => {
     const s = await scene()
-    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'atomic', imageAssetId: s.assetId, layout: 'one' })
+    const menu = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'atomic', imageAssetId: s.assetId, layout: 'large_1' })
     await fillArea(menu.id, s.campaignId)
     fetchMock.mockImplementation(async (url: string) => {
       if (url.endsWith('/richmenu/validate')) return { ok: false, status: 422, text: async () => 'nope' }
