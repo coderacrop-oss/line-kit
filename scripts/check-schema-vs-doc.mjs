@@ -61,6 +61,11 @@ const TOOLING_TABLES = new Set(['_migrations'])
 const LOCAL_TABLES = {
   // M4-S02 · ตัวจัดวางภาพหลายชั้นของ Rich Menu — เร็วกว่ารอบอัปเดตเอกสารรอบถัดไป
   rich_menu_composition: 'M4-S02 Rich Menu Compositor',
+  // Rich Message (imagemap) · บัญชีภาพต้นฉบับ + ภาพ 5 ขนาดที่ปั้นไว้ล่วงหน้าของการ์ด
+  // หนึ่งใบ — พื้นที่กด (actions) เองอยู่ที่ card.tap_areas ซึ่งเอกสารมีอยู่แล้ว
+  // (L2 §5.2 v0.18/BR-47) ตารางนี้เก็บแค่ส่วนที่เอกสารยังไม่มีคอลัมน์ให้ (ดูหมายเหตุ
+  // เต็มที่หัวไฟล์ supabase/migrations/0009_card_imagemap.sql)
+  card_imagemap: 'Rich Message (imagemap) base image + 5 size variants',
 }
 
 async function readLiveSchema(sql) {
