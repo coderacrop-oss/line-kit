@@ -9,6 +9,7 @@ const row = (patch: Partial<ChannelRow> = {}): ChannelRow => ({
   name: 'OA ทดสอบ',
   channel_type: 'test',
   line_channel_id: null,
+  line_bot_user_id: null,
   token_last4: 'wxyz',
   key_version: 1,
   last_used_at: null,
@@ -80,6 +81,19 @@ describe('summarizeChannel', () => {
   it('บัญชีที่กรอก Channel ID แล้ว ส่งค่านั้นออกมาตรงๆ', () => {
     expect(summarizeChannel(row({ line_channel_id: '1657123456' })).lineChannelId)
       .toBe('1657123456')
+  })
+
+  /**
+   * destination ที่ LINE ส่งมาในทุก webhook — คนละค่ากับ Channel ID ข้างบน
+   * ไม่มีมันแล้ว webhook หาไม่เจอว่า event เป็นของบัญชีไหนเลย ไม่ว่ากุญแจจะถูกหรือผิด
+   */
+  it('บัญชีที่ยังไม่ได้กรอก userId ของบอท คืน null', () => {
+    expect(summarizeChannel(row()).lineBotUserId).toBeNull()
+  })
+
+  it('บัญชีที่กรอก userId ของบอทแล้ว ส่งค่านั้นออกมาตรงๆ', () => {
+    expect(summarizeChannel(row({ line_bot_user_id: 'U1234567890abcdef' })).lineBotUserId)
+      .toBe('U1234567890abcdef')
   })
 })
 

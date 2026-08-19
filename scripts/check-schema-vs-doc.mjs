@@ -90,6 +90,9 @@ const INTENTIONAL_EXTRAS = {
   quiz_round: ['expires_at'],   // BR-85 · pending answers expire at end of day
   export_log: ['reason'],       // cannot be backfilled once files have gone out
   participant: ['rich_menu_linked_at'], // BR-78 ฝั่งผู้เล่น · เคยผูกเมนูตัวเข้าให้คนนี้แล้วหรือยัง
+  // destination ที่ LINE ส่งมาในทุก webhook — ใช้หาว่า event เป็นของบัญชีไหน ก่อนรู้ว่า
+  // จะตรวจลายเซ็นด้วยกุญแจของใคร (multi-channel webhook)
+  channel: ['line_bot_user_id'],
 }
 
 const doc = parseDoc(readFileSync(DOC, 'utf8'))

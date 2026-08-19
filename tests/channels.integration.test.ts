@@ -2,7 +2,7 @@ import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type postgres from 'postgres'
 import { decryptSecret, encryptSecret } from '../lib/crypto/secretbox'
-import { findTestSendChannel, listChannels, loadChannel } from '../lib/db/channels'
+import { findChannelByBotUserId, findTestSendChannel, listChannels, loadChannel } from '../lib/db/channels'
 import { readChannelSecret } from '../lib/db/tokens'
 import { testDb } from '../lib/db/client'
 import { seed } from './helpers/seed'
@@ -525,5 +525,66 @@ describe('findTestSendChannel · BR-62', () => {
     const found = await findTestSendChannel(sql)
 
     expect(found?.id).not.toBe(previewId)
+  })
+})
+
+/**
+ * destination ที่ LINE ส่งมาในทุก webhook — ต้องรู้แถวนี้ก่อนจะรู้ว่าจะตรวจลายเซ็น
+ * ด้วยกุญแจของใคร (migration 0010) ตารางจริงเป็นคนบังคับ UNIQUE เต็ม ไม่ใช่แค่โค้ด
+ * เชื่อว่ามันจริง
+ */
+describe('findChannelByBotUserId · destination → บัญชี', () => {
+  const insertChannel = async (opts: { botUserId: string | null; lineChannelId?: string | null }) => {
+    const user = await aUser()
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO channel (name, channel_type, line_channel_id, line_bot_user_id, created_by)
+      VALUES (${`OA ${tag()}`}, 'preview', ${opts.lineChannelId ?? null}, ${opts.botUserId}, ${user.id})
+      RETURNING id`
+    return row.id as string
+  }
+
+  it('destination ที่ตรงกับบัญชีจริง คืนแถวนั้นพร้อม line_channel_id', async () => {
+    const botUserId = `U-${tag()}`
+    const id = await insertChannel({ botUserId, lineChannelId: `L-${tag()}` })
+
+    const found = await findChannelByBotUserId(sql, botUserId)
+
+    expect(found?.id).toBe(id)
+  })
+
+  it('destination ที่ไม่มีบัญชีไหนผูกไว้ คืน null', async () => {
+    expect(await findChannelByBotUserId(sql, `U-ไม่มีอยู่จริง-${tag()}`)).toBeNull()
+  })
+
+  it('บัญชีที่ยังไม่ได้กรอก userId ของบอท (NULL) ไม่ถูกจับคู่กับอะไรเลย', async () => {
+    await insertChannel({ botUserId: null })
+    expect(await findChannelByBotUserId(sql, '')).toBeNull()
+  })
+
+  // Postgres ไม่นับ NULL ชนกันเองภายใต้ UNIQUE — หลายบัญชีที่ยังไม่กรอกต้องอยู่ด้วยกันได้
+  it('มีหลายบัญชีที่ยังไม่กรอก userId ของบอท (NULL ซ้ำกันได้) ไม่ชนกัน', async () => {
+    await expect(insertChannel({ botUserId: null })).resolves.toBeDefined()
+    await expect(insertChannel({ botUserId: null })).resolves.toBeDefined()
+  })
+
+  it('userId ของบอทซ้ำกันสองแถว ถูกปฏิเสธ (UNIQUE)', async () => {
+    const user = await aUser()
+    const botUserId = `U-${tag()}`
+    const add = () => sql`
+      INSERT INTO channel (name, channel_type, line_bot_user_id, created_by)
+      VALUES (${`OA ${tag()}`}, 'preview', ${botUserId}, ${user.id})`
+
+    await add()
+    await expect(add()).rejects.toThrow(/duplicate key value|unique constraint/i)
+  })
+
+  it('สองบัญชีคนละ destination กัน แต่ละแถวคืนถูกตัว ไม่ใช่แถวของอีกบัญชี', async () => {
+    const botA = `U-A-${tag()}`
+    const botB = `U-B-${tag()}`
+    const idA = await insertChannel({ botUserId: botA, lineChannelId: `L-A-${tag()}` })
+    const idB = await insertChannel({ botUserId: botB, lineChannelId: `L-B-${tag()}` })
+
+    expect((await findChannelByBotUserId(sql, botA))?.id).toBe(idA)
+    expect((await findChannelByBotUserId(sql, botB))?.id).toBe(idB)
   })
 })
