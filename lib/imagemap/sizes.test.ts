@@ -2,7 +2,7 @@ import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { describe, expect, it } from 'vitest'
 import {
   generateImagemapVariants, IMAGEMAP_WIDTHS, isImagemapWidth, MIN_SOURCE_WIDTH, OUTPUT_MAX_BYTES,
-  SOURCE_MAX_BYTES,
+  SOURCE_MAX_BYTES, validateImagemapUpload,
 } from './sizes'
 
 /** ภาพจริงสีเดียวขนาดที่กำหนด เข้ารหัส JPEG จริง — ไม่ใช่ของปลอมที่แค่มีนามสกุลถูก */
@@ -24,6 +24,46 @@ describe('isImagemapWidth', () => {
     for (const width of [0, -1, 239, 241, 500, 1041, 2500, 1.5]) {
       expect(isImagemapWidth(width)).toBe(false)
     }
+  })
+})
+
+describe('validateImagemapUpload', () => {
+  const okFile = { mime: 'image/jpeg', bytes: 1000, width: 1200, height: 800 }
+
+  it('ไฟล์ปกติผ่านด่าน', () => {
+    expect(validateImagemapUpload(okFile)).toEqual({ ok: true })
+  })
+
+  it('ชนิดไฟล์อื่นนอกจาก JPEG/PNG ปฏิเสธ', () => {
+    expect(validateImagemapUpload({ ...okFile, mime: 'image/gif' }).ok).toBe(false)
+  })
+
+  it('ไฟล์ว่าง (0 ไบต์) ปฏิเสธ', () => {
+    expect(validateImagemapUpload({ ...okFile, bytes: 0 }).ok).toBe(false)
+  })
+
+  it('ขนาดภาพเป็นศูนย์ ปฏิเสธ', () => {
+    expect(validateImagemapUpload({ ...okFile, width: 0 }).ok).toBe(false)
+    expect(validateImagemapUpload({ ...okFile, height: 0 }).ok).toBe(false)
+  })
+
+  it(`ไฟล์ใหญ่เกิน ${SOURCE_MAX_BYTES} ไบต์ ปฏิเสธ`, () => {
+    expect(validateImagemapUpload({ ...okFile, bytes: SOURCE_MAX_BYTES + 1 }).ok).toBe(false)
+  })
+
+  it(`แคบกว่า ${MIN_SOURCE_WIDTH}px ปฏิเสธ — ไม่ใช้เพดาน 800px ของคลังภาพทั่วไป`, () => {
+    const result = validateImagemapUpload({ ...okFile, width: MIN_SOURCE_WIDTH - 1 })
+    expect(result.ok).toBe(false)
+    if (result.ok) return
+    expect(result.reason).toContain('เล็กเกินไป')
+  })
+
+  it(`กว้างพอดี ${MIN_SOURCE_WIDTH}px เป๊ะ ผ่านได้ — ไม่ใช่ถูกปัดตกที่ขอบพอดี`, () => {
+    expect(validateImagemapUpload({ ...okFile, width: MIN_SOURCE_WIDTH }).ok).toBe(true)
+  })
+
+  it('MIN_SOURCE_WIDTH คือ 1040 (ขนาดใหญ่สุดของ LINE) ไม่ใช่ 800px ที่ยืมมาจากคลังภาพทั่วไป', () => {
+    expect(MIN_SOURCE_WIDTH).toBe(1040)
   })
 })
 

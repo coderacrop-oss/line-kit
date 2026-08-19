@@ -1,5 +1,5 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas'
-import { describeBytes } from '../assets/validate'
+import { describeBytes, IMAGE_MIME_TYPES } from '../assets/validate'
 
 /**
  * ปั้นภาพต้นฉบับหนึ่งภาพให้กลายเป็นภาพ 5 ขนาดที่ LINE ดึงไปแสดง — ยืนยันจาก source
@@ -26,6 +26,42 @@ export const SOURCE_MAX_BYTES = 8 * 1024 * 1024
 export const OUTPUT_MAX_BYTES = 1024 * 1024
 
 const QUALITY_STEPS = [85, 70, 55] as const
+
+export type ImagemapUploadVerdict = { ok: true } | { ok: false; reason: string }
+
+/**
+ * ตรวจไฟล์ก่อนเป็นภาพฐานของริชเมสเสจ — คนละกติกากับ validateUpload() ของคลังภาพ
+ * ทั่วไป (lib/assets/validate.ts) โดยตั้งใจ เหมือนที่ validateLayerImageUpload ของ
+ * Rich Menu Compositor (lib/richmenu/composition.ts) ก็คนละกติกาด้วยเหตุผลเดียวกัน:
+ * validateUpload บังคับกว้างอย่างน้อย 800px เพราะออกแบบมาสำหรับภาพที่ขยายเต็มความ
+ * กว้างแชท — ริชเมสเสจมีพื้นอ้างอิงของตัวเอง (1040px กว้าง เป๊ะเสมอ) เพดานขั้นต่ำจึง
+ * ผูกกับตัวเลขนั้นแทน ไม่ใช่ 800px ที่ยืมมาจากบริบทอื่น
+ */
+export function validateImagemapUpload(
+  file: { mime: string; bytes: number; width: number; height: number },
+): ImagemapUploadVerdict {
+  if (!(IMAGE_MIME_TYPES as readonly string[]).includes(file.mime)) {
+    return { ok: false, reason: `ไฟล์ชนิด ${file.mime} ใช้ไม่ได้ — รับเฉพาะภาพ JPEG หรือ PNG` }
+  }
+  if (file.bytes <= 0) return { ok: false, reason: 'ไฟล์ว่าง ไม่มีข้อมูลอยู่ข้างใน — อัปโหลดใหม่อีกครั้ง' }
+  if (file.width <= 0 || file.height <= 0) {
+    return { ok: false, reason: 'อ่านขนาดของภาพในไฟล์นี้ไม่ออก — ไฟล์อาจเสียหายหรือไม่ใช่ชนิดที่บอกไว้' }
+  }
+  if (file.bytes > SOURCE_MAX_BYTES) {
+    return {
+      ok: false,
+      reason: `ไฟล์ ${describeBytes(file.bytes)} เกินเพดาน ${describeBytes(SOURCE_MAX_BYTES)} — บีบอัดก่อนแล้วลองใหม่`,
+    }
+  }
+  if (file.width < MIN_SOURCE_WIDTH) {
+    return {
+      ok: false,
+      reason: `ภาพกว้าง ${file.width}px — เล็กเกินไปสำหรับริชเมสเสจ ต้องกว้างอย่างน้อย ${MIN_SOURCE_WIDTH}px `
+        + `(ขนาดใหญ่สุดที่ LINE ขอ) ใช้ภาพความละเอียดสูงกว่านี้`,
+    }
+  }
+  return { ok: true }
+}
 
 export type ImagemapVariant = { data: Uint8Array; mime: 'image/jpeg'; width: number; height: number }
 
