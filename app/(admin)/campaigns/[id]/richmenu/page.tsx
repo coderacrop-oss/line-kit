@@ -1,6 +1,8 @@
 import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, Button, Empty, Field, Note, PageHead, Panel } from '@/components/ui'
+import { ActionForm } from '@/components/richmenu/ActionForm'
+import { ImagePicker } from '@/components/richmenu/ImagePicker'
 import { getSession } from '@/lib/auth/session'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
@@ -9,7 +11,7 @@ import {
 } from '@/lib/db/richmenu'
 import { type AreaKind, type RichMenuArea } from '@/lib/richmenu/areas'
 import {
-  canvasFor, LAYOUTS, type LayoutKey, layoutRects, layoutsOfSize, MENU_CANVAS, type MenuSize,
+  canvasFor, identifyLayout, LAYOUTS, type LayoutKey, layoutRects, layoutsOfSize, MENU_CANVAS, type MenuSize,
 } from '@/lib/richmenu/layouts'
 import { menuImageSizeWarning } from '@/lib/richmenu/image'
 import { changeLayout, createMenu, deleteMenu, saveMenu, setEntry } from './actions'
@@ -292,13 +294,13 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
             <input type="hidden" form={formId} name="image_asset_id" value={menu.imageAssetId} />
             {canEdit && (
               <>
-                <input
-                  form={formId} type="file" name="image_file" accept="image/png,image/jpeg"
-                  aria-label="แทนที่ภาพเมนู"
-                  style={{ fontSize: 11, marginTop: 6 }}
+                <ImagePicker
+                  formId={formId} name="image_file" accept="image/png,image/jpeg"
+                  ariaLabel="แทนที่ภาพเมนู" canvas={canvasFor(identifyLayout(menu.areas))}
+                  style={{ marginTop: 6 }}
                 />
                 <span style={{ fontSize: 10, color: 'var(--ink-3)', display: 'block', marginTop: 3 }}>
-                  ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังปัจจุบันอัตโนมัติ ·{' '}
+                  เลือกไฟล์แล้วจะให้จัดตำแหน่งก่อนเสมอ — ไม่ต้องตัด/ย่อมาก่อนเองก็ได้ ระบบตัดให้พอดีผังปัจจุบันอัตโนมัติถ้าข้ามขั้นตอนนี้ ·{' '}
                   <a href={`/campaigns/${campaignId}/richmenu/${menu.id}/compose`} style={{ color: 'var(--ink)' }}>
                     จัดวางภาพหลายชิ้น →
                   </a>
@@ -318,12 +320,12 @@ function MenuCard({ campaignId, menu, data, canEdit, canDelete }: {
         </div>
 
         {canEdit && (
-          <form id={formId} action={saveMenu.bind(null, campaignId, menu.id)}>
+          <ActionForm id={formId} action={saveMenu.bind(null, campaignId, menu.id)}>
             <input type="hidden" name="area_count" value={menu.areas.length} />
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button type="submit">บันทึกเมนู</Button>
             </div>
-          </form>
+          </ActionForm>
         )}
         <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>
           ช่องที่ไม่ชี้ไปไหนบันทึกได้ แต่จะถูกบล็อกตอนส่งขึ้น LINE
@@ -348,7 +350,7 @@ function NewMenuForm({ campaignId }: { campaignId: string }) {
       <summary style={summaryStyle}>+ เพิ่มเมนู</summary>
       <Panel style={{ marginTop: 10 }}>
         <Panel.Row>
-          <form
+          <ActionForm
             action={createMenu.bind(null, campaignId)}
             style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
           >
@@ -357,9 +359,9 @@ function NewMenuForm({ campaignId }: { campaignId: string }) {
             </Field>
             <Field
               label="ภาพเมนู (บังคับ)"
-              hint="ไม่ต้องตัด/ย่อมาก่อน — ระบบตัดให้พอดีผังที่เลือกไว้อัตโนมัติ (เหมือนวิธี &quot;อัปโหลดรูปและนำไปใช้&quot; ของ LINE) ปฏิเสธเฉพาะภาพที่เล็กเกินจนต้องขยายจนเบลอ"
+              hint="เลือกไฟล์แล้วจะให้จัดตำแหน่งก่อนเสมอ (มีตัวเลือก &quot;ใช้ภาพนี้ทั้งภาพ&quot; ถ้าไม่อยากตัด) ปฏิเสธเฉพาะภาพที่เล็กเกินจนต้องขยายจนเบลอ"
             >
-              <input type="file" name="image_file" required accept="image/png,image/jpeg" />
+              <ImagePicker name="image_file" required accept="image/png,image/jpeg" />
             </Field>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: 5 }}>
@@ -371,7 +373,7 @@ function NewMenuForm({ campaignId }: { campaignId: string }) {
             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
               <Button type="submit">+ สร้างเมนูแรก</Button>
             </div>
-          </form>
+          </ActionForm>
         </Panel.Row>
       </Panel>
     </details>
