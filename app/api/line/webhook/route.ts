@@ -1,6 +1,8 @@
+import { findChannelByBotUserId } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { makePorts } from '@/lib/db/queries'
-import { getAccessToken, getChannelSecret, linkRichMenu, replyMessage } from '@/lib/line/client'
+import { readChannelSecret } from '@/lib/db/tokens'
+import { linkRichMenu, replyMessage } from '@/lib/line/client'
 import { verifySignature } from '@/lib/line/verify'
 import { handleEvent, type IncomingEvent } from '@/lib/webhook/handle'
 
@@ -12,49 +14,86 @@ import { handleEvent, type IncomingEvent } from '@/lib/webhook/handle'
  */
 export const preferredRegion = 'sin1'
 
-/** The channel this deployment serves. One OA runs one campaign at a time (BR-68). */
-function lineChannelId(): string {
-  const id = process.env.LINE_CHANNEL_ID
-  if (!id) throw new Error('Missing environment variable: LINE_CHANNEL_ID')
-  return id
-}
-
 /**
- * The single entry point from LINE.
+ * The single entry point from LINE — for every channel bound in the `channel`
+ * table, not just one (M6-S0x multi-channel webhook).
  *
- * Always answers 200 unless the signature is wrong. LINE retries a non-200, and
- * a retry after a reward has been granted would look to the player like a second
- * chance — so a failure on our side must never become a retry on theirs. The
- * error is logged and the player still gets an answer (BR-01).
+ * LINE's payload carries `destination`, the bot's own userId (a different value
+ * from channel.line_channel_id, the numeric Channel ID) — the only thing in the
+ * body that says which channel's secret this signature should be checked
+ * against. That is why the order below reads the body before it verifies
+ * anything: there is no secret to verify with until the channel is known.
+ * Reading `destination` this way is safe on its own — JSON.parse does not
+ * execute anything, and nothing parsed out of the body is acted on until after
+ * the signature over the raw bytes has actually verified.
+ *
+ * Always answers 200 unless the channel or its signature cannot be trusted.
+ * LINE retries a non-200, and a retry after a reward has been granted would
+ * look to the player like a second chance — so a failure on our side, once we
+ * know who we are talking to, must never become a retry on theirs. The error is
+ * logged and the player still gets an answer (BR-01).
  */
 export async function POST(request: Request): Promise<Response> {
   const raw = await request.text()
 
-  if (!verifySignature(raw, request.headers.get('x-line-signature'), getChannelSecret())) {
-    return new Response('invalid signature', { status: 401 })
-  }
-
+  let destination: string | null = null
   let events: IncomingEvent[] = []
   try {
-    const body = JSON.parse(raw) as { events?: unknown }
+    const body = JSON.parse(raw) as { destination?: unknown; events?: unknown }
+    if (typeof body?.destination === 'string') destination = body.destination
     if (Array.isArray(body?.events)) events = body.events as IncomingEvent[]
   } catch {
     // LINE's console sends a signed body that is not our shape during setup.
     return Response.json({ ok: true })
   }
 
-  // LINE's console verifies a webhook with an empty batch. Nothing to do, and
-  // no reason to open a database connection to find that out.
+  // LINE's console verifies a webhook with an empty batch, sometimes before the
+  // channel it belongs to even has a bot user id recorded on our side yet.
+  // Nothing to do either way, and no reason to open a database connection or
+  // check a signature to find that out.
   if (events.length === 0) return Response.json({ ok: true })
 
-  const channelId = lineChannelId()
-  const ports = makePorts(db(), channelId)
+  // From here on there are real events to act on, so who sent them has to be
+  // established for real: an unrecognised destination and a signature that
+  // fails to verify against the channel it claims to belong to are refused the
+  // same way (401) — neither is safe to guess at.
+  if (!destination) {
+    return new Response('invalid signature', { status: 401 })
+  }
+
+  const sql = db()
+  const channel = await findChannelByBotUserId(sql, destination)
+  if (!channel) {
+    return new Response('invalid signature', { status: 401 })
+  }
+
+  let verified: boolean
+  try {
+    const channelSecret = await readChannelSecret(sql, {
+      channelId: channel.id, field: 'secret', purpose: 'verify_signature', appUserId: null,
+    })
+    verified = verifySignature(raw, request.headers.get('x-line-signature'), channelSecret)
+  } catch (error) {
+    // A channel row that exists but has no key yet (mid-setup) cannot be
+    // verified against — that is not different from a signature that fails.
+    console.error('failed to read channel secret for signature check', error)
+    verified = false
+  }
+  if (!verified) {
+    return new Response('invalid signature', { status: 401 })
+  }
+
+  const channelId = channel.lineChannelId ?? ''
+  const accessToken = await readChannelSecret(sql, {
+    channelId: channel.id, field: 'token', purpose: 'send_reply', appUserId: null,
+  })
+  const ports = makePorts(sql, channelId)
   const now = new Date()
 
   for (const event of events) {
     try {
       const handled = await handleEvent(event, channelId, ports, now, Math.random)
-      if (handled) await replyMessage(handled.replyToken, handled.message)
+      if (handled) await replyMessage(accessToken, handled.replyToken, handled.message)
 
       // ผูกเมนูตัวเข้าให้ผู้เล่นแยกจากการตอบ — คนละความเสี่ยง (BR-01 ต้องได้คำตอบ
       // เสมอ ไม่ว่าเรื่องนี้จะสำเร็จหรือไม่) mark ว่าผูกแล้วเฉพาะตอนยิงสำเร็จจริง
@@ -62,7 +101,7 @@ export async function POST(request: Request): Promise<Response> {
       if (handled?.linkRichMenu) {
         try {
           const { participantId, lineUid, richMenuId } = handled.linkRichMenu
-          await linkRichMenu(getAccessToken(), lineUid, richMenuId)
+          await linkRichMenu(accessToken, lineUid, richMenuId)
           await ports.markRichMenuLinked(participantId)
         } catch (error) {
           console.error('link entry rich menu failed', error)
@@ -72,7 +111,7 @@ export async function POST(request: Request): Promise<Response> {
       console.error('webhook event failed', error)
       // One event failing must not swallow the rest of the batch.
       if (event.replyToken) {
-        await replyMessage(event.replyToken, {
+        await replyMessage(accessToken, event.replyToken, {
           type: 'text',
           text: 'ระบบขัดข้องชั่วคราว กรุณาลองใหม่',
         }).catch(() => {})
