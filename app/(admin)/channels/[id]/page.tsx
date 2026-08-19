@@ -156,6 +156,19 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
               />
             </Field>
 
+            <Field
+              label="Bot user ID"
+              hint="รหัสผู้ใช้ของบอทเอง (userId) — คนละค่ากับ Channel ID ข้างบน LINE ใช้ค่านี้บอกว่า event ที่ส่งเข้า webhook มาจากบัญชีไหน หาได้จากแท็บ Messaging API ของ LINE Developers Console ในส่วนข้อมูลพื้นฐานของบอท ไม่กรอกไว้แล้ว webhook จะหาบัญชีนี้ไม่เจอเลย และปฏิเสธข้อความทุกข้อความจากบัญชีนี้ทันที ไม่ใช่แค่ตอบว่ากิจกรรมจบไปแล้ว"
+            >
+              <input
+                name="line_bot_user_id"
+                defaultValue={channel?.lineBotUserId ?? ''}
+                disabled={locked || isPreview}
+                placeholder="เช่น U1234567890abcdef1234567890abcdef"
+                style={{ fontFamily: 'var(--mono)' }}
+              />
+            </Field>
+
             <Field label="Channel access token">
               <input
                 name="access_token"
