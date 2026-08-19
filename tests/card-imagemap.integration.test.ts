@@ -1,6 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type postgres from 'postgres'
-import { loadCardImagemap, markImagemapApplied, saveImagemapDraft, setImagemapBaseImage } from '../lib/db/card-imagemap'
+import {
+  loadCardImagemap, markImagemapApplied, resolveImagemapVariantAsset, saveImagemapDraft, setImagemapBaseImage,
+} from '../lib/db/card-imagemap'
 import { testDb } from '../lib/db/client'
 import type { TapArea } from '../lib/imagemap/regions'
 
@@ -213,5 +215,37 @@ describe('markImagemapApplied · ฐานข้อมูลจริง', () =>
     await sql`DELETE FROM card WHERE id = ${s.cardId}`
     const rows = await sql`SELECT id FROM card_imagemap WHERE card_id = ${s.cardId}`
     expect(rows).toEqual([])
+  })
+})
+
+describe('resolveImagemapVariantAsset · ฐานข้อมูลจริง', () => {
+  it('การ์ดที่ไม่มีอยู่จริง (UUID ถูกรูปแบบ) คืน null ไม่ใช่ throw', async () => {
+    expect(await resolveImagemapVariantAsset(sql, '00000000-0000-0000-0000-000000000000', 1040)).toBeNull()
+  })
+
+  it('เคยกด "ใช้" สำเร็จแล้ว — หาไฟล์ของขนาดที่ขอเจอจริง', async () => {
+    const s = await scene()
+    await setImagemapBaseImage(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, baseWidth: 1040, baseHeight: 585, userId: s.userId,
+    })
+    const variantIds = await makeVariantAssets(s)
+    await markImagemapApplied(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'x',
+      baseWidth: 1040, baseHeight: 585, variantAssetIds: variantIds as never, userId: s.userId,
+    })
+    const resolved = await resolveImagemapVariantAsset(sql, s.cardId, 1040)
+    expect(resolved?.storagePath).toBe(`uploads/${s.cardId}/1040.jpg`)
+  })
+
+  /**
+   * ไม่ใช่ด่านของฟังก์ชันนี้เอง — cardId ที่รูปร่างไม่ใช่ UUID เลยต้องถูกกันไว้ที่
+   * app/api/imagemap/[cardId]/[width]/route.ts ก่อนเรียกมาถึงนี่ (เจอบั๊กนี้จริงตอน
+   * ทดสอบด้วยมือกับเซิร์ฟเวอร์จริง — ทุกเทสต์อัตโนมัติของ route.ts mock ฟังก์ชันนี้
+   * ไว้ จึงไม่เคยยิง SQL จริงที่ Postgres ปฏิเสธ "invalid input syntax for type uuid"
+   * เข้าเลยสักที) เทสต์นี้บันทึกไว้ว่าทำไมด่านที่ route ถึงจำเป็นจริง ไม่ใช่แค่ป้องกัน
+   * เกินความจำเป็น
+   */
+  it('cardId ที่รูปร่างไม่ใช่ UUID เลย ทำให้ Postgres ปฏิเสธตรงๆ — เหตุผลที่ route.ts ต้องกันไว้ก่อน', async () => {
+    await expect(resolveImagemapVariantAsset(sql, 'not-a-uuid', 1040)).rejects.toThrow(/uuid/i)
   })
 })

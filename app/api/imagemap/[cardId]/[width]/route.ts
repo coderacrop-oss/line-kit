@@ -35,6 +35,9 @@ const CACHE_CONTROL = 'public, max-age=300, stale-while-revalidate=60'
 
 const MIME_TO_EXT: Record<string, string> = { 'image/jpeg': 'jpeg', 'image/png': 'png' }
 
+/** card_id เป็นคอลัมน์ UUID จริง — ค่าที่รูปร่างไม่ใช่ UUID เลยต้องกันไว้ตั้งแต่ก่อนยิง SQL */
+const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 export async function GET(
   _request: Request,
   { params }: { params: Promise<{ cardId: string; width: string }> },
@@ -46,6 +49,12 @@ export async function GET(
   if (!/^\d+$/.test(rawWidth)) return new Response('not found', { status: 404 })
   const width = Number(rawWidth)
   if (!isImagemapWidth(width)) return new Response('not found', { status: 404 })
+
+  // cardId ที่รูปร่างไม่ใช่ UUID เลย (พิมพ์มั่ว/URL แต่งเอง) ต้องได้ 404 สะอาดๆ
+  // เหมือนกัน ไม่ใช่ 500 ดิบจาก Postgres — เจอจริงตอนทดสอบมือกับเซิร์ฟเวอร์จริง
+  // (ทุกเทสต์อัตโนมัติของไฟล์นี้ mock resolveImagemapVariantAsset ไว้ จึงไม่เคยยิง
+  // SQL จริงที่จะเจอ "invalid input syntax for type uuid" เข้าเลยสักที)
+  if (!UUID_PATTERN.test(cardId)) return new Response('not found', { status: 404 })
 
   const resolved = await resolveImagemapVariantAsset(db(), cardId, width)
   if (!resolved) return new Response('not found', { status: 404 })
