@@ -59,7 +59,15 @@ function isHttpUrl(value: string): boolean {
   }
 }
 
-function validateAction(raw: unknown, label: string): string | TapAction {
+/**
+ * `strict=false` (โหมดร่าง) ปล่อยให้ลิงก์/ข้อความว่างได้ — ระหว่างลากวาดพื้นที่
+ * (autosave ทุกเจสเจอร์) คนตั้งค่าอาจยังพิมพ์ปลายทางไม่เสร็จ หรือเพิ่งสลับชนิดแอ็กชัน
+ * มาแล้วยังไม่ทันพิมพ์อะไรเลย บังคับให้ครบตั้งแต่ตอนนั้นเท่ากับบันทึกร่างไม่ได้เลย
+ * ทั้งที่กำลังลากอย่างอื่นอยู่ (เช่นแค่ขยับตำแหน่ง ไม่ได้แตะช่องนี้เลยด้วยซ้ำ) —
+ * เจอบั๊กนี้จริงจากการทดสอบผ่านเบราว์เซอร์จริง (Playwright) ไม่ใช่แค่คาดเดา
+ * `strict=true` (โหมดกด "ใช้") บังคับครบทุกอย่างตามที่ LINE ต้องการจริง
+ */
+function validateAction(raw: unknown, label: string, strict: boolean): string | TapAction {
   if (typeof raw !== 'object' || raw === null) return `${label}: ไม่ได้ระบุการกระทำ`
   const a = raw as Record<string, unknown>
 
@@ -71,14 +79,16 @@ function validateAction(raw: unknown, label: string): string | TapAction {
   const labelValue = typeof rawLabel === 'string' && rawLabel.trim() !== '' ? rawLabel : undefined
 
   if (a.type === 'uri') {
-    if (typeof a.linkUri !== 'string' || a.linkUri.trim() === '') return `${label}: ยังไม่ได้ใส่ลิงก์ปลายทาง`
+    if (typeof a.linkUri !== 'string') return `${label}: ลิงก์ปลายทางต้องเป็นข้อความ`
+    if (strict && a.linkUri.trim() === '') return `${label}: ยังไม่ได้ใส่ลิงก์ปลายทาง`
     if (a.linkUri.length > MAX_URI_LENGTH) return `${label}: ลิงก์ยาวเกิน ${MAX_URI_LENGTH} ตัวอักษร`
-    if (!isHttpUrl(a.linkUri)) return `${label}: ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://`
+    if (a.linkUri.trim() !== '' && !isHttpUrl(a.linkUri)) return `${label}: ลิงก์ต้องขึ้นต้นด้วย http:// หรือ https://`
     return { type: 'uri', linkUri: a.linkUri, ...(labelValue ? { label: labelValue } : {}) }
   }
 
   if (a.type === 'message') {
-    if (typeof a.text !== 'string' || a.text.trim() === '') return `${label}: ยังไม่ได้ใส่ข้อความที่จะส่งกลับ`
+    if (typeof a.text !== 'string') return `${label}: ข้อความที่จะส่งกลับต้องเป็นข้อความ`
+    if (strict && a.text.trim() === '') return `${label}: ยังไม่ได้ใส่ข้อความที่จะส่งกลับ`
     if (a.text.length > MAX_TEXT_LENGTH) return `${label}: ข้อความยาวเกิน ${MAX_TEXT_LENGTH} ตัวอักษร`
     return { type: 'message', text: a.text, ...(labelValue ? { label: labelValue } : {}) }
   }
@@ -86,7 +96,7 @@ function validateAction(raw: unknown, label: string): string | TapAction {
   return `${label}: ชนิดการกระทำไม่รู้จัก — รองรับแค่ลิงก์ (uri) กับข้อความ (message)`
 }
 
-function validateArea(raw: unknown, canvasHeight: number, index: number): string | TapArea {
+function validateArea(raw: unknown, canvasHeight: number, index: number, strict: boolean): string | TapArea {
   const label = `พื้นที่ที่ ${index + 1}`
   if (typeof raw !== 'object' || raw === null) return `${label}: รูปร่างไม่ถูกต้อง`
   const r = raw as Record<string, unknown>
@@ -96,7 +106,7 @@ function validateArea(raw: unknown, canvasHeight: number, index: number): string
   if (boxError) return boxError
   const { id, x, y, width, height } = r as unknown as TapRect & { id: string }
 
-  const action = validateAction(r.action, label)
+  const action = validateAction(r.action, label, strict)
   if (typeof action === 'string') return action
 
   return { id, x, y, width, height, action }
@@ -106,21 +116,14 @@ export type TapAreasResult =
   | { ok: true; areas: TapArea[] }
   | { ok: false; reason: string }
 
-/**
- * ตรวจรูปร่างของพื้นที่กดทั้งชุดที่ส่งมาจากฟอร์ม/ไคลเอนต์ ก่อนบันทึกลง `card.tap_areas`
- *
- * `canvasHeight` คือความสูงจริงของภาพเมื่อกว้าง 1040 (ผันตามสัดส่วนภาพต้นฉบับ) —
- * ต้องรู้ค่านี้ก่อนถึงจะเช็คได้ว่าพื้นที่หลุดขอบภาพด้านล่างหรือไม่ ด้านกว้างอ้างอิง
- * คงที่ที่ 1040 เสมอตามสัญญาของ LINE
- */
-export function validateTapAreas(raw: unknown, canvasHeight: number): TapAreasResult {
+function validateTapAreasImpl(raw: unknown, canvasHeight: number, strict: boolean): TapAreasResult {
   if (!Array.isArray(raw)) return { ok: false, reason: 'รายการพื้นที่กดไม่ถูกต้อง' }
   if (raw.length > MAX_AREAS) return { ok: false, reason: `เกินเพดาน ${MAX_AREAS} พื้นที่ต่อภาพ (เพดานของ LINE เอง)` }
 
   const areas: TapArea[] = []
   const seenIds = new Set<string>()
   for (let i = 0; i < raw.length; i++) {
-    const result = validateArea(raw[i], canvasHeight, i)
+    const result = validateArea(raw[i], canvasHeight, i, strict)
     if (typeof result === 'string') return { ok: false, reason: result }
     if (seenIds.has(result.id)) return { ok: false, reason: `id ของพื้นที่ซ้ำกัน: ${result.id}` }
     seenIds.add(result.id)
@@ -130,9 +133,44 @@ export function validateTapAreas(raw: unknown, canvasHeight: number): TapAreasRe
   return { ok: true, areas }
 }
 
+/**
+ * ตรวจรูปร่างของพื้นที่กดทั้งชุดก่อนกด "ใช้" จริง — บังคับครบทุกอย่าง (ลิงก์/ข้อความ
+ * ต้องไม่ว่าง) ตามที่ LINE ต้องการก่อนจะปั้นภาพและส่งได้จริง
+ *
+ * `canvasHeight` คือความสูงจริงของภาพเมื่อกว้าง 1040 (ผันตามสัดส่วนภาพต้นฉบับ) —
+ * ต้องรู้ค่านี้ก่อนถึงจะเช็คได้ว่าพื้นที่หลุดขอบภาพด้านล่างหรือไม่ ด้านกว้างอ้างอิง
+ * คงที่ที่ 1040 เสมอตามสัญญาของ LINE
+ */
+export function validateTapAreas(raw: unknown, canvasHeight: number): TapAreasResult {
+  return validateTapAreasImpl(raw, canvasHeight, true)
+}
+
+/**
+ * ตรวจรูปร่างของพื้นที่กดทั้งชุดตอนบันทึกร่าง (autosave ระหว่างลากวาด) — กฎเรื่อง
+ * กรอบ/ประเภท/เพดานต่างๆ เหมือนกันทุกอย่างกับ validateTapAreas ยกเว้นข้อเดียว:
+ * ลิงก์/ข้อความปล่อยว่างได้ชั่วคราว เพราะระหว่างลากยังไม่ต้องพิมพ์ปลายทางให้เสร็จ
+ */
+export function validateTapAreasDraft(raw: unknown, canvasHeight: number): TapAreasResult {
+  return validateTapAreasImpl(raw, canvasHeight, false)
+}
+
 export type AltTextResult = { ok: true; altText: string } | { ok: false; reason: string }
 
-/** ข้อความสำรอง (altText) ที่ LINE โชว์ตอนแจ้งเตือน — imagemap message บังคับให้มีเสมอ ห้ามว่าง */
+/**
+ * ข้อความสำรอง (altText) ระหว่างร่าง — ยังปล่อยว่างได้ เพราะระหว่างวาดพื้นที่กด
+ * (autosave ทุกเจสเจอร์) คนตั้งค่ายังไม่ทันได้เขียนข้อความนี้เลยก็ได้ บังคับตอนนี้
+ * เท่ากับบันทึกร่างไม่ได้เลยจนกว่าจะเขียนข้อความก่อน ซึ่งขวางทางลากวาดโดยไม่จำเป็น
+ * — ด่านที่บังคับให้ต้องไม่ว่างจริงๆ อยู่ที่ validateAltText (เรียกตอนกด "ใช้" เท่านั้น)
+ */
+export function validateAltTextDraft(raw: unknown): AltTextResult {
+  if (typeof raw !== 'string') return { ok: false, reason: 'ข้อความสำรองต้องเป็นข้อความ' }
+  if (raw.length > MAX_ALT_TEXT_LENGTH) {
+    return { ok: false, reason: `ข้อความสำรองยาวเกิน ${MAX_ALT_TEXT_LENGTH} ตัวอักษร` }
+  }
+  return { ok: true, altText: raw }
+}
+
+/** ข้อความสำรอง (altText) ที่ LINE โชว์ตอนแจ้งเตือน — imagemap message บังคับให้มีเสมอ ห้ามว่าง (บังคับเฉพาะตอนกด "ใช้") */
 export function validateAltText(raw: unknown): AltTextResult {
   if (typeof raw !== 'string' || raw.trim() === '') {
     return { ok: false, reason: 'ยังไม่ได้ใส่ข้อความสำรอง (alt text) — LINE บังคับให้ริชเมสเสจทุกใบมีข้อความนี้' }

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_AREAS, MAX_ALT_TEXT_LENGTH, MAX_LABEL_LENGTH, MAX_TEXT_LENGTH, MAX_URI_LENGTH, MIN_AREA_SIZE,
-  validateAltText, validateTapAreas, type TapArea,
+  validateAltText, validateAltTextDraft, validateTapAreas, validateTapAreasDraft, type TapArea,
 } from './regions'
 
 const CANVAS_HEIGHT = 600
@@ -127,6 +127,46 @@ describe('validateTapAreas · ชนิดแอ็กชันอื่นท�
   it('postback หรือ clipboard ปฏิเสธ — BR-47 รองรับแค่ uri กับ message', () => {
     expect(validateTapAreas([uriArea({ action: { type: 'postback' } as never })], CANVAS_HEIGHT).ok).toBe(false)
     expect(validateTapAreas([uriArea({ action: { type: 'clipboard' } as never })], CANVAS_HEIGHT).ok).toBe(false)
+  })
+})
+
+describe('validateTapAreasDraft · ผ่อนกว่า validateTapAreas ตรงจุดเดียว: ลิงก์/ข้อความว่างได้', () => {
+  it('ลิงก์ว่างเปล่า — ผ่านเป็นร่างได้ (จริง (strict) จะปฏิเสธ)', () => {
+    const draft = validateTapAreasDraft([uriArea({ action: { type: 'uri', linkUri: '' } })], CANVAS_HEIGHT)
+    expect(draft.ok).toBe(true)
+    const strict = validateTapAreas([uriArea({ action: { type: 'uri', linkUri: '' } })], CANVAS_HEIGHT)
+    expect(strict.ok).toBe(false)
+  })
+
+  it('ข้อความว่างเปล่า (message) — ผ่านเป็นร่างได้', () => {
+    const draft = validateTapAreasDraft([messageArea({ action: { type: 'message', text: '' } })], CANVAS_HEIGHT)
+    expect(draft.ok).toBe(true)
+  })
+
+  it('ลิงก์ที่มีค่าจริงแต่ผิดสคีม (ไม่ใช่ http/https) ยังถูกปฏิเสธแม้เป็นร่าง — ผ่อนแค่ "ว่าง" อย่างเดียว', () => {
+    const draft = validateTapAreasDraft([uriArea({ action: { type: 'uri', linkUri: 'javascript:alert(1)' } })], CANVAS_HEIGHT)
+    expect(draft.ok).toBe(false)
+  })
+
+  it('กรอบ/ขนาด/id ซ้ำ/เพดานจำนวน ยังถูกตรวจเข้มเหมือนเดิมทุกข้อ ไม่ใช่ผ่อนไปหมด', () => {
+    expect(validateTapAreasDraft([uriArea({ width: MIN_AREA_SIZE - 1 })], CANVAS_HEIGHT).ok).toBe(false)
+    expect(validateTapAreasDraft([uriArea({ id: 'dup' }), messageArea({ id: 'dup', y: 300 })], CANVAS_HEIGHT).ok).toBe(false)
+  })
+})
+
+describe('validateAltTextDraft · ผ่อนกว่า validateAltText ตรงจุดเดียว: ว่างได้', () => {
+  it('ว่างเปล่า — ผ่านเป็นร่างได้ (จริง (strict) จะปฏิเสธ)', () => {
+    expect(validateAltTextDraft('').ok).toBe(true)
+    expect(validateAltText('').ok).toBe(false)
+  })
+
+  it(`ยาวเกิน ${MAX_ALT_TEXT_LENGTH} ตัวอักษร ยังถูกปฏิเสธแม้เป็นร่าง`, () => {
+    expect(validateAltTextDraft('ก'.repeat(MAX_ALT_TEXT_LENGTH + 1)).ok).toBe(false)
+  })
+
+  it('ไม่ใช่ string เลย ถูกปฏิเสธ', () => {
+    expect(validateAltTextDraft(undefined).ok).toBe(false)
+    expect(validateAltTextDraft(42).ok).toBe(false)
   })
 })
 

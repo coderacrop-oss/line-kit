@@ -9,7 +9,9 @@ import {
 } from '@/lib/db/card-imagemap'
 import { db } from '@/lib/db/client'
 import { generateImagemapVariants, IMAGEMAP_WIDTHS, validateImagemapUpload, type ImagemapWidth } from '@/lib/imagemap/sizes'
-import { validateAltText, validateTapAreas, type TapArea } from '@/lib/imagemap/regions'
+import {
+  validateAltText, validateAltTextDraft, validateTapAreas, validateTapAreasDraft, type TapArea,
+} from '@/lib/imagemap/regions'
 
 /**
  * Server Actions ของตัวแก้ไขริชเมสเสจ — โครงเดียวกับ
@@ -84,9 +86,9 @@ export async function saveDraft(
   if (!current) throw new Error('ไม่พบการ์ดริชเมสเสจนี้ในแคมเปญนี้')
   if (!current.baseHeight) throw new Error('อัปโหลดภาพฐานก่อน ถึงจะวาดพื้นที่กดได้')
 
-  const areasResult = validateTapAreas(raw.actions, current.baseHeight)
+  const areasResult = validateTapAreasDraft(raw.actions, current.baseHeight)
   if (!areasResult.ok) throw new Error(areasResult.reason)
-  const altTextResult = validateAltText(raw.altText)
+  const altTextResult = validateAltTextDraft(raw.altText)
   if (!altTextResult.ok) throw new Error(altTextResult.reason)
 
   await saveImagemapDraft(sql, {

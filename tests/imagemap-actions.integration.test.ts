@@ -132,6 +132,32 @@ describe('saveDraft · ยิง SQL จริง', () => {
     const [row] = await sql<{ tap_areas: unknown }[]>`SELECT tap_areas FROM card WHERE id = ${s.cardId}`
     expect(row.tap_areas).toHaveLength(1)
   })
+
+  /**
+   * เจอบั๊กนี้จริงจากการทดสอบผ่านเบราว์เซอร์จริง (Playwright): ลากย้ายพื้นที่ตอนที่
+   * ยังไม่ได้พิมพ์ข้อความสำรอง (alt text ว่างอยู่ตามค่าเริ่มต้น) ทำให้ autosave ทุก
+   * ครั้งพัง 500 เพราะตอนนั้นใช้ด่านตรวจแบบเข้มงวดเดียวกับตอนกด "ใช้" — ด่านของ
+   * "ร่าง" ต้องปล่อยว่างได้ ไม่งั้นลากอะไรก็บันทึกไม่ได้เลยจนกว่าจะพิมพ์ข้อความก่อน
+   */
+  it('ข้อความสำรองยังว่างอยู่ (ค่าเริ่มต้นก่อนพิมพ์) — บันทึกร่างสำเร็จ ไม่ล้ม', async () => {
+    const s = await scene()
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+
+    await expect(saveDraft(s.campaignId, s.cardId, {
+      actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 200, action: { type: 'uri', linkUri: 'https://x.com' } }],
+      altText: '',
+    })).resolves.toBeUndefined()
+  })
+
+  it('เพิ่งสลับชนิดแอ็กชันเป็นข้อความ (message) ยังไม่ทันพิมพ์อะไร — บันทึกร่างสำเร็จ ไม่ล้ม', async () => {
+    const s = await scene()
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+
+    await expect(saveDraft(s.campaignId, s.cardId, {
+      actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 200, action: { type: 'message', text: '' } }],
+      altText: 'x',
+    })).resolves.toBeUndefined()
+  })
 })
 
 describe('applyImagemap · ปั้นภาพจริงห้าขนาด ยิง SQL จริง', () => {
