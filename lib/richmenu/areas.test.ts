@@ -96,10 +96,17 @@ describe('toLineArea · แปลงช่องเป็น action ที่ส
     expect(() => toLineArea(area, ctx)).toThrow()
   })
 
-  it('kind activity สร้าง postback แบบเดียวกับปุ่มบนการ์ด พร้อมรหัสแคมเปญและกิจกรรม', () => {
+  it('kind activity สร้าง postback แบบเมนู (rm=1) พร้อมรหัสแคมเปญและกิจกรรม — คนละรูปแบบกับปุ่มบนการ์ด', () => {
     const area: RichMenuArea = { x: 0, y: 0, width: 10, height: 10, kind: 'activity', target: 'act-1' }
     const line = toLineArea(area, ctx)
-    expect(line.action).toEqual({ type: 'postback', data: 'c=summer&a=draw' })
+    expect(line.action).toEqual({ type: 'postback', data: 'rm=1&c=summer&a=draw' })
+    expect(line.bounds).toEqual({ x: 0, y: 0, width: 10, height: 10 })
+  })
+
+  it('kind card สร้าง postback แบบเมนู (rm=1) พร้อมรหัสแคมเปญและ id การ์ด', () => {
+    const area: RichMenuArea = { x: 0, y: 0, width: 10, height: 10, kind: 'card', target: 'card-1' }
+    const line = toLineArea(area, ctx)
+    expect(line.action).toEqual({ type: 'postback', data: 'rm=1&c=summer&card=card-1' })
     expect(line.bounds).toEqual({ x: 0, y: 0, width: 10, height: 10 })
   })
 
