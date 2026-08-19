@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from 'node:fs'
 import { join } from 'node:path'
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { Badge, Button, Empty, Field, Note, PageHead, Panel, Rows } from './index'
+import { Badge, Button, Empty, ErrorModal, Field, Modal, Note, PageHead, Panel, Rows } from './index'
 import { STATUS_TONES } from './tokens'
 
 // vitest ไม่ได้เปิด globals ไว้ RTL จึงเก็บกวาดเองอัตโนมัติไม่ได้
@@ -419,5 +419,82 @@ describe('Note', () => {
     const [warn, info] = Array.from(container.children) as HTMLElement[]
     expect(warn.style.color).not.toBe(info.style.color)
     expect(warn.style.background).not.toBe(info.style.background)
+  })
+})
+
+/**
+ * กล่องลอยกลางจอ — ไม่เคยมีในระบบนี้มาก่อนจนกว่าจอ Rich Menu ต้องเอาข้อความ error
+ * ของ Server Action ออกมาแสดงแบบไม่หลุดหายไปกับหน้า "Application error" ของ Next.js
+ */
+describe('Modal', () => {
+  it('open=false ไม่วาดอะไรเลย', () => {
+    const { container } = render(<Modal open={false} onClose={() => {}}>เนื้อหา</Modal>)
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('open=true แสดงหัวข้อและเนื้อหา', () => {
+    render(<Modal open onClose={() => {}} title="ยืนยัน">เนื้อหาบางอย่าง</Modal>)
+    expect(screen.getByText('ยืนยัน')).toBeDefined()
+    expect(screen.getByText('เนื้อหาบางอย่าง')).toBeDefined()
+  })
+
+  it('เป็น dialog ที่ประกาศ aria-modal ให้ screen reader รู้ว่าจอถูกล็อกไว้', () => {
+    render(<Modal open onClose={() => {}} title="ยืนยัน">x</Modal>)
+    const dialog = screen.getByRole('dialog')
+    expect(dialog.getAttribute('aria-modal')).toBe('true')
+  })
+
+  it('กด Escape แล้วเรียก onClose', () => {
+    const onClose = vi.fn()
+    render(<Modal open onClose={onClose} title="ยืนยัน">x</Modal>)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('ปุ่มอื่นไม่ทำให้ onClose ถูกเรียก', () => {
+    const onClose = vi.fn()
+    render(<Modal open onClose={onClose} title="ยืนยัน">x</Modal>)
+    fireEvent.keyDown(document, { key: 'Enter' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('คลิกที่ฉากหลังเรียก onClose', () => {
+    const onClose = vi.fn()
+    const { container } = render(<Modal open onClose={onClose} title="ยืนยัน">x</Modal>)
+    fireEvent.click(container.firstElementChild!)
+    expect(onClose).toHaveBeenCalledOnce()
+  })
+
+  it('คลิกที่เนื้อหาข้างในไม่เรียก onClose — ไม่งั้นกล่องปิดเองทุกครั้งที่คลิกอะไรข้างใน', () => {
+    const onClose = vi.fn()
+    render(<Modal open onClose={onClose} title="ยืนยัน"><button>กดตรงนี้</button></Modal>)
+    fireEvent.click(screen.getByRole('button', { name: 'กดตรงนี้' }))
+    expect(onClose).not.toHaveBeenCalled()
+  })
+
+  it('ไม่ได้เปิดอยู่ กด Escape ก็ไม่มีผล (ไม่ได้ผูก listener ค้างไว้)', () => {
+    const onClose = vi.fn()
+    render(<Modal open={false} onClose={onClose}>x</Modal>)
+    fireEvent.keyDown(document, { key: 'Escape' })
+    expect(onClose).not.toHaveBeenCalled()
+  })
+})
+
+describe('ErrorModal', () => {
+  it('message เป็น null — ปิดอยู่ ไม่วาดอะไร', () => {
+    const { container } = render(<ErrorModal message={null} onClose={() => {}} />)
+    expect(container.innerHTML).toBe('')
+  })
+
+  it('มีข้อความ — เปิดขึ้นมาแสดงข้อความนั้นเป๊ะๆ (ไม่ตัดทอน/แปลซ้ำ)', () => {
+    render(<ErrorModal message="ERR-037 · ภาพเล็กเกินไปสำหรับผังนี้ — ต้องขยาย 2.8 เท่า" onClose={() => {}} />)
+    expect(screen.getByText('ERR-037 · ภาพเล็กเกินไปสำหรับผังนี้ — ต้องขยาย 2.8 เท่า')).toBeDefined()
+  })
+
+  it('กดปุ่ม "ปิด" เรียก onClose', () => {
+    const onClose = vi.fn()
+    render(<ErrorModal message="พัง" onClose={onClose} />)
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }))
+    expect(onClose).toHaveBeenCalledOnce()
   })
 })
