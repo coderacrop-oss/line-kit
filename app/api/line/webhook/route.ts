@@ -4,6 +4,14 @@ import { getAccessToken, getChannelSecret, linkRichMenu, replyMessage } from '@/
 import { verifySignature } from '@/lib/line/verify'
 import { handleEvent, type IncomingEvent } from '@/lib/webhook/handle'
 
+/**
+ * ตั้งซ้ำตรงนี้ด้วยแม้ root layout (app/layout.tsx) ตั้งไว้ทั้งแอปแล้ว — route
+ * handler ไม่ได้อยู่ใต้ต้นไม้ของ layout เหมือนหน้าเว็บทั่วไป จุดนี้เป็นเส้นทางที่
+ * ผู้เล่นจริงรอคำตอบสดๆ ทุกครั้งที่พิมพ์อะไรเข้ามา ไม่อยากเสี่ยงให้พลาดเงียบๆ
+ * จากการอนุมานผิด — สิงคโปร์ ใกล้ทั้ง Supabase (ap-southeast-1) และผู้เล่นในเอเชีย
+ */
+export const preferredRegion = 'sin1'
+
 /** The channel this deployment serves. One OA runs one campaign at a time (BR-68). */
 function lineChannelId(): string {
   const id = process.env.LINE_CHANNEL_ID
