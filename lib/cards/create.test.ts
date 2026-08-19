@@ -94,7 +94,7 @@ describe('hasSampleText · BR-37', () => {
 })
 
 /**
- * แกนที่หนึ่ง · ห้าชนิดใน CHECK แต่สไลซ์นี้เปิดสาม
+ * แกนที่หนึ่ง · ห้าชนิดใน CHECK แต่สไลซ์นี้เปิดสี่ (imagemap_video ยังปิดอยู่)
  *
  * ตัวที่ยังไม่เปิดต้องอยู่ในรายการพร้อมเหตุผล ไม่ใช่หายไปเฉยๆ — ตัวเลือกที่ถูกซ่อน
  * ทำให้เพดานดูเหมือนการตัดสินใจออกแบบ แทนที่จะเป็นตัววาดที่ยังไม่มีใครทำ
@@ -111,11 +111,11 @@ describe('SEND_TYPE_OPTIONS', () => {
     expect(openFlags.lastIndexOf(true)).toBeLessThan(openFlags.indexOf(false))
   })
 
-  it('เปิดสามตัว ปิดสองตัว', () => {
+  it('เปิดสี่ตัว ปิดตัวเดียว (imagemap_video)', () => {
     expect(SEND_TYPE_OPTIONS.filter((o) => o.open).map((o) => o.value))
-      .toEqual(['flex_bubble', 'flex_carousel', 'text'])
+      .toEqual(['flex_bubble', 'flex_carousel', 'text', 'imagemap'])
     expect(SEND_TYPE_OPTIONS.filter((o) => !o.open).map((o) => o.value))
-      .toEqual(['imagemap', 'imagemap_video'])
+      .toEqual(['imagemap_video'])
   })
 
   it('ตัวที่ปิดอยู่บอกเหตุผลไว้ทุกตัว และอ้าง OI-27', () => {
@@ -140,11 +140,11 @@ describe('asSendType', () => {
   it('รับเฉพาะชนิดที่สไลซ์นี้เปิด', () => {
     expect(asSendType('flex_bubble')).toBe('flex_bubble')
     expect(asSendType('text')).toBe('text')
+    expect(asSendType('imagemap')).toBe('imagemap')
   })
 
   it('ชนิดที่ยังปิดอยู่ถูกปฏิเสธ แม้จะเป็นค่าที่ CHECK ยอมรับ', () => {
     // URL แต่งเองได้ · จอซ่อนปุ่มไว้ไม่ได้แปลว่าไม่มีใครยิงค่านั้นเข้ามา
-    expect(asSendType('imagemap')).toBeNull()
     expect(asSendType('imagemap_video')).toBeNull()
   })
 

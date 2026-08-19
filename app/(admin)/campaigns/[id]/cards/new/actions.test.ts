@@ -167,10 +167,10 @@ describe('สิ่งที่ถูกเขียนลงไป', () => {
 })
 
 describe('ค่าที่ยิงเข้ามาแล้วต้องถูกปฏิเสธ', () => {
-  it('ชนิดที่สไลซ์นี้ยังไม่เปิด ถูกปฏิเสธแม้ CHECK ของคอลัมน์จะรับได้', async () => {
-    // จอแสดง imagemap เป็นตัวเลือกที่กดไม่ได้ · การซ่อนปุ่มไม่ได้ปิดทาง POST
+  it('ชนิดที่สไลซ์นี้ยังไม่เปิด (imagemap_video) ถูกปฏิเสธแม้ CHECK ของคอลัมน์จะรับได้', async () => {
+    // จอแสดง imagemap_video เป็นตัวเลือกที่กดไม่ได้ · การซ่อนปุ่มไม่ได้ปิดทาง POST
     signedInAs('configurator')
-    await expect(createCard(validForm({ send_type: 'imagemap' })))
+    await expect(createCard(validForm({ send_type: 'imagemap_video' })))
       .rejects.toThrow('OI-27')
     expect(writes()).toEqual([])
   })
