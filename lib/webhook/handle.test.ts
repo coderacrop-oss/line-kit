@@ -186,6 +186,70 @@ describe('ปุ่มบนการ์ด', () => {
   })
 })
 
+describe('ปุ่มบน Rich Menu (แก้บั๊ก: decodePostback ไม่รู้จักปุ่มเมนู ตอบระบบขัดข้องเสมอ)', () => {
+  it('ช่องที่ชี้ไปกิจกรรม → เล่นกิจกรรมนั้นเหมือนปุ่มบนการ์ด', async () => {
+    const { ports: p, play } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: 'rm=1&c=krobpet&a=draw' },
+    }), p)
+    expect(out?.message).toMatchObject({ type: 'flex' })
+    expect(play).toHaveBeenCalledOnce()
+  })
+
+  it('ช่องที่ชี้ไปการ์ด → ตอบด้วยการ์ดนั้นตรงๆ ไม่ผ่าน playActivity', async () => {
+    const { ports: p, play } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: 'rm=1&c=krobpet&card=card-greeting' },
+    }), p)
+    expect(out?.message).toEqual({ type: 'text', text: 'ยินดีต้อนรับ' })
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  it('การ์ดที่ระบุไม่พบ → ตอบระบบขัดข้อง (เหมือนเส้นทางคีย์เวิร์ด→การ์ดที่หาไม่เจอ)', async () => {
+    const { ports: p } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: 'rm=1&c=krobpet&card=card-missing' },
+    }), p)
+    expect(out?.message).toEqual({ type: 'text', text: FALLBACK.systemDown })
+  })
+
+  it('รหัสแคมเปญไม่ตรง (เมนูจากแคมเปญเก่าที่ถูกแทนที่) → ตอบว่ากิจกรรมจบแล้ว และไม่เล่น', async () => {
+    const { ports: p, play } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: 'rm=1&c=other&a=draw' },
+    }), p)
+    expect(out?.message).toEqual({ type: 'text', text: FALLBACK.campaignOver })
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  it('รหัสกิจกรรมที่ไม่มีอยู่จริง → ตอบว่ากิจกรรมจบแล้ว และไม่เล่น', async () => {
+    const { ports: p, play } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: 'rm=1&c=krobpet&a=no-such-activity' },
+    }), p)
+    expect(out?.message).toEqual({ type: 'text', text: FALLBACK.campaignOver })
+    expect(play).not.toHaveBeenCalled()
+  })
+
+  it('ไม่เช็ควันหมดอายุเลย — ปุ่มเมนูไม่มีวันที่ออกให้เทียบเหมือนการ์ด', async () => {
+    const { ports: p, play } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: 'rm=1&c=krobpet&a=draw' },
+    }), p)
+    expect(out?.message).not.toEqual({ type: 'text', text: FALLBACK.cardExpired })
+    expect(play).toHaveBeenCalledOnce()
+  })
+
+  it('payload ของปุ่มบนการ์ดจริง ยังทำงานตามเดิมทุกอย่าง — ไม่ถูกเส้นทางเมนูแย่งไป', async () => {
+    const { ports: p, play } = ports()
+    const out = await run(userEvent({
+      type: 'postback', postback: { data: `c=krobpet&a=draw&d=${TODAY}` },
+    }), p)
+    expect(out?.message).toMatchObject({ type: 'flex' })
+    expect(play).toHaveBeenCalledOnce()
+  })
+})
+
 describe('พิมพ์ข้อความ', () => {
   it('คีย์เวิร์ดที่ชี้ไปกิจกรรม พาไปเล่นเลย', async () => {
     const { ports: p, play } = ports()

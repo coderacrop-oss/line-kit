@@ -3,6 +3,8 @@ import type postgres from 'postgres'
 import { testDb } from '../lib/db/client'
 import { clearConfigCache, makePorts } from '../lib/db/queries'
 import { handleEvent } from '../lib/webhook/handle'
+import { toLineArea } from '../lib/richmenu/areas'
+import { encodeRichMenuPostback } from '../lib/richmenu/postback'
 import { seededRng } from '../lib/test-utils/rng'
 import { seedLive } from './helpers/seed-live'
 
@@ -244,5 +246,77 @@ describe('ผูกเมนูตัวเข้าให้ผู้เล่�
 
     const out = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
     expect(out?.linkRichMenu).toBeUndefined()
+  })
+})
+
+/**
+ * บั๊กที่เกิดจริงบน production: toLineArea() เคยสร้าง query string ของ postback ขึ้น
+ * เองสำหรับช่อง 'activity'/'card' โดยไม่ผ่าน encoder ตัวไหนเลย ผลคือรูปแบบไม่ตรงกับ
+ * สิ่งที่ decodePostback() คาดหวัง (ขาดคีย์ d / ใช้คีย์ card ที่ไม่รู้จัก) —
+ * decodePostback() ปฏิเสธเสมอ ผู้เล่นกดปุ่มบนเมนูแล้วได้ "ระบบขัดข้องชั่วคราว" ทุกครั้ง
+ * แม้เซิร์ฟเวอร์ไม่มี error จริงสักครั้ง เทสต์ตัวโมคทั้งหมดผ่านได้เพราะโมคไม่เคยพิสูจน์
+ * ว่า encoder (toLineArea) กับ decoder (handleEvent) เข้าใจ payload ตรงกัน — เทสต์นี้
+ * แขวนแถว rich_menu จริงในฐานข้อมูล ผ่าน toLineArea() จริง แล้วจำลองการแตะกลับเข้า
+ * handleEvent() จริง เพื่อพิสูจน์ทั้งสองฝั่งเข้าใจ payload ตรงกันจริง ไม่ใช่แค่ในทฤษฎี
+ */
+describe('ปุ่มบน Rich Menu ที่ชี้ไปกิจกรรม/การ์ดจริง (บั๊ก postback ไม่ตรงรูปแบบ)', () => {
+  let tag = 0
+  const unique = () => `${Date.now().toString(36)}${(tag++).toString(36)}`
+
+  async function seedRichMenuWithAreas(
+    campaignId: string, areas: Array<{ x: number; y: number; width: number; height: number; kind: string; target: string | null }>,
+  ): Promise<void> {
+    const t = unique()
+    const [uploader] = await sql<{ id: string }[]>`
+      INSERT INTO app_user (email, role) VALUES (${`rm-${t}@example.com`}, 'configurator') RETURNING id`
+    const [asset] = await sql<{ id: string }[]>`
+      INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, bytes, width, height, uploaded_by)
+      VALUES (${campaignId}, ${`uploads/${t}/a.png`}, ${`/uploads/${t}/a.png`}, 'image', 'image/png', 100, 2500, 1686, ${uploader.id})
+      RETURNING id`
+    await sql`
+      INSERT INTO rich_menu (campaign_id, alias, image_asset_id, areas, line_rich_menu_id)
+      VALUES (${campaignId}, ${`main-${t}`}, ${asset.id}, ${sql.json(areas as never)}, ${`line-rm-${t}`})`
+  }
+
+  it('ช่องที่ชี้ไปกิจกรรมจริง → แตะแล้วเล่นได้จริง ไม่ใช่ระบบขัดข้อง', async () => {
+    const s = await seedLive(sql)
+    const ports = makePorts(sql, s.lineChannelId)
+    const area = { x: 0, y: 0, width: 1000, height: 843, kind: 'activity' as const, target: s.activityId }
+    await seedRichMenuWithAreas(s.campaignId, [area])
+
+    const data = toLineArea(area, {
+      aliasByMenuId: {},
+      activityCodeById: { [s.activityId]: 'draw' },
+      campaignCode: s.campaignCode,
+    }).action.data as string
+
+    const out = await handleEvent(tap(data), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(out?.message).toMatchObject({ type: 'flex' })
+    expect(JSON.stringify(out?.message)).toContain('คุณได้รางวัล')
+  })
+
+  it('ช่องที่ชี้ไปการ์ดจริง → ได้การ์ดนั้นกลับมาตรงๆ', async () => {
+    const s = await seedLive(sql)
+    const ports = makePorts(sql, s.lineChannelId)
+    const area = { x: 0, y: 0, width: 1000, height: 843, kind: 'card' as const, target: s.cardIds.win }
+    await seedRichMenuWithAreas(s.campaignId, [area])
+
+    const data = toLineArea(area, {
+      aliasByMenuId: {},
+      activityCodeById: {},
+      campaignCode: s.campaignCode,
+    }).action.data as string
+
+    const out = await handleEvent(tap(data), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(JSON.stringify(out?.message)).toContain('คุณได้รางวัล')
+  })
+
+  it('เมนูจากแคมเปญเก่าที่ถูกแทนที่แล้ว (รหัสแคมเปญไม่ตรงของจริงในฐานข้อมูล) → กิจกรรมนี้จบไปแล้ว', async () => {
+    const s = await seedLive(sql)
+    const ports = makePorts(sql, s.lineChannelId)
+    const data = encodeRichMenuPostback({ c: 'some-old-replaced-campaign', a: 'draw' })
+
+    const out = await handleEvent(tap(data), s.lineChannelId, ports, NOW, seededRng(1))
+    expect(out?.message).toEqual({ type: 'text', text: 'กิจกรรมนี้จบไปแล้ว ขอบคุณที่ร่วมสนุก' })
   })
 })

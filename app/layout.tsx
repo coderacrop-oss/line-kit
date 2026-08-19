@@ -28,6 +28,15 @@ export const metadata: Metadata = {
   description: 'เครื่องมือภายในสำหรับสร้างแคมเปญบน LINE',
 }
 
+/**
+ * ค่าเริ่มต้นของ Vercel คือ iad1 (Virginia, USA) — ทุกจอและ webhook ที่ /api/line
+ * เลยต้องวิ่งข้ามมหาสมุทรไปหาฐานข้อมูลทุกครั้ง ทั้งที่ Supabase ของโปรเจกต์นี้อยู่
+ * ap-southeast-1 (สิงคโปร์) และผู้เล่นจริงอยู่เอเชียทั้งหมด — sin1 คือภูมิภาคของ
+ * Vercel ที่ใกล้สิงคโปร์ที่สุด ตั้งไว้ที่ root layout เพื่อให้มีผลกับทุก route ในแอป
+ * ไม่ใช่แค่ webhook จุดเดียว (ทุกจอแอดมินก็อ่าน/เขียน DB เดียวกันนี้เหมือนกัน)
+ */
+export const preferredRegion = 'sin1'
+
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="th" className={`${sans.variable} ${thai.variable} ${mono.variable}`}>

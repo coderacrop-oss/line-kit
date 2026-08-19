@@ -2,6 +2,7 @@ import { periodKey } from "../daykey";
 import { decide } from "../engine/decide";
 import { matchKeyword } from "../match/keyword";
 import { decodePostback } from "../match/postback";
+import { decodeRichMenuPostback } from "../richmenu/postback";
 import { renderCard, type LineMessage } from "../render/card";
 import type { PlayerState } from "../state";
 import { FALLBACK } from "./messages";
@@ -110,6 +111,59 @@ export async function handleEvent(
     });
     return { replyToken, message };
   };
+
+  // ── ปุ่มบน Rich Menu ───────────────────────────────────────────────
+  if (event.type === "postback") {
+    const raw = event.postback?.data ?? "";
+
+    // เมนูแขวนอยู่ในแชทถาวร ไม่ได้ "ออก" ในวันใดวันหนึ่งเหมือนการ์ด จึงมี payload
+    // คนละรูปแบบและไม่มีการเช็คหมดอายุแบบ d= เลย (ดู lib/richmenu/postback.ts) —
+    // ลองรูปแบบนี้ก่อนเสมอ เพราะ decodePostback (ปุ่มบนการ์ด) ไม่รู้จักคีย์ rm/card
+    // และจะปฏิเสธมันอยู่แล้ว การลองก่อนจึงไม่กระทบพฤติกรรมของปุ่มบนการ์ดเลย
+    const richMenuPayload = decodeRichMenuPostback(raw);
+    if (richMenuPayload) {
+      if (richMenuPayload.c !== campaign.code) {
+        return reply(text(FALLBACK.campaignOver), {
+          activityId: null,
+          eventType: "campaign_over",
+          postbackData: raw,
+        });
+      }
+
+      if (richMenuPayload.a !== undefined) {
+        const activity = campaign.activities.find(
+          (a) => a.code === richMenuPayload.a,
+        );
+        if (!activity) {
+          return reply(text(FALLBACK.campaignOver), {
+            activityId: null,
+            eventType: "activity_missing",
+            postbackData: raw,
+          });
+        }
+        return playActivity({
+          activity,
+          raw,
+          campaign,
+          participantId,
+          state,
+          today,
+          now,
+          rng,
+          ports,
+          reply,
+        });
+      }
+
+      return reply(
+        cardMessage(campaign, richMenuPayload.card, state, FALLBACK.systemDown),
+        {
+          activityId: null,
+          eventType: "richmenu_card",
+        },
+      );
+    }
+  }
 
   // ── ปุ่มบนการ์ด ────────────────────────────────────────────────────
   if (event.type === "postback") {

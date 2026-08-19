@@ -1,4 +1,5 @@
 import { type LayoutKey, layoutRects, type Rect } from './layouts'
+import { encodeRichMenuPostback } from './postback'
 
 /**
  * ปลายทางของช่องบนเมนู — สี่ชนิดที่จอ M4-S01 เปิดให้เลือกจริง (ต้นแบบ)
@@ -65,14 +66,13 @@ export type AreaLineContext = {
  * 'none' — `validateForPublish` เป็นด่านที่บล็อกช่องว่างไปแล้วก่อนจะมาถึงตรงนี้
  * ช่องว่างที่หลุดมาถึงนี่คือบั๊กของด่านตรวจ ไม่ใช่กรณีที่ควรเงียบแล้วข้ามไป
  *
- * 'activity' และ 'card' ใช้ action ชนิด postback รูปแบบเดียวกับปุ่มบนการ์ด (BR-33 ·
- * BR-77) — แต่ `lib/match/postback.ts` (`decodePostback`) ต้องการคีย์ `d` (period
- * key ของวันนี้) เสมอ ซึ่งเมนูที่แขวนไว้ล่วงหน้าไม่มีทางฉีดค่านี้ให้ทันเวลา (ภาพเมนู
- * คงที่ตั้งแต่ตอนอัปโหลด ไม่ใช่คำนวณใหม่ทุกครั้งเหมือนการ์ด) — นี่คือข้อจำกัดเดียวกับ
- * ที่ `lib/cards/blocks.ts` (BUTTON_ACTION_OPTIONS) ปิด "ไปกิจกรรมอื่น (postback)"
- * ของปุ่มบนการ์ดไว้แล้ว ดู docs/HANDOFF.md §4b · แก้จริงต้องแตะ `lib/render/` ซึ่ง
- * เป็นเขตห้ามแตะของงานนี้ จึงคงรูปแบบ postback เดิมไว้เพื่อความสม่ำเสมอ (ไม่ประดิษฐ์
- * รูปแบบที่สาม) และบันทึกข้อจำกัดนี้ไว้ตรงนี้แทนที่จะเงียบไว้
+ * 'activity' และ 'card' ใช้ action ชนิด postback เหมือนปุ่มบนการ์ด (BR-33 · BR-77)
+ * แต่คนละรูปแบบ payload กัน: `lib/match/postback.ts` (`decodePostback`) ต้องการคีย์
+ * `d` (period key ของวันที่การ์ดถูกออก) เสมอ เพื่อจับ "แตะการ์ดเก่าข้ามวัน" — ส่วนเมนู
+ * แขวนอยู่ในแชทถาวร ไม่ได้ "ออก" ในวันใดวันหนึ่งเหมือนการ์ด จึงไม่มี `d` ที่มีความหมาย
+ * จริงให้ใส่ ใช้ `lib/richmenu/postback.ts` (`encodeRichMenuPostback`) แทน — คนละ
+ * รูปแบบ แยก decoder กันชัดเจนที่ `lib/webhook/handle.ts` ดูที่มาและกติกาการแยกทั้งหมด
+ * ที่ `lib/richmenu/postback.ts`
  */
 export function toLineArea(area: RichMenuArea, ctx: AreaLineContext): LineArea {
   const bounds = { x: area.x, y: area.y, width: area.width, height: area.height }
@@ -84,11 +84,11 @@ export function toLineArea(area: RichMenuArea, ctx: AreaLineContext): LineArea {
   switch (area.kind) {
     case 'activity': {
       const code = ctx.activityCodeById[area.target]
-      const data = `c=${encodeURIComponent(ctx.campaignCode)}&a=${encodeURIComponent(code ?? area.target)}`
+      const data = encodeRichMenuPostback({ c: ctx.campaignCode, a: code ?? area.target })
       return { bounds, action: { type: 'postback', data } }
     }
     case 'card': {
-      const data = `c=${encodeURIComponent(ctx.campaignCode)}&card=${encodeURIComponent(area.target)}`
+      const data = encodeRichMenuPostback({ c: ctx.campaignCode, card: area.target })
       return { bounds, action: { type: 'postback', data } }
     }
     case 'menu': {

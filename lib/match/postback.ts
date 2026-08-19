@@ -1,5 +1,5 @@
 /** LINE caps postback data at 300 characters. */
-const MAX_LENGTH = 300
+export const MAX_LENGTH = 300
 
 export type Postback = {
   /** campaign code — a card left in a chat outlives its campaign */
