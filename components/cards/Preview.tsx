@@ -142,7 +142,7 @@ export function Preview({ blocks, state, theme, renderAs, showJson }: PreviewPro
 
   const jsonText = message.type === 'text'
     ? message.text
-    : JSON.stringify(message.contents, null, 2)
+    : JSON.stringify(message.type === 'imagemap' ? message : message.contents, null, 2)
 
   return (
     <div data-preview style={box}>

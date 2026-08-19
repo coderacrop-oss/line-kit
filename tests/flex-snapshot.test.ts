@@ -90,10 +90,22 @@ describe('รูปร่างของข้อความที่ส่ง�
     expect(renderCard(card, state(), theme)).toMatchSnapshot()
   })
 
-  it('ริชเมสเสจยังไม่มีตัววาด จึงตกมาเป็นข้อความ ไม่ใช่เงียบ', () => {
+  it('ริชเมสเสจที่ยังไม่เคยกด "ใช้" ในตัวแก้ไข (ไม่มีภาพ 5 ขนาด) ตกมาเป็นข้อความ ไม่ใช่เงียบ', () => {
+    const card: RenderableCard = { code: 'rich', renderAs: 'imagemap', blocks: [] }
+    expect(renderCard(card, state(), theme)).toMatchSnapshot()
+  })
+
+  it('ริชเมสเสจที่กด "ใช้" สำเร็จแล้ว ส่งเป็น LINE imagemap message จริง', () => {
     const card: RenderableCard = {
-      code: 'rich', renderAs: 'imagemap',
-      blocks: [b({ blockType: 'body', content: 'เนื้อหาที่ยังวาดเป็นภาพไม่ได้' })],
+      code: 'rich', renderAs: 'imagemap', blocks: [],
+      imagemap: {
+        baseUrl: 'https://flex.example.com/api/imagemap/card-rich',
+        altText: 'โปรโมชันพิเศษ',
+        baseSize: { width: 1040, height: 585 },
+        actions: [
+          { id: 'a1', x: 20, y: 20, width: 400, height: 200, action: { type: 'uri', linkUri: 'https://example.com/promo' } },
+        ],
+      },
     }
     expect(renderCard(card, state(), theme)).toMatchSnapshot()
   })

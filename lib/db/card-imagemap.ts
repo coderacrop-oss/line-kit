@@ -1,4 +1,5 @@
 import type postgres from 'postgres'
+import type { Queryable } from './client'
 import type { ImagemapWidth } from '../imagemap/sizes'
 import type { TapArea } from '../imagemap/regions'
 
@@ -155,6 +156,58 @@ export async function setImagemapBaseImage(
        SET base_asset_id = EXCLUDED.base_asset_id, base_width = EXCLUDED.base_width,
            base_height = EXCLUDED.base_height, variant_assets = '{}',
            updated_by = EXCLUDED.updated_by, updated_at = now()`
+}
+
+export type ReadyImagemap = { baseWidth: number; baseHeight: number; altText: string; actions: TapArea[] }
+
+/**
+ * ริชเมสเสจที่ "พร้อมส่ง" ของทุกการ์ดในแคมเปญนี้ในทีเดียว — ใช้ตอนโหลด config ทั้งชุด
+ * ให้ webhook จริง (lib/db/queries.ts:loadCards) แทนที่จะยิง loadCardImagemap ทีละ
+ * ใบ (N+1) เหมือนที่ loadCards เองก็โหลดบล็อกของทุกการ์ดในคำสั่งเดียวอยู่แล้ว
+ *
+ * "พร้อมส่ง" หมายถึงเคยกด "ใช้" สำเร็จแล้วอย่างน้อยหนึ่งครั้ง (variant_assets ไม่ว่าง)
+ * — markImagemapApplied เขียนครบทั้งห้าขนาดในธุรกรรมเดียวเสมอ ไม่มีทางเขียนแค่
+ * บางขนาด จึง "ไม่ว่าง" กับ "ครบห้าขนาด" เป็นเงื่อนไขเดียวกัน การ์ดที่ยังไม่เคยกด
+ * "ใช้" ไม่อยู่ใน Record ที่คืนออกไปเลย — renderCard() ตกไปเป็นข้อความสำรองเอง (BR-01)
+ */
+export async function loadReadyImagemaps(
+  sql: Queryable, campaignId: string,
+): Promise<Record<string, ReadyImagemap>> {
+  const rows = await sql<{ card_id: string; tap_areas: TapArea[] | null; alt_text: string; base_width: number; base_height: number }[]>`
+    SELECT c.id AS card_id, c.tap_areas, ci.alt_text, ci.base_width, ci.base_height
+      FROM card c
+      JOIN card_imagemap ci ON ci.card_id = c.id
+     WHERE c.campaign_id = ${campaignId} AND c.render_as = 'imagemap'
+       AND ci.variant_assets <> '{}'::jsonb`
+
+  const result: Record<string, ReadyImagemap> = {}
+  for (const row of rows) {
+    result[row.card_id] = {
+      baseWidth: row.base_width, baseHeight: row.base_height,
+      altText: row.alt_text, actions: row.tap_areas ?? [],
+    }
+  }
+  return result
+}
+
+/**
+ * หาไฟล์ของขนาดหนึ่งขนาดสำหรับเส้นทางเสิร์ฟภาพ (app/api/imagemap/[cardId]/[width])
+ *
+ * ไม่ตรวจ campaignId เลย — เส้นทางนี้ถูกเรียกจากเซิร์ฟเวอร์ของ LINE เอง (ไม่มี
+ * session ผู้ดูแลแนบมาด้วย) ตาม `baseUrl` ที่ฝังไปกับข้อความ ซึ่งมีแค่ cardId ไม่มี
+ * campaignId — เหมือนกับที่ asset.public_url ทุกไฟล์ในคลังก็เข้าถึงได้แบบสาธารณะ
+ * อยู่แล้วโดยไม่มีด่านสิทธิ์ (LINE เองก็ต้องดึงภาพแบบไม่ล็อกอินได้) cardId เป็น UUID
+ * เดาไม่ได้อยู่แล้วในตัว
+ */
+export async function resolveImagemapVariantAsset(
+  sql: postgres.Sql, cardId: string, width: ImagemapWidth,
+): Promise<{ storagePath: string; mimeType: string } | null> {
+  const [row] = await sql<{ storage_path: string; mime_type: string }[]>`
+    SELECT a.storage_path, a.mime_type
+      FROM card_imagemap ci
+      JOIN asset a ON a.id = (ci.variant_assets ->> ${String(width)})::uuid
+     WHERE ci.card_id = ${cardId}`
+  return row ? { storagePath: row.storage_path, mimeType: row.mime_type } : null
 }
 
 /**

@@ -109,6 +109,11 @@ function cardOf(bubble: Node): ChatCard {
 export function toChatBubble(message: LineMessage): ChatBubble {
   if (message.type === 'text') return { kind: 'text', text: message.text }
 
+  // จอตัวอย่างนี้เป็นของบล็อกเอดิเตอร์ (M3-S02) ซึ่งการ์ดริชเมสเสจไม่ผ่านทางนี้เลย —
+  // มีจอแก้ไขของตัวเอง (app/(admin)/campaigns/[id]/cards/[cardId]/imagemap) ที่วาด
+  // ภาพจริงพร้อมพื้นที่กดตรงๆ กิ่งนี้จึงเป็นแค่ทางออกที่สมเหตุสมผลเผื่อพลาดเรียกมาที่นี่
+  if (message.type === 'imagemap') return { kind: 'text', text: message.altText }
+
   const contents = asNode(message.contents)
   if (contents.type === 'carousel') {
     return {
