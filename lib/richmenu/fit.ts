@@ -1,5 +1,6 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { describeBytes } from '../assets/validate'
+import { coverScale } from './scale'
 
 /**
  * ตัด/ย่อภาพให้พอดีผืนที่ผังต้องการโดยอัตโนมัติ — เหมือนตัวเลือก "อัปโหลดรูปและ
@@ -31,12 +32,11 @@ export type FitResult =
   | { ok: true; data: Uint8Array; mime: 'image/jpeg' }
   | { ok: false; reason: string }
 
-/** สเกลที่ต้องขยาย/ย่อภาพต้นฉบับเพื่อให้ด้านที่สั้นกว่าครอบผืนเป้าหมายพอดี */
-export function coverScale(
-  source: { width: number; height: number }, target: { width: number; height: number },
-): number {
-  return Math.max(target.width / source.width, target.height / source.height)
-}
+// coverScale ย้ายไปอยู่ที่ ./scale.ts (ฟังก์ชันบริสุทธิ์ไม่มี import ใดๆ) เพื่อให้
+// lib/richmenu/crop.ts (ซึ่งถูก import จาก client component) ใช้คณิตศาสตร์ตัวเดียวกันได้
+// โดยไม่ลาก @napi-rs/canvas (native binary) เข้าไปในบันเดิลฝั่งเบราว์เซอร์ด้วย —
+// export ซ้ำไว้ตรงนี้เพื่อไม่ให้โค้ด/เทสต์เดิมที่ import coverScale จาก './fit' ต้องแก้
+export { coverScale } from './scale'
 
 export async function fitImageToCanvas(
   data: Uint8Array, target: { width: number; height: number },

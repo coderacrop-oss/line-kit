@@ -1,5 +1,7 @@
 import type postgres from 'postgres'
 import type { Queryable } from './client'
+import { loadReadyImagemaps } from './card-imagemap'
+import { publicImagemapBaseUrl } from '../imagemap/url'
 import type { CardBlock } from '../render/groups'
 import type { RenderableCard } from '../render/card'
 import type { PlayerState } from '../state'
@@ -108,9 +110,26 @@ async function loadCards(sql: Queryable, campaignId: string) {
     byCard.get(card_id)!.push(block)
   }
 
+  const readyImagemaps = await loadReadyImagemaps(sql, campaignId)
+
   const cardsById: Record<string, RenderableCard> = {}
   for (const c of cards) {
-    cardsById[c.id] = { code: c.code, renderAs: c.render_as, blocks: byCard.get(c.id) ?? [] }
+    const card: RenderableCard = { code: c.code, renderAs: c.render_as, blocks: byCard.get(c.id) ?? [] }
+
+    // ประกอบ imagemap เฉพาะการ์ดที่กด "ใช้" สำเร็จแล้ว (มีภาพ 5 ขนาดจริง) และตั้ง
+    // PUBLIC_BASE_URL ไว้แล้วเท่านั้น — ขาดอย่างใดอย่างหนึ่ง renderCard() จะตกไปเป็น
+    // ข้อความสำรองเอง (BR-01) แทนที่จะส่ง imagemap message ที่ไม่มีอะไรให้ LINE ดึง
+    const ready = readyImagemaps[c.id]
+    const baseUrl = ready ? publicImagemapBaseUrl(c.id) : null
+    if (ready && baseUrl) {
+      card.imagemap = {
+        baseUrl, altText: ready.altText,
+        baseSize: { width: ready.baseWidth, height: ready.baseHeight },
+        actions: ready.actions,
+      }
+    }
+
+    cardsById[c.id] = card
   }
 
   // Carousel children hang off their parent in swipe order.

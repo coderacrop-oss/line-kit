@@ -28,6 +28,7 @@ export type ChannelRow = {
   name: string
   channel_type: ChannelType
   line_channel_id: string | null
+  line_bot_user_id: string | null
   token_last4: string | null
   key_version: number | null
   last_used_at: Date | null
@@ -48,8 +49,10 @@ export type ChannelSummary = {
   id: string
   name: string
   channelType: ChannelType
-  /** ตัวเลข Channel ID จากแท็บ Basic settings ของ LINE Developers Console — คนละค่ากับ token/secret และเป็นสิ่งเดียวที่ webhook ใช้จับคู่ว่าข้อความที่เข้ามาเป็นของบัญชีไหน */
+  /** ตัวเลข Channel ID จากแท็บ Basic settings ของ LINE Developers Console — คนละค่ากับ token/secret และเป็นสิ่งเดียวที่ใช้ค้นแคมเปญที่กำลังรันอยู่บนบัญชีนี้ */
   lineChannelId: string | null
+  /** userId ของบอทเอง — คนละค่ากับ lineChannelId ข้างบน คือค่าที่ LINE ส่งมาใน `destination` ของทุก webhook และเป็นสิ่งเดียวที่ webhook ใช้จับคู่ว่า event ที่เข้ามาเป็นของบัญชีไหน ก่อนจะรู้ด้วยซ้ำว่าจะตรวจลายเซ็นด้วยกุญแจของใคร */
+  lineBotUserId: string | null
   tokenLast4: string | null
   keyVersion: number | null
   lastUsedAt: Date | null
@@ -65,6 +68,7 @@ export function summarizeChannel(row: ChannelRow): ChannelSummary {
     name: row.name,
     channelType: row.channel_type,
     lineChannelId: row.line_channel_id,
+    lineBotUserId: row.line_bot_user_id,
     tokenLast4: row.token_last4,
     keyVersion: row.key_version,
     lastUsedAt: row.last_used_at,
@@ -162,8 +166,8 @@ export function groupByTier(channels: readonly ChannelSummary[]): ChannelGroup[]
  */
 function selectChannels(sql: postgres.Sql, where: postgres.PendingQuery<ChannelRow[]>) {
   return sql<ChannelRow[]>`
-    SELECT ch.id, ch.name, ch.channel_type, ch.line_channel_id, ch.token_last4, ch.key_version,
-           ch.last_used_at, ch.existing_keywords,
+    SELECT ch.id, ch.name, ch.channel_type, ch.line_channel_id, ch.line_bot_user_id,
+           ch.token_last4, ch.key_version, ch.last_used_at, ch.existing_keywords,
            (SELECT ca.name FROM campaign_channel cc
               JOIN campaign ca ON ca.id = cc.campaign_id
              WHERE cc.channel_id = ch.id AND cc.is_published LIMIT 1) AS live_campaign_name,
@@ -205,4 +209,24 @@ export async function findTestSendChannel(sql: postgres.Sql): Promise<{ id: stri
      ORDER BY last_used_at DESC NULLS LAST, name
      LIMIT 1`
   return row ?? null
+}
+
+/**
+ * บัญชีที่ webhook นี้เป็นของ — `destination` ที่ LINE ส่งมาในทุก payload คือ userId
+ * ของบอทเจ้าของ event นั้น (คนละค่ากับ line_channel_id ที่เป็นตัวเลข Channel ID)
+ *
+ * ต้องรู้แถวนี้ก่อนจะรู้ด้วยซ้ำว่าจะตรวจลายเซ็นด้วยกุญแจของใคร (webhook หลายบัญชี —
+ * ดูหมายเหตุเต็มที่ supabase/migrations/0010_channel_bot_user_id.sql) จึงเรียกก่อน
+ * verifySignature() เสมอ ไม่ใช่หลัง
+ *
+ * ไม่ SELECT คอลัมน์กุญแจตรงนี้ เหมือน selectChannels() ข้างบน — ตัวเรียก (route.ts)
+ * ไปอ่านกุญแจจริงผ่าน readChannelSecret() อีกที ซึ่งบันทึกร่องรอยทุกครั้งที่กุญแจถูก
+ * ถอด จุดนี้แค่บอกว่า "แถวไหน" ไม่ใช่จุดที่กุญแจไหลออกมา
+ */
+export async function findChannelByBotUserId(
+  sql: postgres.Sql, botUserId: string,
+): Promise<{ id: string; lineChannelId: string | null } | null> {
+  const [row] = await sql<{ id: string; line_channel_id: string | null }[]>`
+    SELECT id, line_channel_id FROM channel WHERE line_bot_user_id = ${botUserId}`
+  return row ? { id: row.id, lineChannelId: row.line_channel_id } : null
 }

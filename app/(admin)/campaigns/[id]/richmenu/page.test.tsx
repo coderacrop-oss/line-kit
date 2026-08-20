@@ -1,7 +1,8 @@
 // @vitest-environment jsdom
-import { cleanup, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { RichMenuScreenData } from '@/lib/db/richmenu'
+import { createMenu } from './actions'
 
 afterEach(cleanup)
 
@@ -17,9 +18,11 @@ const state: {
   screen: { menus: [], images: [], activities: [], cards: [] },
 }
 
+const refresh = vi.fn()
 vi.mock('next/navigation', () => ({
   redirect: (to: string) => { throw new Error(`NEXT_REDIRECT:${to}`) },
   notFound: () => { throw new Error('NEXT_NOT_FOUND') },
+  useRouter: () => ({ refresh }),
 }))
 vi.mock('@/lib/auth/session', () => ({ getSession: async () => state.session }))
 vi.mock('@/lib/db/client', () => ({ db: () => ({}) }))
@@ -29,8 +32,15 @@ vi.mock('@/lib/db/richmenu', async (importOriginal) => ({
   loadRichMenuScreen: async () => state.screen,
 }))
 vi.mock('./actions', () => ({
-  createMenu: vi.fn(), saveMenu: vi.fn(), changeLayout: vi.fn(), setEntry: vi.fn(), deleteMenu: vi.fn(),
+  createMenu: vi.fn(async () => ({ ok: true })), saveMenu: vi.fn(async () => ({ ok: true })),
+  changeLayout: vi.fn(), setEntry: vi.fn(), deleteMenu: vi.fn(),
 }))
+
+// jsdom ไม่มี URL.createObjectURL/revokeObjectURL — CropModal (เปิดผ่าน ImagePicker
+// ตอนเลือกไฟล์) เรียกใช้ทันทีที่ mount ปลอมไว้เท่าที่ต้องใช้จริง เหมือนที่
+// CropModal.test.tsx/ImagePicker.test.tsx ทำไว้แล้ว
+URL.createObjectURL = vi.fn(() => 'blob:fake')
+URL.revokeObjectURL = vi.fn()
 
 const RichMenuPage = (await import('./page')).default
 
@@ -285,5 +295,62 @@ describe('M4-S01 · สิทธิ์', () => {
     state.screen = { ...state.screen, menus: [goodMenu()] }
     await open()
     expect(screen.getByText('ลบเมนูนี้')).toBeDefined()
+  })
+})
+
+/**
+ * แก้บั๊กที่เจอในโปรดักชัน: อัปโหลดภาพเล็กเกินไปถูกปฏิเสธถูกต้อง (ERR-037) แต่ฟอร์ม
+ * เดิม (`<form action={createMenu}>` ตรงๆ) ไม่มีอะไรจับ error ฝั่ง client เลย ข้อความ
+ * จริงเลยถูก Next.js เซ็นเซอร์ทิ้งในโปรดักชัน กลายเป็นหน้า "Application error" ที่
+ * ไม่บอกอะไร — ฟอร์มนี้ต้องเปลี่ยนมาจับเองผ่าน ActionForm แล้วโชว์ใน ErrorModal แทน
+ */
+describe('M4-S01 · error modal บนฟอร์ม "+ เพิ่มเมนู" (แก้บั๊กข้อความ error หาย)', () => {
+  beforeEach(() => {
+    vi.mocked(createMenu).mockReset()
+  })
+
+  const fillAndSubmit = (container: HTMLElement) => {
+    fireEvent.change(screen.getByPlaceholderText('เช่น main'), { target: { value: 'promo' } })
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [new File(['a'], 'small.jpg', { type: 'image/jpeg' })] } })
+    fireEvent.click(screen.getByRole('button', { name: 'ใช้ภาพนี้ทั้งภาพ' }))
+    // jsdom ไม่นับว่า input[type=file] ที่ตั้ง .files ผ่าน fireEvent.change มีไฟล์แล้ว
+    // ตอนตรวจ required ผ่านการคลิกปุ่ม submit จริง (ข้อจำกัดของ jsdom เอง ไม่ใช่ของ
+    // ปุ่ม/ฟอร์ม) — ยิง submit event ตรงๆ แทน ซึ่งข้าม interactive validation นั้นไป
+    // เหมือนที่ browser จริงทำตอนเรียก requestSubmit() มาจากโค้ด ไม่ใช่จากคนคลิกปุ่ม
+    const form = container.querySelector('form') as HTMLFormElement
+    fireEvent.submit(form)
+  }
+
+  it('createMenu ปฏิเสธด้วยข้อความ ERR-037 จริง — ข้อความเป๊ะๆ โผล่ใน ErrorModal ไม่ใช่หน้าเว็บพัง', async () => {
+    const errorMessage = 'ERR-037 · ภาพเล็กเกินไปสำหรับผังนี้ — ต้องขยาย 2.8 เท่าเพื่อให้เต็มผืน 2500×1686 ซึ่งจะเห็นเบลอชัดเจน ใช้ภาพความละเอียดสูงกว่านี้'
+    vi.mocked(createMenu).mockResolvedValueOnce({ ok: false, message: errorMessage })
+    const { container } = await open()
+
+    fillAndSubmit(container)
+
+    await waitFor(() => expect(screen.getByText(errorMessage)).toBeDefined())
+    expect(screen.getByRole('dialog')).toBeDefined()
+  })
+
+  it('ปิด ErrorModal ด้วยปุ่ม "ปิด" — ข้อความหายไป', async () => {
+    vi.mocked(createMenu).mockResolvedValueOnce({ ok: false, message: 'พัง' })
+    const { container } = await open()
+
+    fillAndSubmit(container)
+    await waitFor(() => expect(screen.getByText('พัง')).toBeDefined())
+
+    fireEvent.click(screen.getByRole('button', { name: 'ปิด' }))
+    expect(screen.queryByText('พัง')).toBeNull()
+  })
+
+  it('ส่งสำเร็จ — ไม่มี ErrorModal โผล่ขึ้นมาเลย', async () => {
+    vi.mocked(createMenu).mockResolvedValueOnce({ ok: true })
+    const { container } = await open()
+
+    fillAndSubmit(container)
+
+    await waitFor(() => expect(createMenu).toHaveBeenCalledOnce())
+    expect(screen.queryByRole('dialog')).toBeNull()
   })
 })

@@ -21,6 +21,23 @@ const isBindable = (value: string): value is ChannelType =>
 
 const UNIQUE_VIOLATION = '23505'
 
+/**
+ * ทั้ง line_channel_id และ line_bot_user_id เป็น UNIQUE เต็มทั้งคู่ (BR-68 / migration
+ * 0010) — คนละคอลัมน์ คนละความหมาย ข้อความที่โชว์บนจอจึงต้องบอกให้ตรงว่าใครชนกับใคร
+ * ไม่ใช่ข้อความเดียวเหมารวมทั้งสองคอลัมน์ · postgres.js ใส่ constraint_name ของ error
+ * มาให้ (ชื่อ default ของ Postgres คือ `<table>_<column>_key`) จึงอ่านจากตรงนั้นได้
+ * โดยไม่ต้องเดา
+ */
+function uniqueViolationMessage(error: unknown): unknown {
+  const pgError = error as { code?: string; constraint_name?: string }
+  if (pgError.code !== UNIQUE_VIOLATION) return error
+
+  if (pgError.constraint_name?.includes('line_bot_user_id')) {
+    return new Error('userId ของบอทนี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — บอทหนึ่งตัวผูกได้แถวเดียว')
+  }
+  return new Error('Channel ID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — หนึ่ง Channel ID ผูกได้แถวเดียว')
+}
+
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
 
 /** ว่าง = ยังไม่ได้กรอก ไม่ใช่ค่าจริง — เขียนเป็น NULL ไม่ใช่สตริงว่าง เพราะคอลัมน์นี้ UNIQUE (BR-68) และหลายบัญชีที่ยังไม่กรอกต้องอยู่ด้วยกันได้ */
@@ -87,6 +104,7 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
   const secret = trimmed(formData, 'channel_secret')
   const keywords = asKeywordList(String(formData.get('existing_keywords') ?? ''))
   const lineChannelId = trimmedOrNull(formData, 'line_channel_id')
+  const lineBotUserId = trimmedOrNull(formData, 'line_bot_user_id')
 
   if (!token && !secret) {
     // แก้ของเดิมโดยไม่แตะกุญแจ · บัญชีใหม่ต้องมีกุญแจ เพราะ CHECK ของตารางบังคับ
@@ -97,13 +115,11 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
         UPDATE channel
            SET name = ${name}, channel_type = ${channelType},
                existing_keywords = ${sql.array(keywords)},
-               line_channel_id = ${lineChannelId}
+               line_channel_id = ${lineChannelId},
+               line_bot_user_id = ${lineBotUserId}
          WHERE id = ${id}`
     } catch (error) {
-      if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
-        throw new Error('Channel ID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — หนึ่ง Channel ID ผูกได้แถวเดียว')
-      }
-      throw error
+      throw uniqueViolationMessage(error)
     }
 
     revalidatePath('/channels')
@@ -125,6 +141,7 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
            SET name = ${name}, channel_type = ${channelType},
                existing_keywords = ${sql.array(keywords)},
                line_channel_id = ${lineChannelId},
+               line_bot_user_id = ${lineBotUserId},
                encrypted_token = ${encryptedToken.cipher},
                encrypted_secret = ${encryptedSecret.cipher},
                token_last4 = ${last4(token)},
@@ -133,17 +150,14 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
     } else {
       await sql`
         INSERT INTO channel
-               (name, channel_type, existing_keywords, line_channel_id,
+               (name, channel_type, existing_keywords, line_channel_id, line_bot_user_id,
                 encrypted_token, encrypted_secret, token_last4, key_version, created_by)
-        VALUES (${name}, ${channelType}, ${sql.array(keywords)}, ${lineChannelId},
+        VALUES (${name}, ${channelType}, ${sql.array(keywords)}, ${lineChannelId}, ${lineBotUserId},
                 ${encryptedToken.cipher}, ${encryptedSecret.cipher},
                 ${last4(token)}, ${encryptedToken.keyVersion}, ${session.userId})`
     }
   } catch (error) {
-    if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
-      throw new Error('Channel ID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — หนึ่ง Channel ID ผูกได้แถวเดียว')
-    }
-    throw error
+    throw uniqueViolationMessage(error)
   }
 
   revalidatePath('/channels')

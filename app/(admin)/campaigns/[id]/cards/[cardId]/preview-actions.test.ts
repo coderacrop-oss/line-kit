@@ -14,6 +14,8 @@ const state: {
   channel: { id: string } | null
   pushed: Array<{ token: string; to: string; message: unknown }>
   tokenReads: Array<Record<string, unknown>>
+  imagemap: unknown
+  publicBaseUrl: string | null
 } = {
   cookie: undefined,
   user: undefined,
@@ -22,6 +24,8 @@ const state: {
   channel: null,
   pushed: [],
   tokenReads: [],
+  imagemap: null,
+  publicBaseUrl: null,
 }
 
 vi.mock('next/headers', () => ({
@@ -40,6 +44,8 @@ const sql = (strings: TemplateStringsArray) => {
 
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 vi.mock('@/lib/db/cardEditor', () => ({ loadCardEditor: async () => state.screen }))
+vi.mock('@/lib/db/card-imagemap', () => ({ loadCardImagemap: async () => state.imagemap }))
+vi.mock('@/lib/imagemap/url', () => ({ publicImagemapBaseUrl: () => state.publicBaseUrl }))
 vi.mock('@/lib/db/users', () => ({ loadTestLineUid: async () => state.testLineUid }))
 vi.mock('@/lib/db/channels', () => ({ findTestSendChannel: async () => state.channel }))
 vi.mock('@/lib/db/tokens', () => ({
@@ -97,6 +103,8 @@ beforeEach(() => {
   state.channel = { id: 'ch-test' }
   state.pushed = []
   state.tokenReads = []
+  state.imagemap = null
+  state.publicBaseUrl = null
   vi.mocked(readChannelSecret).mockClear()
   vi.mocked(pushMessage).mockClear()
 })
@@ -228,5 +236,56 @@ describe('sendTestCard · เส้นทางสำเร็จ', () => {
     const withEnt = state.pushed[0].message as { contents: { body: { contents: unknown[] } } }
 
     expect(withoutEnt.contents.body.contents).not.toEqual(withEnt.contents.body.contents)
+  })
+})
+
+describe('sendTestCard · ริชเมสเสจ (imagemap)', () => {
+  beforeEach(() => {
+    signedInAs('configurator')
+    state.testLineUid = `U${'a'.repeat(32)}`
+    state.screen = screenFor({ card: { ...screenFor().card, renderAs: 'imagemap' }, blocks: [] })
+  })
+
+  it('เคยกด "ใช้" สำเร็จแล้ว (มีภาพ 5 ขนาด) และตั้งที่อยู่สาธารณะไว้แล้ว — ส่งเป็น imagemap message จริง', async () => {
+    state.publicBaseUrl = 'https://flex.example.com/api/imagemap/card-1'
+    state.imagemap = {
+      baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'โปรโมชัน',
+      actions: [{ id: 'r1', x: 0, y: 0, width: 100, height: 100, action: { type: 'uri', linkUri: 'https://x.com' } }],
+      variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    expect(state.pushed).toHaveLength(1)
+    const message = state.pushed[0].message as { type: string; baseUrl: string; altText: string }
+    expect(message.type).toBe('imagemap')
+    expect(message.baseUrl).toBe('https://flex.example.com/api/imagemap/card-1')
+    expect(message.altText).toBe('โปรโมชัน')
+  })
+
+  it('ยังไม่เคยกด "ใช้" เลย (ไม่มีภาพ 5 ขนาด) — ตกไปเป็นข้อความสำรอง ไม่ใช่ imagemap message ที่พัง', async () => {
+    state.publicBaseUrl = 'https://flex.example.com/api/imagemap/card-1'
+    state.imagemap = {
+      baseAssetId: null, baseImageUrl: null, baseWidth: null, baseHeight: null, altText: '',
+      actions: [], variantUrls: {},
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    const message = state.pushed[0].message as { type: string }
+    expect(message.type).toBe('text')
+  })
+
+  it('ยังไม่ได้ตั้ง PUBLIC_BASE_URL — ตกไปเป็นข้อความสำรองแม้ภาพจะพร้อมแล้ว', async () => {
+    state.publicBaseUrl = null
+    state.imagemap = {
+      baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'โปรโมชัน',
+      actions: [], variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    const message = state.pushed[0].message as { type: string }
+    expect(message.type).toBe('text')
   })
 })

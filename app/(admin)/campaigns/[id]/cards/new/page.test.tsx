@@ -166,7 +166,7 @@ describe('สิทธิ์และทางเข้า', () => {
 })
 
 /**
- * ขั้นที่ 1 · ห้าชนิด แต่สไลซ์นี้เปิดสาม (BR-89)
+ * ขั้นที่ 1 · ห้าชนิด แต่สไลซ์นี้เปิดสี่ (imagemap_video ยังปิด — BR-89)
  */
 describe('ขั้นที่ 1 · ชนิดการส่ง', () => {
   it('แสดงครบทั้งห้าชนิด ไม่ได้ซ่อนตัวที่ยังทำไม่ได้', async () => {
@@ -176,21 +176,22 @@ describe('ขั้นที่ 1 · ชนิดการส่ง', () => {
     }
   })
 
-  it('สามตัวที่เปิดเป็นลิงก์ที่พาไปขั้นถัดไป', async () => {
+  it('สี่ตัวที่เปิดเป็นลิงก์ที่พาไปขั้นถัดไป', async () => {
     const { container } = await show()
     const hrefs = Array.from(container.querySelectorAll('a'))
       .map((a) => a.getAttribute('href') ?? '')
     expect(hrefs).toContain('?send=flex_bubble')
     expect(hrefs).toContain('?send=flex_carousel')
     expect(hrefs).toContain('?send=text')
+    expect(hrefs).toContain('?send=imagemap')
   })
 
-  it('ริชเมสเสจกับริชวิดีโอกดไม่ได้ และไม่ใช่ลิงก์', async () => {
+  it('ริชวิดีโอกดไม่ได้ และไม่ใช่ลิงก์', async () => {
     const { container } = await show()
-    expect(lockedTypes(container).sort()).toEqual(['imagemap', 'imagemap_video'])
+    expect(lockedTypes(container).sort()).toEqual(['imagemap_video'])
     const hrefs = Array.from(container.querySelectorAll('a'))
       .map((a) => a.getAttribute('href') ?? '')
-    expect(hrefs.some((href) => href.includes('imagemap'))).toBe(false)
+    expect(hrefs.some((href) => href.includes('imagemap_video'))).toBe(false)
   })
 
   it('ตัวที่กดไม่ได้บอกเหตุผลไว้ข้างตัวมันเอง ไม่ใช่ปล่อยให้เดา', async () => {
@@ -208,9 +209,15 @@ describe('ขั้นที่ 1 · ชนิดการส่ง', () => {
   })
 
   it('ชนิดที่ยิงมาจาก URL แต่ยังไม่เปิด ถือว่ายังไม่ได้เลือก', async () => {
-    const { container } = await show({ send: 'imagemap', tpl: 'line_buttons' })
+    const { container } = await show({ send: 'imagemap_video', tpl: 'line_buttons' })
     expect(container.textContent).toContain('ยังไม่เลือกชนิด')
     expect(container.querySelector('form')).toBeNull()
+  })
+
+  it('ริชเมสเสจ (imagemap) เลือกได้จริงแล้ว — เข้าขั้นเทมเพลตตามปกติ', async () => {
+    const { container } = await show({ send: 'imagemap', tpl: 'line_buttons' })
+    expect(container.textContent).not.toContain('ยังไม่เลือกชนิด')
+    expect(container.querySelector('form')).not.toBeNull()
   })
 })
 

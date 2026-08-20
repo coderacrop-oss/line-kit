@@ -132,6 +132,12 @@ describe('M3-S02-edit · เข้าถึงจอ', () => {
     const { container } = await show()
     expect(container.textContent).toContain('M3-S02 · Card')
   })
+
+  it('การ์ดริชเมสเสจ (imagemap) ถูกส่งต่อไปตัวแก้ไขของมันเองเสมอ ไม่ใช่บล็อกเอดิเตอร์นี้', async () => {
+    state.screen = screenFor({ card: { ...screenFor().card, renderAs: 'imagemap' } })
+    await expect(show()).rejects.toThrow('NEXT_REDIRECT')
+    expect(state.redirectedTo).toBe('/campaigns/c1/cards/card-1/imagemap')
+  })
 })
 
 describe('M3-S02-edit · กล่องเตือนตามสถานะ', () => {

@@ -11,14 +11,6 @@ const USER_RICHMENU_ENDPOINT = 'https://api.line.me/v2/bot/user'
 // L2 §5.2 (v0.17) · อัปโหลด/ดาวน์โหลดภาพเมนูยิงไปโดเมนนี้ คนละโดเมนกับคำสั่งอื่นทั้งหมด
 const RICHMENU_DATA_HOST = 'https://api-data.line.me'
 
-export function getChannelSecret(): string {
-  return requireEnv('LINE_CHANNEL_SECRET')
-}
-
-export function getAccessToken(): string {
-  return requireEnv('LINE_CHANNEL_ACCESS_TOKEN')
-}
-
 /**
  * Replies to a single event. Reply messages are free; push messages are not, so
  * this is the only way anything leaves the system.
@@ -26,14 +18,22 @@ export function getAccessToken(): string {
  * The timeout matters more than it looks: a reply token expires, and a request
  * left hanging turns into silence the player cannot distinguish from a broken
  * bot (BR-01).
+ *
+ * โทเคนเป็นพารามิเตอร์แรก ไม่ใช่อ่านจาก env อีกต่อไป (เคยเป็นหนี้ทางเทคนิคข้อ 1 ของ
+ * docs/HANDOFF.md — ดูหมายเหตุเดิมที่ pushMessage) — webhook หนึ่งเส้นทางนี้ตอบได้
+ * หลายบัญชี LINE พร้อมกัน (multi-channel webhook) ตอบแทนบัญชีเดียวที่ผูกกับ process
+ * ตอนดีพลอยไม่พอแล้ว ตัวเรียก (route.ts) เป็นคนเลือกบัญชีจาก destination ที่ LINE
+ * ส่งมาในแต่ละ event แล้วถอดโทเคนผ่าน readChannelSecret() ก่อนส่งเข้ามาที่นี่
  */
-export async function replyMessage(replyToken: string, message: LineMessage): Promise<void> {
+export async function replyMessage(
+  accessToken: string, replyToken: string, message: LineMessage,
+): Promise<void> {
   const response = await fetch(REPLY_ENDPOINT, {
     method: 'POST',
     signal: AbortSignal.timeout(5000),
     headers: {
       'Content-Type': 'application/json',
-      Authorization: `Bearer ${getAccessToken()}`,
+      Authorization: `Bearer ${accessToken}`,
     },
     body: JSON.stringify({ replyToken, messages: [message] }),
   })
@@ -48,11 +48,12 @@ export async function replyMessage(replyToken: string, message: LineMessage): Pr
  * ทดสอบ" ของ M3-S02 (Task 14) ต้องใช้ เพราะการกดปุ่มบนจอแอดมินไม่ใช่ event จาก LINE
  * จึงไม่มี reply token ให้ replyMessage ใช้
  *
- * โทเคนเป็นพารามิเตอร์เหมือน setWebhookEndpoint ไม่ใช่แบบ replyMessage ที่ยังอ่าน
- * env อยู่ (หนี้ทางเทคนิคข้อ 1 ของ docs/HANDOFF.md) — การ์ดทดสอบต้องออกจากบัญชี LINE
- * ประเภททดสอบที่ผู้เรียกเลือกมา ไม่ใช่บัญชีเดียวที่ผูกกับ process ตอนดีพลอย และ BR-62
- * ห้ามส่งผ่านบัญชีจริงของลูกค้าไม่ว่ากรณีใด — ตัวเรียก (Server Action) เป็นผู้เลือก
- * บัญชีและถอดกุญแจผ่าน readChannelSecret() ก่อนส่งเข้ามาที่นี่
+ * โทเคนเป็นพารามิเตอร์เหมือน setWebhookEndpoint และเหมือน replyMessage ตอนนี้ด้วย
+ * (หนี้ทางเทคนิคข้อ 1 ของ docs/HANDOFF.md ถูกปลดแล้ว — replyMessage เคยอ่าน env
+ * ตัวเดียวตอนตอบ webhook แต่ webhook เดี๋ยวนี้ตอบได้หลายบัญชีพร้อมกัน) — การ์ดทดสอบ
+ * ต้องออกจากบัญชี LINE ประเภททดสอบที่ผู้เรียกเลือกมา ไม่ใช่บัญชีเดียวที่ผูกกับ process
+ * ตอนดีพลอย และ BR-62 ห้ามส่งผ่านบัญชีจริงของลูกค้าไม่ว่ากรณีใด — ตัวเรียก (Server
+ * Action) เป็นผู้เลือกบัญชีและถอดกุญแจผ่าน readChannelSecret() ก่อนส่งเข้ามาที่นี่
  */
 export async function pushMessage(accessToken: string, to: string, message: LineMessage): Promise<void> {
   const response = await fetch(PUSH_ENDPOINT, {
@@ -261,12 +262,4 @@ export async function linkRichMenu(accessToken: string, lineUid: string, richMen
   if (!response.ok) {
     throw new Error(`ผูกเมนูตัวเข้าให้ผู้เล่นไม่สำเร็จ (${response.status}) ${await response.text()}`)
   }
-}
-
-function requireEnv(name: string): string {
-  const value = process.env[name]
-  if (!value) {
-    throw new Error(`Missing environment variable: ${name}`)
-  }
-  return value
 }

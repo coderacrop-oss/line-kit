@@ -14,8 +14,8 @@ import type { BlockType } from '../render/groups'
  * ยังไง ไม่ได้รู้ว่ามีตัวไหนบ้าง
  */
 
-/** สามชนิดที่สไลซ์นี้เปิดให้สร้าง · อีกสองตัวรอตัววาดภาพ (OI-27) */
-export type SendType = 'flex_bubble' | 'flex_carousel' | 'text'
+/** สี่ชนิดที่สไลซ์นี้เปิดให้สร้าง · imagemap_video ตัวเดียวที่ยังรอตัววาดภาพ (OI-27 เฟส 2 — ต้องมีตัวจัดการวิดีโอด้วย) */
+export type SendType = 'flex_bubble' | 'flex_carousel' | 'imagemap' | 'text'
 
 export type SendTypeOption = {
   value: CardRenderType
@@ -28,12 +28,15 @@ export type SendTypeOption = {
 }
 
 /**
- * ห้าชนิด ไม่ใช่สาม
+ * ห้าชนิด ไม่ใช่สี่
  *
- * `card.render_as` รับห้าค่าและจอต้องแสดงครบห้า · ตัวที่ยังทำไม่ได้อยู่ในรายการ
- * แบบกดไม่ได้พร้อมเหตุผล เพราะการซ่อนมันทำให้เพดานของสไลซ์นี้ดูเหมือนการตัดสินใจ
- * ออกแบบ แทนที่จะเป็นตัววาดภาพที่ยังไม่มีใครเขียน · คนที่ต้องการริชเมสเสจจะได้รู้
- * ว่ามันกำลังมา ไม่ใช่เดาว่าระบบนี้ไม่รองรับ
+ * `card.render_as` รับห้าค่าและจอต้องแสดงครบห้า · ตัวที่ยังทำไม่ได้ (imagemap_video)
+ * อยู่ในรายการแบบกดไม่ได้พร้อมเหตุผล เพราะการซ่อนมันทำให้เพดานของสไลซ์นี้ดูเหมือน
+ * การตัดสินใจออกแบบ แทนที่จะเป็นตัววาดภาพที่ยังไม่มีใครเขียน · คนที่ต้องการริชวิดีโอ
+ * จะได้รู้ว่ามันกำลังมา ไม่ใช่เดาว่าระบบนี้ไม่รองรับ
+ *
+ * imagemap (ริชเมสเสจภาพล้วน) เปิดแล้ว — ตัวจัดวางภาพของมันคือจอแยกต่างหาก
+ * (app/(admin)/campaigns/[id]/cards/[cardId]/imagemap) ไม่ใช่บล็อกเอดิเตอร์แบบสามตัวแรก
  */
 export const SEND_TYPE_OPTIONS: readonly SendTypeOption[] = [
   {
@@ -58,8 +61,7 @@ export const SEND_TYPE_OPTIONS: readonly SendTypeOption[] = [
     value: 'imagemap',
     name: CARD_RENDER_NAME.imagemap,
     detail: 'ภาพเต็มใบที่กดตามพื้นที่ได้',
-    open: false,
-    blockedReason: 'รอตัววาดภาพ · OI-27',
+    open: true,
   },
   {
     value: 'imagemap_video',
@@ -83,8 +85,8 @@ export const OPEN_SEND_TYPES: readonly SendType[] = SEND_TYPE_OPTIONS
 /**
  * ค่าจาก URL หรือจากฟอร์มที่แต่งเอง กลายเป็นชนิดที่ยอมรับได้
  *
- * `imagemap` อยู่ใน CHECK ของคอลัมน์ แต่คืน null ที่นี่ — ค่าที่ฐานข้อมูลรับได้
- * ไม่ใช่ค่าที่สไลซ์นี้วาดออกมาได้ และการ์ดที่ไม่มีใครวาดได้คือความเงียบในแชท
+ * `imagemap_video` ยังอยู่ใน CHECK ของคอลัมน์ แต่คืน null ที่นี่ — ค่าที่ฐานข้อมูล
+ * รับได้ไม่ใช่ค่าที่สไลซ์นี้วาดออกมาได้ และการ์ดที่ไม่มีใครวาดได้คือความเงียบในแชท
  */
 export function asSendType(raw: string | null | undefined): SendType | null {
   return (OPEN_SEND_TYPES as readonly string[]).includes(raw ?? '')

@@ -491,6 +491,19 @@
         "ตัวอย่างที่ผู้เล่นเห็น · Live preview": "ป้ายนี้ย้ายไปอยู่ใน components/cards/Preview.tsx ซึ่งเป็นไฟล์ที่ Task 14 ต่อเข้ากับ placeholder นี้จริง — วัดที่รายการ M3-S02-preview ข้างล่างแทน ไม่ใช่ที่ page.tsx เพราะ page.tsx เองไม่มีข้อความนี้อยู่ในซอร์สอีกต่อไป (ส่งต่อผ่าน PreviewPanel/Preview เป็นคอมโพเนนต์)"
       }
     },
+    "M3-S02-imagemap": {
+      "label": "M3-S02 ริชเมสเสจ · ตัวแก้ไขพื้นที่กด",
+      "source": "app/(admin)/campaigns/[id]/cards/[cardId]/imagemap/page.tsx",
+      "origin": "local",
+      "originNote": "ต้นแบบไม่มีจอนี้เลย — flex-builder-prototype.html วาดบล็อกเอดิเตอร์เดียวสำหรับการ์ดทุกชนิด แต่ริชเมสเสจ (render_as=imagemap) ไม่มีบล็อกให้แก้เลย เป็นภาพฐานภาพเดียวบวกพื้นที่กดที่ลากวาดบนภาพ ซึ่งไม่มีรูปทรงคู่ขนานในต้นแบบสักจอเดียว จึงยึดธรรมเนียมของจอ local อื่นในโปรเจกต์นี้แทน (M4-S02 Rich Menu Compositor เป็นตัวอย่างที่ใกล้เคียงที่สุด — ป้ายรหัสจอ M3-Sxx · หัวข้อผูกกับรหัสการ์ดจริง · ป้าย \"ดูอย่างเดียว\" ตอน canEdit=false · ลิงก์ย้อนกลับที่หัวจอ)",
+      "landmarks": [
+        "code=\"M3-S02 · Rich Message\"",
+        "ริชเมสเสจ — ${card.code}",
+        "← การ์ดทั้งหมด",
+        "ดูอย่างเดียว"
+      ],
+      "rejected": {}
+    },
     "M3-S02-preview": {
       "label": "M3-S02 ตัวอย่างการ์ด · BR-91",
       "source": "components/cards/Preview.tsx",

@@ -9,6 +9,7 @@ import { db } from '@/lib/db/client'
 import {
   createRichMenu, deleteRichMenu, setAreaTarget, setEntryMenu, setLayout, updateRichMenu,
 } from '@/lib/db/richmenu'
+import type { ActionResult } from '@/lib/richmenu/action-result'
 import { asAreaKind, type AreaKind, type RichMenuArea } from '@/lib/richmenu/areas'
 import { fitImageToCanvas } from '@/lib/richmenu/fit'
 import { asLayoutKey, canvasFor, identifyLayout, LAYOUT_KEYS, type LayoutKey } from '@/lib/richmenu/layouts'
@@ -137,29 +138,46 @@ function chosenFile(formData: FormData, key: string): File | null {
 }
 
 /**
+ * error ที่ไม่คาดคิดจริงๆ (ไม่ใช่ Error instance) ยังต้องมีข้อความให้คนอ่านได้อยู่ดี —
+ * ไม่ใช่ปล่อยให้ ActionResult พังหรือแสดง "undefined"
+ */
+const resultMessage = (err: unknown, fallback: string): string =>
+  err instanceof Error ? err.message : fallback
+
+/**
  * สร้างเมนูใหม่ · ต้องกรอกชื่อเรียก อัปโหลดภาพ และเลือกผังตั้งแต่ตอนสร้าง
  *
  * ต่างจากต้นแบบที่วาดการ์ดว่างให้กรอกทีละช่องหลังจากกด "+ เพิ่มเมนู" — schema
  * บังคับ `image_asset_id NOT NULL` แถวที่ยังไม่มีภาพจึงไม่มีทางถูกสร้างขึ้นมาได้เลย
  * (ดูรายงานของงาน M4-S01 สำหรับเหตุผลเต็ม)
+ *
+ * คืนค่า `ActionResult` แทนที่จะ throw ตรงๆ — เดิมฟังก์ชันนี้ throw ทุก error (alias
+ * ว่าง, ยังไม่อัปโหลดภาพ, ERR-037 ภาพเล็กเกินไป ฯลฯ) แต่ Next.js เซ็นเซอร์ข้อความของ
+ * error ที่ throw ออกจาก Server Action ทิ้งเสมอในโปรดักชัน ไม่ว่าฝั่ง client จะ catch
+ * เองหรือไม่ (ดู lib/richmenu/action-result.ts) ทุกข้อความในฟังก์ชันนี้ตั้งใจให้คน
+ * อ่านอยู่แล้วทั้งหมด (รวมถึง DuplicateAliasError จาก lib/db/richmenu.ts) จึงห่อทั้ง
+ * ฟังก์ชันด้วย try/catch แล้วแปลงเป็นค่าที่ return แทนอย่างปลอดภัย
  */
-export async function createMenu(campaignId: string, formData: FormData): Promise<void> {
-  const session = await requireRole('configurator', 'content_editor')
+export async function createMenu(campaignId: string, formData: FormData): Promise<ActionResult> {
+  try {
+    const session = await requireRole('configurator', 'content_editor')
 
-  const alias = trimmed(formData, 'alias')
-  if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
+    const alias = trimmed(formData, 'alias')
+    if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
 
-  const layout = parseLayout(formData)
+    const layout = parseLayout(formData)
 
-  const file = chosenFile(formData, 'image_file')
-  if (!file) throw new Error('ต้องอัปโหลดภาพเมนูก่อน (ขนาดตามผังที่เลือกไว้)')
-  const { id: imageAssetId } = await storeMenuImage(campaignId, session.userId, file, canvasFor(layout))
+    const file = chosenFile(formData, 'image_file')
+    if (!file) throw new Error('ต้องอัปโหลดภาพเมนูก่อน (ขนาดตามผังที่เลือกไว้)')
+    const { id: imageAssetId } = await storeMenuImage(campaignId, session.userId, file, canvasFor(layout))
 
-  // DuplicateAliasError (UNIQUE campaign_id+alias) มีข้อความที่อ่านรู้เรื่องอยู่แล้ว
-  // จากชั้น lib/db/richmenu.ts — ปล่อยให้หลุดขึ้นไปตรงๆ ไม่ต้องห่อซ้ำ
-  await createRichMenu(db(), { campaignId, alias, imageAssetId, layout })
+    await createRichMenu(db(), { campaignId, alias, imageAssetId, layout })
 
-  revalidatePath(`/campaigns/${campaignId}/richmenu`)
+    revalidatePath(`/campaigns/${campaignId}/richmenu`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'สร้างเมนูไม่สำเร็จ — ลองใหม่') }
+  }
 }
 
 /**
@@ -173,43 +191,50 @@ export async function createMenu(campaignId: string, formData: FormData): Promis
  * ผังช่อง (จำนวนช่องกับพิกัด) แก้แยกผ่าน `changeLayout` ไม่ใช่ที่นี่ — สลับผังต้อง
  * เห็นจำนวนช่องใหม่ทันทีก่อนจะกรอกปลายทางของช่องเหล่านั้น ปุ่มนี้บันทึก "เนื้อหา"
  * ของผังที่เลือกไว้แล้วเท่านั้น ไม่ใช่ตัวผังเอง
+ *
+ * คืนค่า `ActionResult` ด้วยเหตุผลเดียวกับ createMenu — ดู comment ของฟังก์ชันนั้น
  */
-export async function saveMenu(campaignId: string, menuId: string, formData: FormData): Promise<void> {
-  const session = await requireRole('configurator', 'content_editor')
+export async function saveMenu(campaignId: string, menuId: string, formData: FormData): Promise<ActionResult> {
+  try {
+    const session = await requireRole('configurator', 'content_editor')
 
-  const alias = trimmed(formData, 'alias')
-  if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
+    const alias = trimmed(formData, 'alias')
+    if (!alias) throw new Error('ต้องตั้งชื่อเรียกเมนู (alias) ก่อน')
 
-  const newFile = chosenFile(formData, 'image_file')
-  let imageAssetId: string
-  if (newFile) {
-    // ผังของเมนูนี้ไม่ได้เปลี่ยนในแอ็กชันนี้ (สลับผังแยกอยู่ที่ changeLayout) — ภาพ
-    // ใหม่จึงต้องขนาดตรงกับผังปัจจุบันที่หาได้จากช่องที่มีอยู่จริง ไม่ใช่เชื่อค่าจาก
-    // ฟอร์มตรงๆ (ผังปัจจุบันคำนวณจากพิกัดช่องจริงเหมือนที่จอ M4-S01 ใช้แสดงผล)
-    const sql = db()
-    const [current] = await sql<{ areas: RichMenuArea[] }[]>`
-      SELECT areas FROM rich_menu WHERE id = ${menuId} AND campaign_id = ${campaignId}`
-    if (!current) throw new Error('ไม่พบเมนูนี้ในแคมเปญนี้')
-    const canvas = canvasFor(identifyLayout(current.areas ?? []))
+    const newFile = chosenFile(formData, 'image_file')
+    let imageAssetId: string
+    if (newFile) {
+      // ผังของเมนูนี้ไม่ได้เปลี่ยนในแอ็กชันนี้ (สลับผังแยกอยู่ที่ changeLayout) — ภาพ
+      // ใหม่จึงต้องขนาดตรงกับผังปัจจุบันที่หาได้จากช่องที่มีอยู่จริง ไม่ใช่เชื่อค่าจาก
+      // ฟอร์มตรงๆ (ผังปัจจุบันคำนวณจากพิกัดช่องจริงเหมือนที่จอ M4-S01 ใช้แสดงผล)
+      const sql = db()
+      const [current] = await sql<{ areas: RichMenuArea[] }[]>`
+        SELECT areas FROM rich_menu WHERE id = ${menuId} AND campaign_id = ${campaignId}`
+      if (!current) throw new Error('ไม่พบเมนูนี้ในแคมเปญนี้')
+      const canvas = canvasFor(identifyLayout(current.areas ?? []))
 
-    imageAssetId = (await storeMenuImage(campaignId, session.userId, newFile, canvas)).id
-  } else {
-    imageAssetId = trimmed(formData, 'image_asset_id')
-    if (!imageAssetId) throw new Error('ต้องมีภาพเมนูก่อน')
-    await assertExistingImageValid(campaignId, imageAssetId)
+      imageAssetId = (await storeMenuImage(campaignId, session.userId, newFile, canvas)).id
+    } else {
+      imageAssetId = trimmed(formData, 'image_asset_id')
+      if (!imageAssetId) throw new Error('ต้องมีภาพเมนูก่อน')
+      await assertExistingImageValid(campaignId, imageAssetId)
+    }
+
+    await updateRichMenu(db(), { id: menuId, campaignId, alias, imageAssetId })
+
+    const count = areaCountOf(formData)
+    for (let i = 0; i < count; i++) {
+      const raw = trimmed(formData, `area_target_${i}`)
+      const urlValue = String(formData.get(`area_url_${i}`) ?? '')
+      const { kind, target } = parseAreaValue(raw, urlValue)
+      await setAreaTarget(db(), { id: menuId, campaignId, index: i, kind, target })
+    }
+
+    revalidatePath(`/campaigns/${campaignId}/richmenu`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'บันทึกเมนูไม่สำเร็จ — ลองใหม่') }
   }
-
-  await updateRichMenu(db(), { id: menuId, campaignId, alias, imageAssetId })
-
-  const count = areaCountOf(formData)
-  for (let i = 0; i < count; i++) {
-    const raw = trimmed(formData, `area_target_${i}`)
-    const urlValue = String(formData.get(`area_url_${i}`) ?? '')
-    const { kind, target } = parseAreaValue(raw, urlValue)
-    await setAreaTarget(db(), { id: menuId, campaignId, index: i, kind, target })
-  }
-
-  revalidatePath(`/campaigns/${campaignId}/richmenu`)
 }
 
 /**

@@ -167,13 +167,13 @@ beforeEach(() => {
 
 describe('createMenu · ด่านสิทธิ์', () => {
   it('ยังไม่ได้เข้าระบบ สร้างเมนูไม่ได้', async () => {
-    await expect(createMenu('c1', createForm())).rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    await expect(createMenu('c1', createForm())).resolves.toEqual({ ok: false, message: expect.stringContaining('ต้องเข้าสู่ระบบก่อน') })
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
   })
 
   it('ผู้ดูรายงานสร้างเมนูไม่ได้', async () => {
     signedInAs('reporter')
-    await expect(createMenu('c1', createForm())).rejects.toThrow('ไม่มีสิทธิ์')
+    await expect(createMenu('c1', createForm())).resolves.toEqual({ ok: false, message: expect.stringContaining('ไม่มีสิทธิ์') })
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
   })
 
@@ -187,13 +187,13 @@ describe('createMenu · ด่านสิทธิ์', () => {
 describe('createMenu · กรอกครบ', () => {
   it('ไม่มีชื่อเรียก (alias) ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
     signedInAs('configurator')
-    await expect(createMenu('c1', createForm({ alias: '  ' }))).rejects.toThrow('ชื่อเรียกเมนู')
+    await expect(createMenu('c1', createForm({ alias: '  ' }))).resolves.toEqual({ ok: false, message: expect.stringContaining('ชื่อเรียกเมนู') })
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
   })
 
   it('ไม่ได้อัปโหลดภาพ ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
     signedInAs('configurator')
-    await expect(createMenu('c1', createForm({}, null))).rejects.toThrow('อัปโหลดภาพเมนู')
+    await expect(createMenu('c1', createForm({}, null))).resolves.toEqual({ ok: false, message: expect.stringContaining('อัปโหลดภาพเมนู') })
     expect(writesMatching(/INSERT INTO rich_menu|INSERT INTO asset/)).toEqual([])
   })
 
@@ -213,7 +213,7 @@ describe('createMenu · กรอกครบ', () => {
     // ผืนใหญ่กว้าง 2500 · ภาพต้นฉบับกว้าง 500 = ต้องขยาย 5 เท่า เกินเพดานแน่นอน
     const tooSmall = await realJpeg(500, 338)
     await expect(createMenu('c1', createForm({}, tooSmall)))
-      .rejects.toThrow('ERR-037')
+      .resolves.toEqual({ ok: false, message: expect.stringContaining('ERR-037') })
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
     // ภาพที่เล็กเกินไปไม่ควรถูกเก็บลงคลังเลยด้วยซ้ำ — ตรวจก่อนอัปโหลดจริง ไม่ใช่หลัง
     expect(writesMatching(/INSERT INTO asset/)).toEqual([])
@@ -236,7 +236,7 @@ describe('createMenu · กรอกครบ', () => {
   it('ผังไม่ถูกต้อง ปฏิเสธก่อนแตะฐานข้อมูล', async () => {
     signedInAs('configurator')
     await expect(createMenu('c1', createForm({ layout: 'nine' })))
-      .rejects.toThrow('ผังช่องไม่ถูกต้อง')
+      .resolves.toEqual({ ok: false, message: expect.stringContaining('ผังช่องไม่ถูกต้อง') })
     expect(writesMatching(/INSERT INTO rich_menu/)).toEqual([])
   })
 
@@ -305,7 +305,7 @@ describe('saveMenu · ภาพ', () => {
     withOneArea()
     const data = form({ alias: 'main', area_count: '1', area_target_0: '' })
     data.append('image_file', await realJpeg(500, 338))
-    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ERR-037')
+    await expect(saveMenu('c1', 'menu-1', data)).resolves.toEqual({ ok: false, message: expect.stringContaining('ERR-037') })
     expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
     expect(writesMatching(/INSERT INTO asset/)).toEqual([])
   })
@@ -327,7 +327,7 @@ describe('saveMenu · ภาพ', () => {
     const data = form({
       alias: 'main', image_asset_id: 'asset-bad', area_count: '1', area_target_0: '',
     })
-    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ERR-037')
+    await expect(saveMenu('c1', 'menu-1', data)).resolves.toEqual({ ok: false, message: expect.stringContaining('ERR-037') })
     expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
   })
 
@@ -341,7 +341,7 @@ describe('saveMenu · ภาพ', () => {
     const data = form({
       alias: 'main', image_asset_id: 'ghost', area_count: '1', area_target_0: '',
     })
-    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ไม่พบภาพนี้')
+    await expect(saveMenu('c1', 'menu-1', data)).resolves.toEqual({ ok: false, message: expect.stringContaining('ไม่พบภาพนี้') })
     expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
   })
 
@@ -357,7 +357,7 @@ describe('saveMenu · ภาพ', () => {
     const data = form({
       alias: 'main', image_asset_id: 'asset-good', area_count: '1', area_target_0: '',
     })
-    await expect(saveMenu('other-campaign', 'menu-1', data)).rejects.toThrow('ไม่พบภาพนี้')
+    await expect(saveMenu('other-campaign', 'menu-1', data)).resolves.toEqual({ ok: false, message: expect.stringContaining('ไม่พบภาพนี้') })
     expect(writesMatching(/UPDATE rich_menu/)).toEqual([])
   })
 })
@@ -374,7 +374,7 @@ describe('saveMenu · บันทึกช่องของเมนู', () =
       alias: 'main', image_asset_id: 'asset-good', area_count: '1',
       area_target_0: 'url', area_url_0: '   ',
     })
-    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('URL')
+    await expect(saveMenu('c1', 'menu-1', data)).resolves.toEqual({ ok: false, message: expect.stringContaining('URL') })
   })
 
   it('ค่า target ที่แต่งเองแบบผิดรูป (ไม่มี id ต่อท้าย) ถูกปฏิเสธ ไม่เขียนลงฐานข้อมูล', async () => {
@@ -383,7 +383,7 @@ describe('saveMenu · บันทึกช่องของเมนู', () =
     const data = form({
       alias: 'main', image_asset_id: 'asset-good', area_count: '1', area_target_0: 'activity:',
     })
-    await expect(saveMenu('c1', 'menu-1', data)).rejects.toThrow('ค่าปลายทางของช่องไม่ถูกต้อง')
+    await expect(saveMenu('c1', 'menu-1', data)).resolves.toEqual({ ok: false, message: expect.stringContaining('ค่าปลายทางของช่องไม่ถูกต้อง') })
     expect(writesMatching(/UPDATE rich_menu SET areas/)).toEqual([])
   })
 
@@ -421,7 +421,7 @@ describe('saveMenu · บันทึกช่องของเมนู', () =
     const data = form({
       alias: 'main', image_asset_id: 'asset-good', area_count: '1', area_target_0: '',
     })
-    await expect(saveMenu('c1', 'menu-1', data)).resolves.toBeUndefined()
+    await expect(saveMenu('c1', 'menu-1', data)).resolves.toEqual({ ok: true })
     expect(writesMatching(/UPDATE rich_menu SET areas/)).toHaveLength(1)
   })
 })

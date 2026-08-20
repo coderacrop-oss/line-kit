@@ -4,10 +4,12 @@ import { requireRole } from '@/lib/auth/require'
 import { findTestSendChannel } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { loadCardEditor } from '@/lib/db/cardEditor'
+import { loadCardImagemap } from '@/lib/db/card-imagemap'
 import { readChannelSecret } from '@/lib/db/tokens'
 import { loadTestLineUid } from '@/lib/db/users'
+import { publicImagemapBaseUrl } from '@/lib/imagemap/url'
 import { pushMessage } from '@/lib/line/client'
-import { renderCard } from '@/lib/render/card'
+import { renderCard, type RenderableCard } from '@/lib/render/card'
 import type { PlayerState } from '@/lib/state'
 
 /**
@@ -58,11 +60,25 @@ export async function sendTestCard(
     channelId: channel.id, field: 'token', purpose: 'test_send', appUserId: session.userId,
   })
 
-  const message = renderCard(
-    { code: screen.card.code, renderAs: screen.card.renderAs, blocks: screen.blocks },
-    state,
-    screen.theme,
-  )
+  const card: RenderableCard = { code: screen.card.code, renderAs: screen.card.renderAs, blocks: screen.blocks }
+
+  // ริชเมสเสจไม่ได้ประกอบจากบล็อก (screen.blocks) เลย — ต้องโหลดสถานะของมันเองแยก
+  // ต่างหาก แล้วมี "พร้อมส่ง" ก็ต่อเมื่อเคยกด "ใช้" สำเร็จ (มีภาพ 5 ขนาดจริง) และตั้ง
+  // ที่อยู่สาธารณะของระบบไว้แล้วเท่านั้น — เหมือนเงื่อนไขเดียวกับที่ lib/db/queries.ts
+  // ใช้ตอนโหลด config ให้ผู้เล่นจริง เพื่อให้ปุ่มนี้ตอบตรงกับสิ่งที่ผู้เล่นจะได้เห็นจริง
+  if (screen.card.renderAs === 'imagemap') {
+    const imagemap = await loadCardImagemap(sql, campaignId, cardId)
+    const baseUrl = publicImagemapBaseUrl(cardId)
+    if (imagemap && baseUrl && imagemap.baseWidth && imagemap.baseHeight && Object.keys(imagemap.variantUrls).length > 0) {
+      card.imagemap = {
+        baseUrl, altText: imagemap.altText,
+        baseSize: { width: imagemap.baseWidth, height: imagemap.baseHeight },
+        actions: imagemap.actions,
+      }
+    }
+  }
+
+  const message = renderCard(card, state, screen.theme)
 
   await pushMessage(accessToken, testLineUid, message)
 }
