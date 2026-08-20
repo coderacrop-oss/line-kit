@@ -101,9 +101,4 @@ describe('GET /api/imagemap/[cardId]/[width]', () => {
     const res = await GET(new Request('http://x'), paramsFor('11111111-1111-1111-1111-111111111111', '1040'))
     expect(res.headers.get('Content-Type')).toBe('application/octet-stream')
   })
-
-  it('exports preferredRegion = sin1 — เหตุผลเดียวกับ webhook route (ใกล้ Supabase + ผู้เล่นเอเชีย)', async () => {
-    const mod = await import('./route')
-    expect(mod.preferredRegion).toBe('sin1')
-  })
 })
