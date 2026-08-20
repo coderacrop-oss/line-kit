@@ -106,6 +106,28 @@ describe('setRichMenuAlias · ขั้น 5b (BR-77)', () => {
     expect(JSON.parse(init.body)).toEqual({ richMenuId: 'rm-3' })
   })
 
+  it('alias มีอยู่แล้ว แต่ LINE ตอบ 400 พร้อมข้อความ "conflict" แทน 409 (เจอจริงตอน publish) → ยังอัปเดตให้ ไม่โยน error', async () => {
+    fetchMock
+      .mockResolvedValueOnce({
+        ok: false, status: 400, text: async () => '{"message":"conflict richmenu alias id","details":[]}',
+      })
+      .mockResolvedValueOnce({ ok: true, status: 200, text: async () => '{}' })
+
+    await setRichMenuAlias('token', { richMenuAliasId: 'tab-main', richMenuId: 'rm-6' })
+
+    expect(fetchMock).toHaveBeenCalledTimes(2)
+    const [url, init] = fetchMock.mock.calls[1]
+    expect(url).toBe('https://api.line.me/v2/bot/richmenu/alias/tab-main')
+    expect(JSON.parse(init.body)).toEqual({ richMenuId: 'rm-6' })
+  })
+
+  it('400 ที่ไม่เกี่ยวกับ alias ซ้ำเลย (ไม่มีคำว่า conflict) → ยังโยน error ตามปกติ', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 400, text: async () => '{"message":"invalid richMenuId"}' })
+    await expect(setRichMenuAlias('token', { richMenuAliasId: 'tab-main', richMenuId: 'rm-7' }))
+      .rejects.toThrow(/invalid richMenuId/)
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+  })
+
   it('สร้างไม่สำเร็จด้วยเหตุอื่นที่ไม่ใช่ 409 → โยน error ไม่ลองอัปเดต', async () => {
     fetchMock.mockResolvedValue({ ok: false, status: 500, text: async () => 'server error' })
     await expect(setRichMenuAlias('token', { richMenuAliasId: 'tab-main', richMenuId: 'rm-4' }))
