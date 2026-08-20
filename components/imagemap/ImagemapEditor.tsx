@@ -4,11 +4,13 @@ import { useRef, useState } from 'react'
 import type { CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, Field, Note } from '@/components/ui'
+import type { ActionResult } from '@/lib/actions/result'
 import {
   IMAGEMAP_REFERENCE_WIDTH, type TapAction, type TapArea,
 } from '@/lib/imagemap/regions'
 import type { Rect } from '@/lib/richmenu/gesture'
 import { AreaNode, areaSummary } from './AreaNode'
+import type { UploadAssetResult, UploadBaseImageResult } from '@/app/(admin)/campaigns/[id]/cards/[cardId]/imagemap/actions'
 
 /**
  * ตัวแก้ไขริชเมสเสจ/ริชวิดีโอ (Rich Message/Rich Video · imagemap ภาพล้วน หรือ
@@ -68,14 +70,15 @@ export type ImagemapEditorProps = {
   backHref: string
   /** 'imagemap_video' เปิดช่องอัปโหลดวิดีโอ/ภาพตัวอย่าง/พื้นที่เล่นวิดีโอเพิ่มมา — ค่าเริ่มต้นคือ 'imagemap' (ริชเมสเสจภาพล้วน) */
   cardKind?: 'imagemap' | 'imagemap_video'
+  /** เรียกจริงพร้อม FormData — คืนค่า ไม่ throw (ดูเหตุผลที่หัวไฟล์ actions.ts) */
   uploadBaseImage: (
     campaignId: string, cardId: string, formData: FormData,
-  ) => Promise<{ url: string; baseWidth: number; baseHeight: number }>
-  saveDraft: (campaignId: string, cardId: string, payload: ImagemapDraftPayload) => Promise<void>
-  applyImagemap: (campaignId: string, cardId: string, payload: ImagemapDraftPayload) => Promise<void>
+  ) => Promise<UploadBaseImageResult>
+  saveDraft: (campaignId: string, cardId: string, payload: ImagemapDraftPayload) => Promise<ActionResult>
+  applyImagemap: (campaignId: string, cardId: string, payload: ImagemapDraftPayload) => Promise<ActionResult>
   /** บังคับมีเมื่อ cardKind === 'imagemap_video' เท่านั้น */
-  uploadVideo?: (campaignId: string, cardId: string, formData: FormData) => Promise<{ url: string }>
-  uploadVideoPreview?: (campaignId: string, cardId: string, formData: FormData) => Promise<{ url: string }>
+  uploadVideo?: (campaignId: string, cardId: string, formData: FormData) => Promise<UploadAssetResult>
+  uploadVideoPreview?: (campaignId: string, cardId: string, formData: FormData) => Promise<UploadAssetResult>
 }
 
 const newId = (): string =>
@@ -117,12 +120,22 @@ export function ImagemapEditor({
   const stageHeight = (baseHeight ?? 585) * scale
   const hasImage = baseImageUrl !== null && baseHeight !== null
   const hasVideoFiles = videoUrl !== null && videoPreviewUrl !== null
+  // ขอบเขตจริงของภาพ (พิกัดอ้างอิง 1040 กว้าง) ที่ AreaNode ใช้ clamp การลาก/ปรับขนาด
+  // ไม่ให้หลุดขอบ — 0 เมื่อยังไม่มีภาพ (ไม่ถูกใช้จริงตอนนั้นเพราะ AreaNode ยังไม่ถูก
+  // render จนกว่า hasImage เป็นจริง)
+  const canvasHeight = baseHeight ?? 0
 
   /**
    * จุดผ่านเดียวของทุกการแก้ไข (เหมือน applyChange ของ Compositor.tsx) — อัปเดต
    * state ทันทีให้จอตอบสนองไว แล้วค่อยยิงบันทึกไปเซิร์ฟเวอร์ทีหลัง ถ้าบันทึกล้มให้
    * ย้อน state กลับและบอกเหตุผล — state ที่จอแสดงต้องไม่โกหกว่าบันทึกสำเร็จทั้งที่
    * ไม่จริง
+   *
+   * อ่าน `result.ok` แทนการรอ throw — saveDraft คืน ActionResult เสมอ ไม่ throw
+   * ข้าม Server Action boundary (Next.js เซ็นเซอร์ข้อความของ error ที่ throw ทิ้งใน
+   * โปรดักชันเสมอ ดู comment หัวไฟล์ actions.ts) error ที่แสดงตรงนี้เป็นแค่กล่อง
+   * เตือนเล็กๆ ข้างเวที ไม่ใช่ modal บล็อกจอ — เพราะจุดนี้ยิง autosave ทุกเจสเจอร์
+   * (ทุกลาก/ปล่อย) โมดัลที่ต้องกดปิดทุกครั้งจะขวางการทำงานต่อเนื่องจนใช้ไม่ได้จริง
    *
    * พารามิเตอร์วิดีโอสามตัวท้ายมีค่าเริ่มต้นเป็น state ปัจจุบันเสมอ (ประเมินตอนเรียก
    * จาก closure) — จุดเรียกเดิมทั้งหมด (onCommitBox/onCommitAction/onAddArea/
@@ -147,17 +160,26 @@ export function ImagemapEditor({
     setVideoLinkLabel(nextVideoLinkLabel)
     setError(null)
 
-    try {
-      await saveDraft(campaignId, cardId, {
-        actions: nextActions, altText: nextAltText,
-        videoArea: nextVideoArea, videoLinkUri: nextVideoLinkUri, videoLinkLabel: nextVideoLinkLabel,
-      })
-    } catch (err) {
+    const revert = () => {
       setActions(previousActions)
       setAltText(previousAltText)
       setVideoArea(previousVideoArea)
       setVideoLinkUri(previousVideoLinkUri)
       setVideoLinkLabel(previousVideoLinkLabel)
+    }
+
+    try {
+      const result = await saveDraft(campaignId, cardId, {
+        actions: nextActions, altText: nextAltText,
+        videoArea: nextVideoArea, videoLinkUri: nextVideoLinkUri, videoLinkLabel: nextVideoLinkLabel,
+      })
+      if (!result.ok) {
+        revert()
+        setError(result.message)
+      }
+    } catch (err) {
+      // safety net เผื่อ action เองพังแบบไม่คาดคิดจริงๆ — เหตุผลเดียวกับ ActionForm/PublishForm
+      revert()
       setError(err instanceof Error ? err.message : 'บันทึกไม่สำเร็จ — ลองใหม่')
     }
   }
@@ -235,6 +257,10 @@ export function ImagemapEditor({
       const form = new FormData()
       form.append('file', file)
       const result = await uploadBaseImage(campaignId, cardId, form)
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
       setBaseImageUrl(result.url)
       setBaseWidth(result.baseWidth)
       setBaseHeight(result.baseHeight)
@@ -243,6 +269,7 @@ export function ImagemapEditor({
       // แสดงสถานะ "ยังไม่พร้อมส่ง" เหมือนกันจนกว่าจะกด "ใช้" ใหม่
       setReady(false)
     } catch (err) {
+      // safety net เผื่อ action เองพังแบบไม่คาดคิดจริงๆ — เหตุผลเดียวกับ ActionForm/PublishForm
       setError(err instanceof Error ? err.message : 'อัปโหลดภาพไม่สำเร็จ — ลองใหม่')
     } finally {
       setUploading(false)
@@ -257,6 +284,10 @@ export function ImagemapEditor({
       const form = new FormData()
       form.append('file', file)
       const result = await uploadVideo(campaignId, cardId, form)
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
       setVideoUrl(result.url)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'อัปโหลดวิดีโอไม่สำเร็จ — ลองใหม่')
@@ -273,6 +304,10 @@ export function ImagemapEditor({
       const form = new FormData()
       form.append('file', file)
       const result = await uploadVideoPreview(campaignId, cardId, form)
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
       setVideoPreviewUrl(result.url)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'อัปโหลดภาพตัวอย่างไม่สำเร็จ — ลองใหม่')
@@ -285,7 +320,11 @@ export function ImagemapEditor({
     setApplying(true)
     setError(null)
     try {
-      await applyImagemap(campaignId, cardId, { actions, altText })
+      const result = await applyImagemap(campaignId, cardId, { actions, altText })
+      if (!result.ok) {
+        setError(result.message)
+        return
+      }
       setReady(true)
       router.refresh()
     } catch (err) {
@@ -340,6 +379,8 @@ export function ImagemapEditor({
               canEdit={canEdit}
               onSelect={() => setSelectedId(area.id)}
               onCommitBox={(box) => onCommitBox(area.id, box)}
+              maxWidth={IMAGEMAP_REFERENCE_WIDTH}
+              maxHeight={canvasHeight}
             />
           ))}
 
@@ -353,6 +394,8 @@ export function ImagemapEditor({
               canEdit={canEdit}
               onSelect={() => setSelectedId(VIDEO_AREA_ID)}
               onCommitBox={onCommitVideoArea}
+              maxWidth={IMAGEMAP_REFERENCE_WIDTH}
+              maxHeight={canvasHeight}
             />
           )}
         </div>
