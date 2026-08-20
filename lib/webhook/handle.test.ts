@@ -343,6 +343,40 @@ describe('แอดเป็นเพื่อน', () => {
     expect(play).not.toHaveBeenCalled()
   })
 
+  it('แอดเป็นเพื่อน ยังไม่เคยผูกเมนู แคมเปญมีเมนูตัวเข้า → ผูกให้ทันทีก่อนพิมพ์อะไรเลยด้วยซ้ำ (ไม่มีกิจกรรมทักทาย)', async () => {
+    const hasRichMenuLinked = vi.fn(async () => false)
+    const { ports: p } = ports({ hasRichMenuLinked }, campaign({ entryRichMenuLineId: 'line-rm-entry' }))
+    const out = await run(userEvent({ type: 'follow' }), p)
+
+    expect(hasRichMenuLinked).toHaveBeenCalledWith('p-1')
+    expect(out?.linkRichMenu).toEqual({ participantId: 'p-1', lineUid: 'U1', richMenuId: 'line-rm-entry' })
+  })
+
+  it('แอดเป็นเพื่อน ยังไม่เคยผูกเมนู มีกิจกรรมทักทายด้วย → ผูกให้เหมือนกัน (ไม่ว่าจะตอบด้วยกิจกรรมหรือการ์ด)', async () => {
+    const live = campaign({ entryRichMenuLineId: 'line-rm-entry' })
+    live.activities.push({ ...live.activities[0], id: 'act-hello', code: 'hello', trigger: 'follow' })
+    const { ports: p } = ports({ hasRichMenuLinked: async () => false }, live)
+    const out = await run(userEvent({ type: 'follow' }), p)
+
+    expect(out?.linkRichMenu).toEqual({ participantId: 'p-1', lineUid: 'U1', richMenuId: 'line-rm-entry' })
+  })
+
+  it('เคยผูกเมนูไปแล้ว → แอดซ้ำ (unfollow แล้ว follow ใหม่) ไม่ติดคำสั่งผูกซ้ำ', async () => {
+    const { ports: p } = ports({ hasRichMenuLinked: async () => true }, campaign({ entryRichMenuLineId: 'line-rm-entry' }))
+    const out = await run(userEvent({ type: 'follow' }), p)
+
+    expect(out?.linkRichMenu).toBeUndefined()
+  })
+
+  it('แคมเปญนี้ไม่มีเมนูตัวเข้า → ไม่ติดคำสั่งผูก และไม่เช็คด้วยซ้ำ', async () => {
+    const hasRichMenuLinked = vi.fn(async () => false)
+    const { ports: p } = ports({ hasRichMenuLinked }, campaign({ entryRichMenuLineId: null }))
+    const out = await run(userEvent({ type: 'follow' }), p)
+
+    expect(hasRichMenuLinked).not.toHaveBeenCalled()
+    expect(out?.linkRichMenu).toBeUndefined()
+  })
+
   it('ปิดการทักทายไว้ ไม่ตอบ ปล่อยให้ OA Manager ทำงาน', async () => {
     const { ports: p } = ports({}, campaign({ greetingEnabled: false }))
     expect(await run(userEvent({ type: 'follow' }), p)).toBeNull()

@@ -281,32 +281,46 @@ export async function handleEvent(
   if (event.type === "follow") {
     if (!campaign.greetingEnabled) return null;
 
+    // แอดเป็นเพื่อนคือจังหวะ "เข้ามา" จริงๆ ก่อนจะพิมพ์คำไหนเลยด้วยซ้ำ — ผูกเมนู
+    // ตัวเข้าให้ตรงนี้เหมือนกับตอนพิมพ์คีย์เวิร์ดครั้งแรก (ดู "พิมพ์ข้อความ" ด้านบน)
+    // เพื่อให้คนที่เพิ่งแอดเห็นเมนูของแคมเปญทันทีโดยไม่ต้องพิมพ์อะไรก่อน
+    const linkRichMenu =
+      campaign.entryRichMenuLineId && !(await ports.hasRichMenuLinked(participantId))
+        ? { participantId, lineUid, richMenuId: campaign.entryRichMenuLineId }
+        : undefined;
+    const withLink = (handled: Handled): Handled =>
+      handled && linkRichMenu ? { ...handled, linkRichMenu } : handled;
+
     const greeting = campaign.activities.find((a) => a.trigger === "follow");
     if (greeting)
-      return playActivity({
-        activity: greeting,
-        raw: null,
-        campaign,
-        participantId,
-        state,
-        today,
-        now,
-        rng,
-        ports,
-        reply,
-      });
+      return withLink(
+        await playActivity({
+          activity: greeting,
+          raw: null,
+          campaign,
+          participantId,
+          state,
+          today,
+          now,
+          rng,
+          ports,
+          reply,
+        }),
+      );
 
-    return reply(
-      cardMessage(
-        campaign,
-        campaign.greetingCardId,
-        state,
-        FALLBACK.systemDown,
+    return withLink(
+      await reply(
+        cardMessage(
+          campaign,
+          campaign.greetingCardId,
+          state,
+          FALLBACK.systemDown,
+        ),
+        {
+          activityId: null,
+          eventType: "follow",
+        },
       ),
-      {
-        activityId: null,
-        eventType: "follow",
-      },
     );
   }
 
