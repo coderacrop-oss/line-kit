@@ -59,12 +59,17 @@ export async function POST(request: Request): Promise<Response> {
   // fails to verify against the channel it claims to belong to are refused the
   // same way (401) — neither is safe to guess at.
   if (!destination) {
+    // TEMPORARY — ไล่บั๊ก 401 ของ Dew channel วันนี้ · destination ไม่ใช่ความลับ
+    // (เป็น userId สาธารณะของบอทเอง คนคุยกับบอทเห็นได้อยู่แล้ว) log เต็มได้ปลอดภัย
+    console.warn('webhook diagnostic: destination missing from body', { bodyPreview: raw.slice(0, 300) })
     return new Response('invalid signature', { status: 401 })
   }
 
   const sql = db()
   const channel = await findChannelByBotUserId(sql, destination)
   if (!channel) {
+    // TEMPORARY — เหตุผลเดียวกับข้างบน
+    console.warn('webhook diagnostic: no channel row matches this destination', { destination })
     return new Response('invalid signature', { status: 401 })
   }
 
