@@ -1,5 +1,6 @@
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
+import type { ActionResult } from '@/lib/actions/result'
 import { decryptSecret } from '@/lib/crypto/secretbox'
 
 type UserRow = { id: string; email: string; role: string; is_active: boolean }
@@ -37,10 +38,8 @@ vi.mock('next/headers', () => ({
   }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 
-const { redirect } = await import('next/navigation')
 const { saveChannel } = await import('./actions')
 
 const saved = { ...process.env }
@@ -76,6 +75,23 @@ const lastWrite = () => {
   return write
 }
 
+/**
+ * ต้อง return {ok:false,message} เสมอ ไม่ใช่ throw — Server Action ที่ throw
+ * โดนเซ็นเซอร์ข้อความทิ้งในโปรดักชัน (ดู comment ของ saveChannel ใน ./actions.ts
+ * และของ ChannelForm.tsx) ตัวช่วยนี้ยืนยันทั้งว่า ok เป็น false จริง และข้อความ
+ * ตรงกับที่คาดไว้จริง ไม่ใช่แค่ไม่ throw เฉยๆ
+ */
+async function expectFailure(promise: Promise<ActionResult>, match: string): Promise<void> {
+  const result = await promise
+  expect(result.ok, 'คาดว่าปฏิเสธ (ok:false) แต่กลับสำเร็จ').toBe(false)
+  if (!result.ok) expect(result.message).toContain(match)
+}
+
+async function expectSuccess(promise: Promise<ActionResult>): Promise<void> {
+  const result = await promise
+  expect(result.ok, `คาดว่าสำเร็จ (ok:true) แต่ได้ ${JSON.stringify(result)}`).toBe(true)
+}
+
 beforeEach(() => {
   process.env.SECRET_KEY_V1 = randomBytes(32).toString('base64')
   state.cookie = undefined
@@ -83,7 +99,6 @@ beforeEach(() => {
   state.channel = { id: 'ch1', channel_type: 'test', token_last4: 'oldk' }
   state.writes = []
   state.writeError = undefined
-  vi.mocked(redirect).mockClear()
 })
 
 /**
@@ -95,44 +110,44 @@ beforeEach(() => {
  */
 describe('saveChannel · ด่านสิทธิ์', () => {
   it('ยังไม่ได้เข้าระบบ ผูกบัญชีไม่ได้', async () => {
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    await expectFailure(saveChannel(null, validForm()), 'ต้องเข้าสู่ระบบก่อน')
     expect(state.writes).toEqual([])
   })
 
   it('มีคุกกี้แต่ไม่มีชื่อในรายชื่อที่อนุญาต ผูกไม่ได้', async () => {
     state.cookie = 'ghost@example.com'
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    await expectFailure(saveChannel(null, validForm()), 'ต้องเข้าสู่ระบบก่อน')
     expect(state.writes).toEqual([])
   })
 
   it('สิทธิ์ถูกถอนแล้ว role เดิมไม่ช่วย', async () => {
     signedInAs('configurator', false)
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    await expectFailure(saveChannel(null, validForm()), 'ต้องเข้าสู่ระบบก่อน')
     expect(state.writes).toEqual([])
   })
 
   it('ผู้ดูรายงานผูกไม่ได้', async () => {
     signedInAs('reporter')
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ไม่มีสิทธิ์')
+    await expectFailure(saveChannel(null, validForm()), 'ไม่มีสิทธิ์')
     expect(state.writes).toEqual([])
   })
 
   // คีย์เวิร์ดให้ผู้ดูแลเนื้อหาแก้ได้ · กุญแจของ OA ไม่ให้ · คนละระดับของความเสียหาย
   it('ผู้ดูแลเนื้อหาผูกไม่ได้ แม้จะแก้คีย์เวิร์ดได้', async () => {
     signedInAs('content_editor')
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ไม่มีสิทธิ์')
+    await expectFailure(saveChannel(null, validForm()), 'ไม่มีสิทธิ์')
     expect(state.writes).toEqual([])
   })
 
   it('แก้ของเดิมก็ต้องผ่านด่านเดียวกัน', async () => {
     signedInAs('content_editor')
-    await expect(saveChannel('ch1', validForm())).rejects.toThrow('ไม่มีสิทธิ์')
+    await expectFailure(saveChannel('ch1', validForm()), 'ไม่มีสิทธิ์')
     expect(state.writes).toEqual([])
   })
 
   it('ผู้ตั้งค่าแคมเปญผูกได้', async () => {
     signedInAs('configurator')
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     expect(lastWrite().text).toContain('INSERT INTO channel')
   })
 })
@@ -149,7 +164,7 @@ describe('saveChannel · กุญแจที่เขียนลงไป', (
   beforeEach(() => { signedInAs('configurator') })
 
   it('ไม่มีค่าไหนที่เขียนลงไปเป็นกุญแจตัวจริง', async () => {
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     for (const value of lastWrite().values) {
       expect(String(value)).not.toContain(TOKEN)
       expect(String(value)).not.toContain(SECRET)
@@ -157,7 +172,7 @@ describe('saveChannel · กุญแจที่เขียนลงไป', (
   })
 
   it('ค่าที่เขียนถอดกลับได้เป็นกุญแจเดิมทั้งสองตัว', async () => {
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     const values = lastWrite().values.map(String)
     const decrypted = values
       .map((value) => { try { return decryptSecret(value, 1) } catch { return null } })
@@ -168,7 +183,7 @@ describe('saveChannel · กุญแจที่เขียนลงไป', (
   })
 
   it('เก็บสี่ตัวท้ายของโทเคนไว้ให้หน้าจอ และไม่เกินสี่ตัว', async () => {
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     expect(lastWrite().values).toContain('wxyz')
     for (const value of lastWrite().values) {
       expect(String(value)).not.toBe(TOKEN.slice(-8))
@@ -176,16 +191,16 @@ describe('saveChannel · กุญแจที่เขียนลงไป', (
   })
 
   it('บันทึกรุ่นของกุญแจไว้ด้วย จะได้หมุนกุญแจทีหลังได้', async () => {
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     expect(lastWrite().text).toContain('key_version')
     expect(lastWrite().values).toContain(1)
   })
 
   it('โทเคนเดียวกันผูกสองบัญชี ได้ค่าที่เก็บคนละค่า', async () => {
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     const first = lastWrite().values.map(String)
     state.writes = []
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     const second = lastWrite().values.map(String)
 
     expect(first.filter((v) => second.includes(v) && v.length > 40)).toEqual([])
@@ -193,7 +208,7 @@ describe('saveChannel · กุญแจที่เขียนลงไป', (
 
   // ช่องว่างที่ติดมากับการก๊อป คือกุญแจผิดที่ LINE ปฏิเสธโดยไม่บอกว่าเพราะอะไร
   it('ตัดช่องว่างหัวท้ายของกุญแจก่อนเข้ารหัส', async () => {
-    await saveChannel(null, validForm({ access_token: `  ${TOKEN}\n`, channel_secret: ` ${SECRET} ` }))
+    await expectSuccess(saveChannel(null, validForm({ access_token: `  ${TOKEN}\n`, channel_secret: ` ${SECRET} ` })))
     const decrypted = lastWrite().values.map(String)
       .map((value) => { try { return decryptSecret(value, 1) } catch { return null } })
 
@@ -210,16 +225,14 @@ describe('saveChannel · ช่องที่บังคับ', () => {
   it('ไม่มีชื่อบัญชี ผูกไม่ได้', async () => {
     for (const name of ['', '   ']) {
       state.writes = []
-      await expect(saveChannel(null, validForm({ name })), JSON.stringify(name))
-        .rejects.toThrow('ชื่อบัญชี')
+      await expectFailure(saveChannel(null, validForm({ name })), 'ชื่อบัญชี')
       expect(state.writes).toEqual([])
     }
   })
 
   // CHECK ของตารางบังคับอยู่แล้ว · ที่นี่เป็นประโยคที่คนกรอกฟอร์มเอาไปแก้ได้
   it('บัญชีใหม่ที่ไม่มีกุญแจ ผูกไม่ได้ — CHECK ของตารางบังคับไว้', async () => {
-    await expect(saveChannel(null, validForm({ access_token: '', channel_secret: '' })))
-      .rejects.toThrow('กุญแจ')
+    await expectFailure(saveChannel(null, validForm({ access_token: '', channel_secret: '' })), 'กุญแจ')
     expect(state.writes).toEqual([])
   })
 
@@ -228,8 +241,7 @@ describe('saveChannel · ช่องที่บังคับ', () => {
     const halves: Record<string, string>[] = [{ access_token: '' }, { channel_secret: '' }]
     for (const patch of halves) {
       state.writes = []
-      await expect(saveChannel(null, validForm(patch)), JSON.stringify(patch))
-        .rejects.toThrow('ทั้งสองช่อง')
+      await expectFailure(saveChannel(null, validForm(patch)), 'ทั้งสองช่อง')
       expect(state.writes).toEqual([])
     }
   })
@@ -237,8 +249,7 @@ describe('saveChannel · ช่องที่บังคับ', () => {
   it('ชั้นของบัญชีที่ไม่มีจริง ผูกไม่ได้', async () => {
     for (const channelType of ['', 'sim', 'prod', 'PRODUCTION']) {
       state.writes = []
-      await expect(saveChannel(null, validForm({ channel_type: channelType })), channelType)
-        .rejects.toThrow('ชั้นของบัญชี')
+      await expectFailure(saveChannel(null, validForm({ channel_type: channelType })), 'ชั้นของบัญชี')
       expect(state.writes).toEqual([])
     }
   })
@@ -251,20 +262,19 @@ describe('saveChannel · ช่องที่บังคับ', () => {
    * database refuses, explained by a constraint name instead of a sentence.
    */
   it('สร้างบัญชีชั้นทดลองเล่นในระบบจากจอนี้ไม่ได้', async () => {
-    await expect(saveChannel(null, validForm({ channel_type: 'preview' })))
-      .rejects.toThrow('ชั้นของบัญชี')
+    await expectFailure(saveChannel(null, validForm({ channel_type: 'preview' })), 'ชั้นของบัญชี')
     expect(state.writes).toEqual([])
   })
 
   it('บัญชีชั้นทดลองเล่นในระบบที่มีอยู่แล้ว ก็แก้จากจอนี้ไม่ได้', async () => {
     state.channel = { id: 'ch1', channel_type: 'preview', token_last4: null }
-    await expect(saveChannel('ch1', validForm())).rejects.toThrow('ทดลองเล่นในระบบ')
+    await expectFailure(saveChannel('ch1', validForm()), 'ทดลองเล่นในระบบ')
     expect(state.writes).toEqual([])
   })
 
   it('แก้บัญชีที่ไม่มีอยู่จริง ไม่เขียนอะไรเลย', async () => {
     state.channel = undefined
-    await expect(saveChannel('ไม่มีจริง', validForm())).rejects.toThrow('ไม่พบบัญชี')
+    await expectFailure(saveChannel('ไม่มีจริง', validForm()), 'ไม่พบบัญชี')
     expect(state.writes).toEqual([])
   })
 })
@@ -280,7 +290,7 @@ describe('saveChannel · แก้ของเดิม', () => {
   beforeEach(() => { signedInAs('configurator') })
 
   it('เว้นช่องกุญแจไว้ ไม่แตะกุญแจเดิมเลย', async () => {
-    await saveChannel('ch1', validForm({ access_token: '', channel_secret: '' }))
+    await expectSuccess(saveChannel('ch1', validForm({ access_token: '', channel_secret: '' })))
 
     expect(lastWrite().text).toContain('UPDATE channel')
     expect(lastWrite().text).not.toContain('encrypted_token')
@@ -289,28 +299,27 @@ describe('saveChannel · แก้ของเดิม', () => {
   })
 
   it('เว้นช่องกุญแจไว้ ยังเปลี่ยนชื่อกับชั้นได้', async () => {
-    await saveChannel('ch1', validForm({
+    await expectSuccess(saveChannel('ch1', validForm({
       name: 'ชื่อใหม่', channel_type: 'production', access_token: '', channel_secret: '',
-    }))
+    })))
     expect(lastWrite().values).toContain('ชื่อใหม่')
     expect(lastWrite().values).toContain('production')
   })
 
   it('กรอกกุญแจใหม่ทั้งคู่ เขียนทับทั้งชุดพร้อมสี่ตัวท้ายและรุ่น', async () => {
-    await saveChannel('ch1', validForm({ access_token: 'brand-new-token-1234', channel_secret: 'brand-new-secret' }))
+    await expectSuccess(saveChannel('ch1', validForm({ access_token: 'brand-new-token-1234', channel_secret: 'brand-new-secret' })))
     expect(lastWrite().text).toContain('UPDATE channel')
     expect(lastWrite().text).toContain('encrypted_token')
     expect(lastWrite().values).toContain('1234')
   })
 
   it('กรอกกุญแจใหม่มาช่องเดียวตอนแก้ ก็ยังไม่ได้', async () => {
-    await expect(saveChannel('ch1', validForm({ channel_secret: '' })))
-      .rejects.toThrow('ทั้งสองช่อง')
+    await expectFailure(saveChannel('ch1', validForm({ channel_secret: '' })), 'ทั้งสองช่อง')
     expect(state.writes).toEqual([])
   })
 
   it('แก้แถวที่ระบุมาเท่านั้น', async () => {
-    await saveChannel('ch1', validForm({ access_token: '', channel_secret: '' }))
+    await expectSuccess(saveChannel('ch1', validForm({ access_token: '', channel_secret: '' })))
     expect(lastWrite().text).toContain('WHERE id')
     expect(lastWrite().values).toContain('ch1')
   })
@@ -324,25 +333,25 @@ describe('saveChannel · Channel ID', () => {
   beforeEach(() => { signedInAs('configurator') })
 
   it('บัญชีใหม่ที่กรอก Channel ID เขียนค่านั้นลงไป', async () => {
-    await saveChannel(null, validForm({ line_channel_id: '1657123456' }))
+    await expectSuccess(saveChannel(null, validForm({ line_channel_id: '1657123456' })))
     expect(lastWrite().values).toContain('1657123456')
   })
 
   it('เว้นช่อง Channel ID ไว้ เขียนเป็น NULL ไม่ใช่สตริงว่าง', async () => {
-    await saveChannel(null, validForm({ line_channel_id: '' }))
+    await expectSuccess(saveChannel(null, validForm({ line_channel_id: '' })))
     expect(lastWrite().values).not.toContain('')
     expect(lastWrite().values).toContain(null)
   })
 
   it('ช่องว่างหัวท้ายถูกตัดก่อนเขียน', async () => {
-    await saveChannel(null, validForm({ line_channel_id: '  1657123456  ' }))
+    await expectSuccess(saveChannel(null, validForm({ line_channel_id: '  1657123456  ' })))
     expect(lastWrite().values).toContain('1657123456')
   })
 
   it('แก้ของเดิมโดยไม่แตะกุญแจ ยังปรับ Channel ID ได้', async () => {
-    await saveChannel('ch1', validForm({
+    await expectSuccess(saveChannel('ch1', validForm({
       access_token: '', channel_secret: '', line_channel_id: '999',
-    }))
+    })))
     expect(lastWrite().text).toContain('UPDATE channel')
     expect(lastWrite().text).toContain('line_channel_id')
     expect(lastWrite().values).toContain('999')
@@ -350,21 +359,24 @@ describe('saveChannel · Channel ID', () => {
 
   it('Channel ID ซ้ำกับบัญชีอื่น บอกตรงๆ ว่าซ้ำ ไม่ใช่โยนรหัส constraint ดิบๆ', async () => {
     state.writeError = { code: '23505' }
-    await expect(saveChannel(null, validForm({ line_channel_id: '1657123456' })))
-      .rejects.toThrow('ถูกผูกกับบัญชีอื่นอยู่แล้ว')
+    await expectFailure(saveChannel(null, validForm({ line_channel_id: '1657123456' })), 'ถูกผูกกับบัญชีอื่นอยู่แล้ว')
   })
 
   it('Channel ID ซ้ำตอนแก้ของเดิมโดยไม่แตะกุญแจ ก็ยังบอกตรงๆ', async () => {
     state.writeError = { code: '23505' }
-    await expect(saveChannel('ch1', validForm({
+    await expectFailure(saveChannel('ch1', validForm({
       access_token: '', channel_secret: '', line_channel_id: '1657123456',
-    }))).rejects.toThrow('ถูกผูกกับบัญชีอื่นอยู่แล้ว')
+    })), 'ถูกผูกกับบัญชีอื่นอยู่แล้ว')
   })
 
-  // error อื่นที่ไม่ใช่ unique violation ต้องหลุดออกไปตามเดิม ไม่ถูกกลืนเป็นข้อความซ้ำผิดๆ
-  it('error อื่นที่ไม่ใช่ Channel ID ซ้ำ หลุดออกไปตามเดิม ไม่ถูกแปลงเป็นข้อความ "ซ้ำ"', async () => {
+  // error อื่นที่ไม่ใช่ unique violation ต้องไม่ถูกกลืนเป็นข้อความ "ซ้ำ" ผิดๆ — ยังต้อง
+  // return {ok:false} เสมอ (ห้าม throw ข้าม Server Action boundary) แต่ข้อความต้อง
+  // เป็นข้อความทั่วไป ไม่ใช่ประโยคที่บอกว่า "ถูกผูกกับบัญชีอื่นอยู่แล้ว"
+  it('error อื่นที่ไม่ใช่ Channel ID ซ้ำ ไม่ถูกแปลงเป็นข้อความ "ซ้ำ" ผิดๆ', async () => {
     state.writeError = { code: '23502' }
-    await expect(saveChannel(null, validForm())).rejects.toMatchObject({ code: '23502' })
+    const result = await saveChannel(null, validForm())
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).not.toContain('ถูกผูกกับบัญชีอื่นอยู่แล้ว')
   })
 })
 
@@ -383,28 +395,28 @@ describe('saveChannel · คีย์เวิร์ดเดิมของล�
     lastWrite().values.find((value) => Array.isArray(value)) as string[] | undefined
 
   it('บรรทัดละคำ กลายเป็นรายการ', async () => {
-    await saveChannel(null, validForm({ existing_keywords: 'โปรโมชั่น\nที่ตั้งสาขา\nเวลาเปิด' }))
+    await expectSuccess(saveChannel(null, validForm({ existing_keywords: 'โปรโมชั่น\nที่ตั้งสาขา\nเวลาเปิด' })))
     expect(keywordsWritten()).toEqual(['โปรโมชั่น', 'ที่ตั้งสาขา', 'เวลาเปิด'])
   })
 
   it('บรรทัดว่างและช่องว่างหัวท้ายหายไป', async () => {
-    await saveChannel(null, validForm({ existing_keywords: '  โปรโมชั่น  \n\n\n   \nสาขา\n' }))
+    await expectSuccess(saveChannel(null, validForm({ existing_keywords: '  โปรโมชั่น  \n\n\n   \nสาขา\n' })))
     expect(keywordsWritten()).toEqual(['โปรโมชั่น', 'สาขา'])
   })
 
   it('ไม่กรอกเลย ได้รายการว่าง ไม่ใช่รายการที่มีสตริงว่างอยู่ข้างใน', async () => {
-    await saveChannel(null, validForm({ existing_keywords: '' }))
+    await expectSuccess(saveChannel(null, validForm({ existing_keywords: '' })))
     expect(keywordsWritten()).toEqual([])
   })
 
   // คำซ้ำทำให้จอคีย์เวิร์ดเตือนเรื่องเดิมสองครั้ง
   it('คำซ้ำเก็บครั้งเดียว', async () => {
-    await saveChannel(null, validForm({ existing_keywords: 'สาขา\nสาขา\n สาขา ' }))
+    await expectSuccess(saveChannel(null, validForm({ existing_keywords: 'สาขา\nสาขา\n สาขา ' })))
     expect(keywordsWritten()).toEqual(['สาขา'])
   })
 
   it('รับ CRLF ที่มาจากการก๊อปจากวินโดวส์', async () => {
-    await saveChannel(null, validForm({ existing_keywords: 'โปรโมชั่น\r\nสาขา' }))
+    await expectSuccess(saveChannel(null, validForm({ existing_keywords: 'โปรโมชั่น\r\nสาขา' })))
     expect(keywordsWritten()).toEqual(['โปรโมชั่น', 'สาขา'])
   })
 })
@@ -412,13 +424,15 @@ describe('saveChannel · คีย์เวิร์ดเดิมของล�
 describe('saveChannel · หลังบันทึก', () => {
   beforeEach(() => { signedInAs('configurator') })
 
-  it('พากลับไปหน้ารายการบัญชี', async () => {
-    await saveChannel(null, validForm())
-    expect(vi.mocked(redirect)).toHaveBeenCalledWith('/channels')
+  // การพากลับไปหน้ารายการบัญชีเป็นหน้าที่ของฝั่ง client (ChannelForm.tsx เรียก
+  // router.push('/channels') เมื่อเห็น ok:true) — ที่นี่ตรวจแค่ว่า action คืน
+  // {ok:true} จริง ไม่ throw/redirect เอง ข้าม Server Action boundary
+  it('สำเร็จแล้วคืน {ok:true} ให้ฝั่ง client พาไปหน้ารายการบัญชีเอง', async () => {
+    await expectSuccess(saveChannel(null, validForm()))
   })
 
   it('บันทึกคนที่สร้างไว้กับแถว', async () => {
-    await saveChannel(null, validForm())
+    await expectSuccess(saveChannel(null, validForm()))
     expect(lastWrite().text).toContain('created_by')
     expect(lastWrite().values).toContain('u1')
   })

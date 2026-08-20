@@ -8,6 +8,7 @@ import {
 } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { saveChannel } from '../actions'
+import { ChannelForm } from './ChannelForm'
 
 /**
  * `/channels/new` เป็นจอเดียวกับ `/channels/<id>`
@@ -103,11 +104,12 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
 
       <Panel>
         <Panel.Row>
-          <form
-            // id ของบัญชีผูกมากับตัว action · ช่องซ่อนในฟอร์มเป็นของที่ผู้ส่งแก้เองได้ทั้งใบ
-            action={saveChannel.bind(null, isNew ? null : id)}
-            style={{ display: 'flex', flexDirection: 'column', gap: 18 }}
-          >
+          {/*
+            id ของบัญชีผูกมากับตัว action ผ่าน channelId prop ไม่ใช่ให้ฟอร์มส่งมาเอง
+            — เหตุผลเดียวกับ campaignId ของ PublishForm: ฟอร์มเป็นของที่ผู้ส่งแต่งเอง
+            ได้ทั้งใบ · ดู ChannelForm.tsx สำหรับเหตุผลที่ต้องเลิกใช้ `action=` ตรงๆ
+          */}
+          <ChannelForm channelId={isNew ? null : id} action={saveChannel}>
             {isPreview && (
               <Note tone="warn">
                 <b>บัญชีสำหรับทดลองเล่นในระบบไม่มีกุญแจให้แก้</b> — ระบบเป็นคนสร้างไว้เอง
@@ -214,7 +216,7 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
                 <Button type="submit">บันทึกบัญชี</Button>
               </div>
             )}
-          </form>
+          </ChannelForm>
         </Panel.Row>
       </Panel>
 
