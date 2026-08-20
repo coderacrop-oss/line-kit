@@ -119,6 +119,7 @@ describe('uploadBaseImage · ยิง SQL จริง', () => {
     const bytes = await realJpeg(2080, 1040) // 2:1
     const result = await uploadBaseImage(s.campaignId, s.cardId, uploadForm(bytes))
 
+    if (!result.ok) throw new Error(`คาดว่าจะสำเร็จ แต่ได้: ${result.message}`)
     expect(result.baseWidth).toBe(1040)
     expect(result.baseHeight).toBe(520)
 
@@ -130,8 +131,9 @@ describe('uploadBaseImage · ยิง SQL จริง', () => {
   it('ภาพแคบกว่า 1040px ถูกปฏิเสธก่อนแม้แต่จะเขียนแถวใดๆ', async () => {
     const s = await scene()
     const bytes = await realJpeg(500, 500)
-    await expect(uploadBaseImage(s.campaignId, s.cardId, uploadForm(bytes)))
-      .rejects.toThrow('เล็กเกินไป')
+    const result = await uploadBaseImage(s.campaignId, s.cardId, uploadForm(bytes))
+
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('เล็กเกินไป') })
 
     const rows = await sql`SELECT id FROM card_imagemap WHERE card_id = ${s.cardId}`
     expect(rows).toEqual([])
@@ -141,18 +143,19 @@ describe('uploadBaseImage · ยิง SQL จริง', () => {
 describe('saveDraft · ยิง SQL จริง', () => {
   it('ต้องมีภาพฐานก่อน ถึงจะบันทึกพื้นที่กดได้', async () => {
     const s = await scene()
-    await expect(saveDraft(s.campaignId, s.cardId, { actions: [], altText: 'x' }))
-      .rejects.toThrow('อัปโหลดภาพฐานก่อน')
+    const result = await saveDraft(s.campaignId, s.cardId, { actions: [], altText: 'x' })
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('อัปโหลดภาพฐานก่อน') })
   })
 
   it('มีภาพฐานแล้ว — บันทึกพื้นที่กดจริงลง card.tap_areas', async () => {
     const s = await scene()
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
 
-    await saveDraft(s.campaignId, s.cardId, {
+    const result = await saveDraft(s.campaignId, s.cardId, {
       actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 200, action: { type: 'uri', linkUri: 'https://x.com' } }],
       altText: 'โปรโมชัน',
     })
+    expect(result).toEqual({ ok: true })
 
     const [row] = await sql<{ tap_areas: unknown }[]>`SELECT tap_areas FROM card WHERE id = ${s.cardId}`
     expect(row.tap_areas).toHaveLength(1)
@@ -168,20 +171,42 @@ describe('saveDraft · ยิง SQL จริง', () => {
     const s = await scene()
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
 
-    await expect(saveDraft(s.campaignId, s.cardId, {
+    const result = await saveDraft(s.campaignId, s.cardId, {
       actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 200, action: { type: 'uri', linkUri: 'https://x.com' } }],
       altText: '',
-    })).resolves.toBeUndefined()
+    })
+    expect(result).toEqual({ ok: true })
   })
 
   it('เพิ่งสลับชนิดแอ็กชันเป็นข้อความ (message) ยังไม่ทันพิมพ์อะไร — บันทึกร่างสำเร็จ ไม่ล้ม', async () => {
     const s = await scene()
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
 
-    await expect(saveDraft(s.campaignId, s.cardId, {
+    const result = await saveDraft(s.campaignId, s.cardId, {
       actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 200, action: { type: 'message', text: '' } }],
       altText: 'x',
-    })).resolves.toBeUndefined()
+    })
+    expect(result).toEqual({ ok: true })
+  })
+
+  /**
+   * บั๊กที่ 4 ของวันนี้ (M3-S02 · imagemap): เวทีตัดภาพด้วย overflow:hidden แต่พิกัด
+   * ที่ลากไปไม่ถูก clamp เอง (computeMove/computeResize ของ lib/richmenu/gesture.ts
+   * เป็นคณิตศาสตร์บริสุทธิ์ ไม่รู้จักขอบภาพ) ผู้ใช้จริงลากพื้นที่กดออกนอกขอบด้านล่าง
+   * ได้ง่ายๆ แล้ว autosave ปฏิเสธด้วย validateRect ก่อนแก้ไข error นั้นถูกเซ็นเซอร์
+   * เป็น 500 ดิบๆ ในโปรดักชัน — ด่านตรวจนี้ยังต้องอยู่ (ความรับผิดชอบสุดท้าย) แต่ตัว
+   * แก้จริงคือ clamp ที่ AreaNode.tsx (ดู comment ที่นั่น) ไม่ให้กล่องหลุดขอบได้ตั้งแต่
+   * ต้นทาง — ทดสอบตรงนี้ยันว่าด่านตรวจฝั่งเซิร์ฟเวอร์ยังทำงานถูกต้องถ้ามีอะไรหลุดมาถึง
+   */
+  it('พื้นที่กดหลุดขอบภาพ — ปฏิเสธพร้อมข้อความจริง ไม่ throw ดิบ', async () => {
+    const s = await scene()
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+
+    const result = await saveDraft(s.campaignId, s.cardId, {
+      actions: [{ id: 'a1', x: 900, y: 900, width: 300, height: 300, action: { type: 'uri', linkUri: 'https://x.com' } }],
+      altText: 'x',
+    })
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('นอกขอบภาพ') })
   })
 })
 
@@ -190,10 +215,11 @@ describe('applyImagemap · ปั้นภาพจริงห้าขนา�
     const s = await scene()
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(2080, 1040)))
 
-    await applyImagemap(s.campaignId, s.cardId, {
+    const applied = await applyImagemap(s.campaignId, s.cardId, {
       actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 100, action: { type: 'message', text: 'สนใจ' } }],
       altText: 'โปรโมชันพิเศษ',
     })
+    expect(applied).toEqual({ ok: true })
 
     const [row] = await sql<{ variant_assets: Record<string, string> }[]>`
       SELECT variant_assets FROM card_imagemap WHERE card_id = ${s.cardId}`
@@ -209,15 +235,15 @@ describe('applyImagemap · ปั้นภาพจริงห้าขนา�
 
   it('ต้องมีภาพฐานก่อน ถึงจะกด "ใช้" ได้', async () => {
     const s = await scene()
-    await expect(applyImagemap(s.campaignId, s.cardId, { actions: [], altText: 'x' }))
-      .rejects.toThrow('อัปโหลดภาพฐานก่อน')
+    const result = await applyImagemap(s.campaignId, s.cardId, { actions: [], altText: 'x' })
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('อัปโหลดภาพฐานก่อน') })
   })
 
   it('ไม่มีข้อความสำรอง (alt text ว่าง) ถูกปฏิเสธ — LINE บังคับให้มีเสมอ', async () => {
     const s = await scene()
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
-    await expect(applyImagemap(s.campaignId, s.cardId, { actions: [], altText: '' }))
-      .rejects.toThrow('ข้อความสำรอง')
+    const result = await applyImagemap(s.campaignId, s.cardId, { actions: [], altText: '' })
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('ข้อความสำรอง') })
   })
 
   it('กด "ใช้" ซ้ำสองครั้ง — ภาพชุดที่สองแทนที่ชุดแรกในบันทึก ไม่ใช่พอกเพิ่ม', async () => {
@@ -240,10 +266,64 @@ describe('applyImagemap · ปั้นภาพจริงห้าขนา�
   })
 })
 
+/**
+ * บั๊กที่ห้าของวันนี้ (M3-S02 · imagemap) — ยืนยันจริงในโปรดักชัน: การ์ด render_as=
+ * 'imagemap'/'imagemap_video' ถูกสร้างจากเทมเพลตข้อความเดียวกับการ์ดบล็อกทั่วไป
+ * (lib/cards/create.ts) จึงได้ has_sample_text=true ติดมาตั้งแต่สร้างเสมอ (ดู
+ * comment ของ hasSampleText() ที่นั่น) ทั้งที่บล็อกเหล่านั้นไม่เคยถูกใช้จริงกับการ์ด
+ * ชนิดนี้เลย — ก่อนแก้ ไม่มีโค้ดจุดไหนในไฟล์นี้เคลียร์ธงนี้ จอส่งขึ้น LINE จึงบล็อกการ์ด
+ * เหล่านี้ด้วย BR-37 ถาวรไม่ว่าจะกด "ใช้" สำเร็จไปกี่ครั้งก็ตาม — เหมือนกับที่
+ * saveBlockContent ของการ์ดเอดิเตอร์บล็อกทั่วไป (../app/(admin)/campaigns/[id]/
+ * cards/[cardId]/actions.ts) เคลียร์ให้ทุกครั้งที่บันทึกสำเร็จอยู่แล้ว
+ */
+describe('BR-37 · saveDraft/applyImagemap ต้องเคลียร์ has_sample_text ทุกครั้งที่บันทึกสำเร็จ', () => {
+  it('saveDraft สำเร็จ — has_sample_text พลิกจาก true เป็น false', async () => {
+    const s = await scene()
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+    await sql`UPDATE card SET has_sample_text = true WHERE id = ${s.cardId}`
+
+    const result = await saveDraft(s.campaignId, s.cardId, {
+      actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 200, action: { type: 'message', text: 'กะตัง' } }],
+      altText: 'ไอกะตัง',
+    })
+    expect(result).toEqual({ ok: true })
+
+    const [row] = await sql<{ has_sample_text: boolean }[]>`SELECT has_sample_text FROM card WHERE id = ${s.cardId}`
+    expect(row.has_sample_text).toBe(false)
+  })
+
+  it('saveDraft ล้มเหลว (validation พัง) — ไม่แตะ has_sample_text เลย', async () => {
+    const s = await scene()
+    await sql`UPDATE card SET has_sample_text = true WHERE id = ${s.cardId}`
+
+    const result = await saveDraft(s.campaignId, s.cardId, { actions: [], altText: 'x' })
+    expect(result.ok).toBe(false)
+
+    const [row] = await sql<{ has_sample_text: boolean }[]>`SELECT has_sample_text FROM card WHERE id = ${s.cardId}`
+    expect(row.has_sample_text).toBe(true)
+  })
+
+  it('กด "ใช้" สำเร็จ — has_sample_text พลิกจาก true เป็น false', async () => {
+    const s = await scene()
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+    await sql`UPDATE card SET has_sample_text = true WHERE id = ${s.cardId}`
+
+    const result = await applyImagemap(s.campaignId, s.cardId, {
+      actions: [{ id: 'a1', x: 10, y: 10, width: 200, height: 100, action: { type: 'message', text: 'กะตัง' } }],
+      altText: 'ไอกะตัง',
+    })
+    expect(result).toEqual({ ok: true })
+
+    const [row] = await sql<{ has_sample_text: boolean }[]>`SELECT has_sample_text FROM card WHERE id = ${s.cardId}`
+    expect(row.has_sample_text).toBe(false)
+  })
+})
+
 describe('uploadVideo · ยิง SQL จริง (ริชวิดีโอ)', () => {
   it('อัปโหลดวิดีโอ — เก็บไฟล์จริง เขียนแถว asset ชนิด video และชี้ card.video_asset_id ไปที่แถวนั้น', async () => {
     const s = await scene('imagemap_video')
     const result = await uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(10, 640, 360), 'clip.mp4', 'video/mp4'))
+    if (!result.ok) throw new Error(`คาดว่าจะสำเร็จ แต่ได้: ${result.message}`)
     expect(result.url).toBeDefined()
 
     const [row] = await sql<{
@@ -258,14 +338,14 @@ describe('uploadVideo · ยิง SQL จริง (ริชวิดีโอ
 
   it('การ์ดที่เป็น imagemap ธรรมดา — ปฏิเสธ ไม่เขียน asset ใดๆ', async () => {
     const s = await scene('imagemap')
-    await expect(uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(), 'clip.mp4', 'video/mp4')))
-      .rejects.toThrow('ไม่พบการ์ดริชวิดีโอนี้')
+    const result = await uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(), 'clip.mp4', 'video/mp4'))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('ไม่พบการ์ดริชวิดีโอนี้') })
   })
 
   it('วิดีโอยาวเกินเพดาน — ปฏิเสธก่อนเขียนอะไรเลย', async () => {
     const s = await scene('imagemap_video')
-    await expect(uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(61), 'clip.mp4', 'video/mp4')))
-      .rejects.toThrow('เกินเพดาน')
+    const result = await uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(61), 'clip.mp4', 'video/mp4'))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('เกินเพดาน') })
 
     const [row] = await sql<{ video_asset_id: string | null }[]>`SELECT video_asset_id FROM card WHERE id = ${s.cardId}`
     expect(row.video_asset_id).toBeNull()
@@ -273,8 +353,8 @@ describe('uploadVideo · ยิง SQL จริง (ริชวิดีโอ
 
   it('ไฟล์ไม่ใช่ MP4 จริง (ไม่มีก้อน ftyp) — ปฏิเสธ', async () => {
     const s = await scene('imagemap_video')
-    await expect(uploadVideo(s.campaignId, s.cardId, uploadForm(Uint8Array.from([1, 2, 3, 4]), 'clip.mp4', 'video/mp4')))
-      .rejects.toThrow('ftyp')
+    const result = await uploadVideo(s.campaignId, s.cardId, uploadForm(Uint8Array.from([1, 2, 3, 4]), 'clip.mp4', 'video/mp4'))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('ftyp') })
   })
 })
 
@@ -282,6 +362,7 @@ describe('uploadVideoPreview · ยิง SQL จริง (ริชวิด�
   it('อัปโหลดภาพตัวอย่าง — เขียน card_imagemap.video_preview_asset_id ชี้ไปแถว asset ชนิดภาพ', async () => {
     const s = await scene('imagemap_video')
     const result = await uploadVideoPreview(s.campaignId, s.cardId, uploadForm(await realJpeg(400, 225), 'preview.jpg'))
+    if (!result.ok) throw new Error(`คาดว่าจะสำเร็จ แต่ได้: ${result.message}`)
     expect(result.url).toBeDefined()
 
     const [row] = await sql<{ video_preview_asset_id: string | null }[]>`
@@ -291,8 +372,8 @@ describe('uploadVideoPreview · ยิง SQL จริง (ริชวิด�
 
   it('ภาพเล็กกว่า 800px กว้าง — ยังผ่าน (ภาพตัวอย่างไม่ใช้เพดานความกว้างของคลังภาพทั่วไป/ภาพฐาน)', async () => {
     const s = await scene('imagemap_video')
-    await expect(uploadVideoPreview(s.campaignId, s.cardId, uploadForm(await realJpeg(200, 150), 'preview.jpg')))
-      .resolves.toBeDefined()
+    const result = await uploadVideoPreview(s.campaignId, s.cardId, uploadForm(await realJpeg(200, 150), 'preview.jpg'))
+    expect(result.ok).toBe(true)
   })
 })
 
@@ -319,17 +400,19 @@ describe('saveDraft · พื้นที่เล่นวิดีโอ/ล�
     const s = await scene('imagemap_video')
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
 
-    await expect(saveDraft(s.campaignId, s.cardId, {
+    const result = await saveDraft(s.campaignId, s.cardId, {
       actions: [], altText: 'x', videoArea: { x: 900, y: 900, width: 300, height: 300 },
-    })).rejects.toThrow('นอกขอบภาพ')
+    })
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('นอกขอบภาพ') })
   })
 
   it('ลิงก์หลังเล่นจบไม่ใช่ http/https — ปฏิเสธ', async () => {
     const s = await scene('imagemap_video')
     await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
 
-    await expect(saveDraft(s.campaignId, s.cardId, {
+    const result = await saveDraft(s.campaignId, s.cardId, {
       actions: [], altText: 'x', videoLinkUri: 'javascript:alert(1)',
-    })).rejects.toThrow('http')
+    })
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('http') })
   })
 })

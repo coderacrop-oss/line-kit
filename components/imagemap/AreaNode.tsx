@@ -39,6 +39,29 @@ export type AreaNodeProps = {
   canEdit: boolean
   onSelect: () => void
   onCommitBox: (box: Rect) => void
+  /**
+   * ขอบเขตพิกัดอ้างอิงของภาพ (1040 กว้าง × baseHeight สูง) — กันไม่ให้ลาก/ปรับขนาด
+   * ออกนอกภาพได้เลยตั้งแต่ต้นทาง บั๊กจริงที่เจอในโปรดักชัน: เวที (data-imagemap-stage
+   * ใน ImagemapEditor.tsx) ตัดภาพด้วย overflow:hidden จึงมองไม่เห็นว่าพื้นที่กดถูกลาก
+   * เลยขอบไปแล้ว แต่ computeMove/computeResize (lib/richmenu/gesture.ts) ไม่ clamp
+   * พิกัดให้เอง (คณิตศาสตร์บริสุทธิ์ ไม่รู้จักขอบเขตของภาพ ใช้ร่วมกับ Rich Menu ที่ไม่มี
+   * ขอบเขตแบบนี้) ผลคือ onCommitBox ส่งกล่องที่หลุดขอบไปให้ saveDraft (autosave) ซึ่ง
+   * validateRect (lib/imagemap/regions.ts) ปฏิเสธด้วย error จริง — ก่อนแก้ error นั้น
+   * ถูกเซ็นเซอร์เป็น 500 ดิบๆ ในโปรดักชัน ทำให้ดูเหมือนบั๊กลึกลับ ทั้งที่จริงคือกล่องที่
+   * มองไม่เห็นว่าหลุดขอบไปแล้ว — clamp ที่นี่ (จุดเดียวที่รู้ทั้งกล่องที่กำลังลากและขอบเขต
+   * จริงของภาพ) ทำให้กล่องที่ผู้ใช้เห็นบนจอกับกล่องที่ถูกส่งไปบันทึกตรงกันเสมอ
+   */
+  maxWidth: number
+  maxHeight: number
+}
+
+/** บังคับกล่องให้อยู่ในขอบเขต [0,maxWidth]×[0,maxHeight] เสมอ — ไม่แตะขนาดถ้ากล่องเล็กกว่าเพดานอยู่แล้ว แค่เลื่อนตำแหน่งให้ไม่หลุดขอบ */
+function clampToBounds(box: Rect, maxWidth: number, maxHeight: number): Rect {
+  const width = Math.min(box.width, maxWidth)
+  const height = Math.min(box.height, maxHeight)
+  const x = Math.min(Math.max(box.x, 0), maxWidth - width)
+  const y = Math.min(Math.max(box.y, 0), maxHeight - height)
+  return { x, y, width, height }
 }
 
 type DragState = {
@@ -73,7 +96,9 @@ export function areaSummary(area: TapArea): string {
     : `💬 ${area.action.label ?? area.action.text}`
 }
 
-export function AreaNode({ area, label, scale, selected, canEdit, onSelect, onCommitBox }: AreaNodeProps) {
+export function AreaNode({
+  area, label, scale, selected, canEdit, onSelect, onCommitBox, maxWidth, maxHeight,
+}: AreaNodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null)
   const drag = useRef<DragState | null>(null)
 
@@ -104,9 +129,10 @@ export function AreaNode({ area, label, scale, selected, canEdit, onSelect, onCo
     if (!state) return
     const dx = (event.clientX - state.startX) / scale
     const dy = (event.clientY - state.startY) / scale
-    state.pending = state.mode === 'move'
+    const raw = state.mode === 'move'
       ? computeMove(state.origin, dx, dy)
       : computeResize(state.mode, state.origin, dx, dy)
+    state.pending = clampToBounds(raw, maxWidth, maxHeight)
 
     if (state.raf === null) {
       state.raf = requestAnimationFrame(() => {

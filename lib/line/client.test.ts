@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { pushMessage, replyMessage, setWebhookEndpoint } from './client'
+import { getBotInfo, pushMessage, replyMessage, setWebhookEndpoint } from './client'
 
 import type { FlexMessage } from '../flex/types'
 
@@ -153,6 +153,59 @@ describe('pushMessage', () => {
 
   it('มี abort signal — LINE ที่ไม่ตอบต้องไม่ค้างปุ่มส่งทดสอบไว้ตลอดกาล', async () => {
     await pushMessage('oa-token', 'U1234', aMessage())
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.signal).toBeInstanceOf(AbortSignal)
+  })
+})
+
+/**
+ * ปุ่ม "ดึง Bot User ID อัตโนมัติ" ของจอแก้บัญชี LINE (app/(admin)/channels/[id]/) ใช้
+ * ฟังก์ชันนี้เรียก LINE ตรงๆ — ดูเหตุการณ์จริงที่แก้ในหมายเหตุเหนือ getBotInfo() ของ
+ * client.ts: ค่า "Your user ID" บนคอนโซลของ LINE ไม่ใช่ userId ของบอท ทางเดียวที่
+ * เชื่อถือได้คือเรียก API นี้
+ */
+describe('getBotInfo', () => {
+  it('ยิงไป /v2/bot/info ด้วย GET ไม่มี body แล้วคืน userId ที่ LINE ตอบมา', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true, status: 200, text: async () => '{}', json: async () => ({ userId: 'Ubot1234567890' }),
+    })
+
+    const result = await getBotInfo('oa-token')
+
+    expect(fetchMock).toHaveBeenCalledTimes(1)
+    const [url, init] = fetchMock.mock.calls[0]
+    expect(url).toBe('https://api.line.me/v2/bot/info')
+    expect(init.method).toBe('GET')
+    expect(init.body).toBeUndefined()
+    expect(init.headers.Authorization).toBe('Bearer oa-token')
+    expect(result).toEqual({ userId: 'Ubot1234567890' })
+  })
+
+  /**
+   * โทเคนมาจากพารามิเตอร์ ไม่ใช่จาก env — เหมือนฟังก์ชันอื่นทั้งหมดในไฟล์นี้ เพราะปุ่มนี้
+   * ต้องเรียกด้วยโทเคนของบัญชีที่กำลังแก้อยู่บนจอ ไม่ใช่บัญชีเดียวที่ผูกกับ process
+   */
+  it('ใช้โทเคนที่ส่งเข้ามา ไม่ใช่โทเคนของบัญชีอื่น', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true, status: 200, text: async () => '{}', json: async () => ({ userId: 'Ubot1' }),
+    })
+    await getBotInfo('channel-a-token')
+
+    const [, init] = fetchMock.mock.calls[0]
+    expect(init.headers.Authorization).toBe('Bearer channel-a-token')
+  })
+
+  it('LINE ปฏิเสธ (โทเคนผิด/หมดอายุ) → โยน error พร้อมข้อความของ LINE ตรงๆ ห้ามกลืนหาย', async () => {
+    fetchMock.mockResolvedValue({ ok: false, status: 401, text: async () => 'Invalid channel access token' })
+    await expect(getBotInfo('bad-token')).rejects.toThrow(/Invalid channel access token/)
+  })
+
+  it('มี abort signal — LINE ที่ไม่ตอบต้องไม่ค้างปุ่มดึงไว้ตลอดกาล', async () => {
+    fetchMock.mockResolvedValue({
+      ok: true, status: 200, text: async () => '{}', json: async () => ({ userId: 'Ubot1' }),
+    })
+    await getBotInfo('oa-token')
 
     const [, init] = fetchMock.mock.calls[0]
     expect(init.signal).toBeInstanceOf(AbortSignal)

@@ -23,10 +23,10 @@ const area = (patch: Partial<TapArea> = {}): TapArea => ({
 })
 
 const draw = (over: Partial<Parameters<typeof ImagemapEditor>[0]> = {}) => {
-  const saveDraft = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => {})
-  const applyImagemap = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => {})
+  const saveDraft = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => ({ ok: true as const }))
+  const applyImagemap = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => ({ ok: true as const }))
   const uploadBaseImage = vi.fn(async (_c: string, _k: string, _f: FormData) => (
-    { url: '/uploads/new.jpg', baseWidth: 1040, baseHeight: 700 }
+    { ok: true as const, url: '/uploads/new.jpg', baseWidth: 1040, baseHeight: 700 }
   ))
 
   const utils = render(
@@ -95,6 +95,17 @@ describe('ImagemapEditor · อัปโหลด/แทนที่ภาพฐ
 
     await waitFor(() => expect(screen.getByText(/ยังไม่พร้อมส่ง/)).toBeDefined())
   })
+
+  it('uploadBaseImage คืน ok:false (เช่นไฟล์เล็กเกินไป) — แสดงเหตุผลจริง ไม่ใช่ error ที่ถูกเซ็นเซอร์', async () => {
+    const uploadBaseImage = vi.fn(async () => ({ ok: false as const, message: 'ภาพเล็กเกินไป — ต้องกว้างอย่างน้อย 1040px' }))
+    const { container } = draw({ uploadBaseImage, initial: withImage({ baseImageUrl: null, baseWidth: null, baseHeight: null }) })
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    const file = new File([new Uint8Array([1, 2, 3])], 'a.jpg', { type: 'image/jpeg' })
+    fireEvent.change(fileInput, { target: { files: [file] } })
+
+    await waitFor(() => expect(screen.getByText('ภาพเล็กเกินไป — ต้องกว้างอย่างน้อย 1040px')).toBeDefined())
+    expect(screen.getByText(/ยังไม่มีภาพฐาน/)).toBeDefined()
+  })
 })
 
 describe('ImagemapEditor · เพิ่ม/เลือก/ลบพื้นที่กด', () => {
@@ -130,6 +141,33 @@ describe('ImagemapEditor · เพิ่ม/เลือก/ลบพื้น�
 
     await waitFor(() => expect(saveDraft).toHaveBeenCalled())
     expect(container.querySelectorAll('[data-area-id]')).toHaveLength(0)
+  })
+
+  /**
+   * บั๊กจริงที่เจอในโปรดักชัน (4th instance ของวันนี้): เวที (data-imagemap-stage)
+   * ตัดภาพด้วย overflow:hidden แต่ไม่เคย clamp พิกัดของพื้นที่กดที่กำลังลาก —
+   * ลากออกนอกขอบด้านล่าง/ขวาได้ง่ายๆ โดยมองไม่เห็นว่าหลุดแล้ว แล้ว saveDraft
+   * (autosave) ปฏิเสธด้วยกล่องที่หลุดขอบจริงตอนปล่อยนิ้ว — AreaNode.tsx ตอนนี้
+   * clamp ให้เองก่อนส่ง onCommitBox เสมอ ทดสอบนี้ยันว่าลากไกลแค่ไหนก็ยังได้กล่องที่
+   * อยู่ในขอบภาพเสมอ (baseHeight เริ่มต้นของ withImage() คือ 585 · baseWidth คือ 1040)
+   */
+  it('ลากพื้นที่ออกนอกขอบภาพไกลๆ — กล่องที่บันทึกจริงถูก clamp ให้อยู่ในขอบเสมอ', async () => {
+    const { container, saveDraft } = draw({ initial: withImage({ actions: [area()] }) })
+    const node = container.querySelector('[data-area-id="a1"]')!
+
+    fireEvent.pointerDown(node, { clientX: 0, clientY: 0 })
+    // ระยะไกลเกินขอบภาพแน่นอน ไม่ว่า scale จะเท่าไหร่ (พิกัดอ้างอิงกว้างแค่ 1040)
+    fireEvent.pointerMove(node, { clientX: 5000, clientY: 5000 })
+    fireEvent.pointerUp(node)
+
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled())
+    const call = saveDraft.mock.calls.at(-1)
+    if (!call) throw new Error('คาดว่า saveDraft ถูกเรียก')
+    const committed = call[2].actions[0]
+    expect(committed.x).toBeGreaterThanOrEqual(0)
+    expect(committed.y).toBeGreaterThanOrEqual(0)
+    expect(committed.x + committed.width).toBeLessThanOrEqual(1040)
+    expect(committed.y + committed.height).toBeLessThanOrEqual(585)
   })
 })
 
@@ -198,7 +236,19 @@ describe('ImagemapEditor · ข้อความสำรอง (alt text)', ()
 })
 
 describe('ImagemapEditor · บันทึกล้มเหลว', () => {
-  it('saveDraft ล้ม — ย้อน state กลับและแสดงเหตุผล', async () => {
+  it('saveDraft คืน ok:false — ย้อน state กลับและแสดงเหตุผล (คือสิ่งที่เกิดขึ้นจริงในโปรดักชัน ไม่ใช่การ throw)', async () => {
+    const saveDraft = vi.fn(async () => ({ ok: false as const, message: 'พื้นที่ที่ 1: พื้นที่อยู่นอกขอบภาพ' }))
+    const { container } = draw({ saveDraft })
+    fireEvent.click(screen.getByText('+ เพิ่มพื้นที่กด'))
+
+    await waitFor(() => expect(screen.getByText('พื้นที่ที่ 1: พื้นที่อยู่นอกขอบภาพ')).toBeDefined())
+    expect(container.querySelectorAll('[data-area-id]')).toHaveLength(0)
+  })
+
+  // safety net เผื่อ action เองพังแบบไม่คาดคิดจริงๆ (บั๊กที่ทำให้ throw หลุดออกมาแทนที่
+  // จะ return ผลลัพธ์ตามสัญญา) — ยังต้องไม่ปล่อยเป็น unhandled rejection (ดู comment
+  // ของ applyChange ใน ImagemapEditor.tsx)
+  it('saveDraft throw ไม่คาดคิด (safety net) — ยังย้อน state กลับและแสดงเหตุผลได้', async () => {
     const saveDraft = vi.fn(async () => { throw new Error('เครือข่ายขัดข้อง') })
     const { container } = draw({ saveDraft })
     fireEvent.click(screen.getByText('+ เพิ่มพื้นที่กด'))
@@ -219,8 +269,8 @@ describe('ImagemapEditor · ปุ่ม "ใช้"', () => {
     await waitFor(() => expect(screen.getByText(/พร้อมส่งจริง/)).toBeDefined())
   })
 
-  it('applyImagemap ล้ม — แสดงเหตุผล ไม่เปลี่ยนสถานะเป็นพร้อมส่ง', async () => {
-    const applyImagemap = vi.fn(async () => { throw new Error('สร้างภาพไม่ได้') })
+  it('applyImagemap คืน ok:false — แสดงเหตุผล ไม่เปลี่ยนสถานะเป็นพร้อมส่ง', async () => {
+    const applyImagemap = vi.fn(async () => ({ ok: false as const, message: 'สร้างภาพไม่ได้' }))
     draw({ applyImagemap, initial: withImage({ ready: false }) })
     fireEvent.click(screen.getByText('ใช้'))
 
@@ -236,11 +286,11 @@ describe('ImagemapEditor · ปุ่ม "ใช้"', () => {
 
 describe('ImagemapEditor · cardKind imagemap_video', () => {
   const drawVideo = (over: Partial<Parameters<typeof ImagemapEditor>[0]> = {}) => {
-    const saveDraft = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => {})
-    const applyImagemap = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => {})
-    const uploadBaseImage = vi.fn(async () => ({ url: '/uploads/new.jpg', baseWidth: 1040, baseHeight: 700 }))
-    const uploadVideo = vi.fn(async () => ({ url: '/uploads/video.mp4' }))
-    const uploadVideoPreview = vi.fn(async () => ({ url: '/uploads/preview.jpg' }))
+    const saveDraft = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => ({ ok: true as const }))
+    const applyImagemap = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => ({ ok: true as const }))
+    const uploadBaseImage = vi.fn(async () => ({ ok: true as const, url: '/uploads/new.jpg', baseWidth: 1040, baseHeight: 700 }))
+    const uploadVideo = vi.fn(async () => ({ ok: true as const, url: '/uploads/video.mp4' }))
+    const uploadVideoPreview = vi.fn(async () => ({ ok: true as const, url: '/uploads/preview.jpg' }))
 
     const utils = render(
       <ImagemapEditor

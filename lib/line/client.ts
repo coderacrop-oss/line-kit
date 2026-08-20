@@ -3,6 +3,7 @@ import type { LineMessage } from '../render/card'
 const REPLY_ENDPOINT = 'https://api.line.me/v2/bot/message/reply'
 const PUSH_ENDPOINT = 'https://api.line.me/v2/bot/message/push'
 const WEBHOOK_ENDPOINT = 'https://api.line.me/v2/bot/channel/webhook/endpoint'
+const BOT_INFO_ENDPOINT = 'https://api.line.me/v2/bot/info'
 const RICHMENU_ENDPOINT = 'https://api.line.me/v2/bot/richmenu'
 const RICHMENU_VALIDATE_ENDPOINT = 'https://api.line.me/v2/bot/richmenu/validate'
 const RICHMENU_ALIAS_ENDPOINT = 'https://api.line.me/v2/bot/richmenu/alias'
@@ -99,6 +100,32 @@ export async function setWebhookEndpoint(accessToken: string, endpoint: string):
       `เชื่อมต่อ LINE ไม่สำเร็จ ตั้ง webhook ไม่ได้ (${response.status}) ${await response.text()}`,
     )
   }
+}
+
+/**
+ * ปุ่ม "ดึง Bot User ID อัตโนมัติ" ของจอแก้บัญชี LINE ต้องใช้ — เหตุการณ์จริงที่พังมาก่อน:
+ * คนกรอกช่อง `line_bot_user_id` ผิด เพราะไปก๊อปค่า "Your user ID" จากแท็บ Basic
+ * settings ของ LINE Developers Console มา ซึ่งเป็น userId ส่วนตัวของนักพัฒนา ไม่ใช่
+ * userId ของบอท — คอนโซลของ LINE เองไม่มีปุ่มไหนโชว์ userId ที่ถูกต้องของบอทเลย
+ * ทางเดียวที่เชื่อถือได้คือเรียก API นี้ (`GET /v2/bot/info`) ด้วย Channel access token
+ * แล้วอ่านค่าจากฟิลด์ `userId` ที่ตอบกลับมา ซึ่งตรงกับค่าที่ LINE ส่งมาเป็น `destination`
+ * ในทุก webhook จริง (เทียบกับ log จริงแล้ว) — findChannelByBotUserId() ใช้ค่านี้แหละ
+ * หาบัญชีก่อนจะตรวจลายเซ็นด้วยซ้ำ
+ *
+ * เมธอด GET ไม่มี body — ต่างจากฟังก์ชันอื่นในไฟล์นี้ที่เกือบทั้งหมดเป็น POST/PUT
+ */
+export async function getBotInfo(accessToken: string): Promise<{ userId: string }> {
+  const response = await fetch(BOT_INFO_ENDPOINT, {
+    method: 'GET',
+    signal: AbortSignal.timeout(5000),
+    headers: { Authorization: `Bearer ${accessToken}` },
+  })
+
+  if (!response.ok) {
+    throw new Error(`ดึงข้อมูลบอทจาก LINE ไม่สำเร็จ (${response.status}) ${await response.text()}`)
+  }
+  const body = await response.json() as { userId: string }
+  return { userId: body.userId }
 }
 
 export type LineRichMenuArea = {

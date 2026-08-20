@@ -28,14 +28,18 @@ export const metadata: Metadata = {
   description: 'เครื่องมือภายในสำหรับสร้างแคมเปญบน LINE',
 }
 
-/**
- * ค่าเริ่มต้นของ Vercel คือ iad1 (Virginia, USA) — ทุกจอและ webhook ที่ /api/line
- * เลยต้องวิ่งข้ามมหาสมุทรไปหาฐานข้อมูลทุกครั้ง ทั้งที่ Supabase ของโปรเจกต์นี้อยู่
- * ap-southeast-1 (สิงคโปร์) และผู้เล่นจริงอยู่เอเชียทั้งหมด — sin1 คือภูมิภาคของ
- * Vercel ที่ใกล้สิงคโปร์ที่สุด ตั้งไว้ที่ root layout เพื่อให้มีผลกับทุก route ในแอป
- * ไม่ใช่แค่ webhook จุดเดียว (ทุกจอแอดมินก็อ่าน/เขียน DB เดียวกันนี้เหมือนกัน)
- */
-export const preferredRegion = 'sin1'
+// ภูมิภาคของ Vercel Function ตั้งไว้ที่ vercel.json ("regions": ["sin1"]) ที่ root
+// ของ repo แล้ว ไม่ใช่ตรงนี้ — เดิมเคยลองตั้ง `export const preferredRegion = 'sin1'`
+// ที่นี่ แต่ log จริงของ /api/line/webhook ยังขึ้น "Routed to iad1" ทุกครั้งไม่มีเว้น
+// (ตรวจซ้ำหลาย deploy วันที่ 2026-08-17) ทวนกับเอกสาร Next.js แล้วพบว่า preferredRegion
+// เป็น route segment config ที่ deprecated ไปแล้ว และต่อให้ยังใช้ได้ Vercel ก็รับแค่
+// 'auto' | 'global' | 'home' เท่านั้นสำหรับ Node.js runtime — ค่าที่เป็น region code ตรงๆ
+// อย่าง 'sin1' ถูกเมินเงียบๆ ไม่ error ไม่เตือน จึงย้ายมาตั้งที่ vercel.json ซึ่งเป็นทางที่
+// Vercel เอกสารรองรับจริง (Project Settings → Functions หรือ vercel.json ก็ได้ แต่แบบหลัง
+// ผูกไว้ใน repo ไม่ต้องพึ่งใครไปตั้งในแดชบอร์ดแล้วลืม) — เหตุผลเดิมยังใช้ได้ทั้งหมด:
+// Supabase ของโปรเจกต์นี้อยู่ ap-southeast-1 (สิงคโปร์) และผู้เล่นจริงอยู่เอเชียทั้งหมด
+// sin1 คือภูมิภาคของ Vercel ที่ใกล้ทั้งสองอย่างที่สุด ตั้งระดับ project จึงมีผลกับทุก
+// route ในแอป ไม่ใช่แค่ webhook จุดเดียว (ทุกจอแอดมินก็อ่าน/เขียน DB เดียวกันนี้เหมือนกัน)
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
