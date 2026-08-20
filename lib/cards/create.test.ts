@@ -94,10 +94,7 @@ describe('hasSampleText · BR-37', () => {
 })
 
 /**
- * แกนที่หนึ่ง · ห้าชนิดใน CHECK แต่สไลซ์นี้เปิดสี่ (imagemap_video ยังปิดอยู่)
- *
- * ตัวที่ยังไม่เปิดต้องอยู่ในรายการพร้อมเหตุผล ไม่ใช่หายไปเฉยๆ — ตัวเลือกที่ถูกซ่อน
- * ทำให้เพดานดูเหมือนการตัดสินใจออกแบบ แทนที่จะเป็นตัววาดที่ยังไม่มีใครทำ
+ * แกนที่หนึ่ง · ห้าชนิดใน CHECK และสไลซ์นี้เปิดครบทั้งห้า (imagemap_video เปิดแล้ว — เฟส 2)
  */
 describe('SEND_TYPE_OPTIONS', () => {
   it('มีครบทั้งห้าค่าที่ CHECK ของ card.render_as ยอมรับ ไม่ขาดไม่เกิน', () => {
@@ -106,26 +103,13 @@ describe('SEND_TYPE_OPTIONS', () => {
       .toEqual([...CARD_RENDER_TYPES].sort())
   })
 
-  it('ตัวที่เลือกได้อยู่ก่อนตัวที่ยังเลือกไม่ได้', () => {
-    const openFlags = SEND_TYPE_OPTIONS.map((o) => o.open)
-    expect(openFlags.lastIndexOf(true)).toBeLessThan(openFlags.indexOf(false))
+  it('เปิดครบทั้งห้าตัว ไม่มีตัวไหนถูกปิดค้างไว้', () => {
+    expect(SEND_TYPE_OPTIONS.every((o) => o.open)).toBe(true)
+    expect(SEND_TYPE_OPTIONS.map((o) => o.value).sort()).toEqual([...CARD_RENDER_TYPES].sort())
   })
 
-  it('เปิดสี่ตัว ปิดตัวเดียว (imagemap_video)', () => {
-    expect(SEND_TYPE_OPTIONS.filter((o) => o.open).map((o) => o.value))
-      .toEqual(['flex_bubble', 'flex_carousel', 'text', 'imagemap'])
-    expect(SEND_TYPE_OPTIONS.filter((o) => !o.open).map((o) => o.value))
-      .toEqual(['imagemap_video'])
-  })
-
-  it('ตัวที่ปิดอยู่บอกเหตุผลไว้ทุกตัว และอ้าง OI-27', () => {
-    for (const option of SEND_TYPE_OPTIONS.filter((o) => !o.open)) {
-      expect(option.blockedReason).toContain('OI-27')
-    }
-  })
-
-  it('ตัวที่เปิดอยู่ไม่มีเหตุผลค้างไว้ให้จอเผลอไปวาด', () => {
-    for (const option of SEND_TYPE_OPTIONS.filter((o) => o.open)) {
+  it('ไม่มีตัวไหนมีเหตุผลค้างไว้ให้จอเผลอไปวาด', () => {
+    for (const option of SEND_TYPE_OPTIONS) {
       expect(option.blockedReason).toBeUndefined()
     }
   })
@@ -137,15 +121,11 @@ describe('SEND_TYPE_OPTIONS', () => {
 })
 
 describe('asSendType', () => {
-  it('รับเฉพาะชนิดที่สไลซ์นี้เปิด', () => {
+  it('รับทุกชนิดที่สไลซ์นี้เปิด', () => {
     expect(asSendType('flex_bubble')).toBe('flex_bubble')
     expect(asSendType('text')).toBe('text')
     expect(asSendType('imagemap')).toBe('imagemap')
-  })
-
-  it('ชนิดที่ยังปิดอยู่ถูกปฏิเสธ แม้จะเป็นค่าที่ CHECK ยอมรับ', () => {
-    // URL แต่งเองได้ · จอซ่อนปุ่มไว้ไม่ได้แปลว่าไม่มีใครยิงค่านั้นเข้ามา
-    expect(asSendType('imagemap_video')).toBeNull()
+    expect(asSendType('imagemap_video')).toBe('imagemap_video')
   })
 
   it('ค่าที่ไม่รู้จักและค่าว่างคืน null', () => {

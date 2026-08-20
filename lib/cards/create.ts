@@ -14,8 +14,8 @@ import type { BlockType } from '../render/groups'
  * ยังไง ไม่ได้รู้ว่ามีตัวไหนบ้าง
  */
 
-/** สี่ชนิดที่สไลซ์นี้เปิดให้สร้าง · imagemap_video ตัวเดียวที่ยังรอตัววาดภาพ (OI-27 เฟส 2 — ต้องมีตัวจัดการวิดีโอด้วย) */
-export type SendType = 'flex_bubble' | 'flex_carousel' | 'imagemap' | 'text'
+/** ห้าชนิดที่สไลซ์นี้เปิดให้สร้างได้ทั้งหมด — ตรงกับ CHECK ของ card.render_as เป๊ะ */
+export type SendType = 'flex_bubble' | 'flex_carousel' | 'imagemap' | 'imagemap_video' | 'text'
 
 export type SendTypeOption = {
   value: CardRenderType
@@ -28,15 +28,13 @@ export type SendTypeOption = {
 }
 
 /**
- * ห้าชนิด ไม่ใช่สี่
+ * ห้าชนิด ครบทุกตัว
  *
- * `card.render_as` รับห้าค่าและจอต้องแสดงครบห้า · ตัวที่ยังทำไม่ได้ (imagemap_video)
- * อยู่ในรายการแบบกดไม่ได้พร้อมเหตุผล เพราะการซ่อนมันทำให้เพดานของสไลซ์นี้ดูเหมือน
- * การตัดสินใจออกแบบ แทนที่จะเป็นตัววาดภาพที่ยังไม่มีใครเขียน · คนที่ต้องการริชวิดีโอ
- * จะได้รู้ว่ามันกำลังมา ไม่ใช่เดาว่าระบบนี้ไม่รองรับ
- *
- * imagemap (ริชเมสเสจภาพล้วน) เปิดแล้ว — ตัวจัดวางภาพของมันคือจอแยกต่างหาก
- * (app/(admin)/campaigns/[id]/cards/[cardId]/imagemap) ไม่ใช่บล็อกเอดิเตอร์แบบสามตัวแรก
+ * `card.render_as` รับห้าค่าและจอแสดงครบห้า — imagemap (ริชเมสเสจภาพล้วน, เฟส 1)
+ * กับ imagemap_video (ริชวิดีโอ, เฟส 2 · OI-27) เปิดทั้งคู่แล้ว ตัวจัดวางภาพของทั้ง
+ * สองคือจอแยกต่างหากเดียวกัน (app/(admin)/campaigns/[id]/cards/[cardId]/imagemap)
+ * ไม่ใช่บล็อกเอดิเตอร์แบบสามตัวแรก — imagemap_video ต่างตรงที่มีช่องอัปโหลดวิดีโอ/
+ * ภาพตัวอย่างเพิ่มมาในจอเดียวกัน (ดู components/imagemap/ImagemapEditor.tsx)
  */
 export const SEND_TYPE_OPTIONS: readonly SendTypeOption[] = [
   {
@@ -67,8 +65,7 @@ export const SEND_TYPE_OPTIONS: readonly SendTypeOption[] = [
     value: 'imagemap_video',
     name: CARD_RENDER_NAME.imagemap_video,
     detail: 'ภาพเต็มใบที่มีวิดีโอเล่นอยู่ข้างใน',
-    open: false,
-    blockedReason: 'รอตัววาดภาพ · OI-27',
+    open: true,
   },
 ]
 
@@ -82,12 +79,7 @@ export const OPEN_SEND_TYPES: readonly SendType[] = SEND_TYPE_OPTIONS
   .filter((option) => option.open)
   .map((option) => option.value as SendType)
 
-/**
- * ค่าจาก URL หรือจากฟอร์มที่แต่งเอง กลายเป็นชนิดที่ยอมรับได้
- *
- * `imagemap_video` ยังอยู่ใน CHECK ของคอลัมน์ แต่คืน null ที่นี่ — ค่าที่ฐานข้อมูล
- * รับได้ไม่ใช่ค่าที่สไลซ์นี้วาดออกมาได้ และการ์ดที่ไม่มีใครวาดได้คือความเงียบในแชท
- */
+/** ค่าจาก URL หรือจากฟอร์มที่แต่งเอง กลายเป็นชนิดที่ยอมรับได้ — อ่านจาก OPEN_SEND_TYPES เท่านั้น ไม่มีรายการที่สอง */
 export function asSendType(raw: string | null | undefined): SendType | null {
   return (OPEN_SEND_TYPES as readonly string[]).includes(raw ?? '')
     ? (raw as SendType)
