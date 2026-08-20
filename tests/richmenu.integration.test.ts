@@ -7,6 +7,7 @@ import {
   createRichMenu, deleteRichMenu, DuplicateAliasError, loadRichMenuScreen, publishRichMenus,
   RichMenuInUseError, setAreaTarget, setEntryMenu, setLayout, setMenuImage, updateRichMenu,
 } from '../lib/db/richmenu'
+import { lineAliasIdFor } from '../lib/richmenu/areas'
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
 
@@ -316,7 +317,23 @@ describe('publishRichMenus · ฐานข้อมูลจริง + LINE moc
     const aliasCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/richmenu/alias'))
     expect(aliasCalls).toHaveLength(1)
     const body = JSON.parse(aliasCalls[0][1].body)
-    expect(body.richMenuAliasId).toBe('promo')
+    // richMenuAliasId มาจาก id ของเมนู ไม่ใช่ "ชื่อเรียกเมนู (alias)" ที่คนพิมพ์เอง
+    // (ERR-044 ที่เจอจริง — LINE จำกัดตัวอักษรของ id นี้ไว้ แต่ชื่อเรียกพิมพ์เป็นอะไรก็ได้)
+    expect(body.richMenuAliasId).toBe(lineAliasIdFor(target.id))
+  })
+
+  it('ชื่อเรียกเมนูเป็นภาษาไทยมีช่องว่าง — ยัง publish ผ่านได้ปกติ ไม่ชนข้อจำกัดของ LINE (ERR-044 ที่เจอจริง)', async () => {
+    const s = await scene()
+    const target = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'โปรโมชั่น เดือนนี้', imageAssetId: s.assetId, layout: 'large_1' })
+    const source = await createRichMenu(sql, { campaignId: s.campaignId, alias: 'main', imageAssetId: s.assetId2, layout: 'large_1' })
+    await fillArea(target.id, s.campaignId)
+    await setAreaTarget(sql, { id: source.id, campaignId: s.campaignId, index: 0, kind: 'menu', target: target.id })
+
+    await publishRichMenus(sql, { campaignId: s.campaignId, campaignCode: 'x', accessToken: 't', store: fakeStore })
+
+    const aliasCalls = fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/richmenu/alias'))
+    const body = JSON.parse(aliasCalls[0][1].body)
+    expect(body.richMenuAliasId).toMatch(/^[a-zA-Z0-9_-]{1,32}$/)
   })
 
   it('LINE ปฏิเสธตอน validate (4b) — โยน error พร้อมรหัส ERR-044 และไม่เขียน line_rich_menu_id', async () => {

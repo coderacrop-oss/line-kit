@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
-  asAreaKind, buildAreas, countEmpty, type RichMenuArea, setAreaTarget, toLineArea,
+  asAreaKind, buildAreas, countEmpty, lineAliasIdFor, type RichMenuArea, setAreaTarget, toLineArea,
 } from './areas'
 import { layoutRects } from './layouts'
 
@@ -81,6 +81,29 @@ describe('asAreaKind', () => {
     expect(asAreaKind('none')).toBe('none')
     expect(asAreaKind('datetimepicker')).toBe('none')
     expect(asAreaKind(undefined)).toBe('none')
+  })
+})
+
+describe('lineAliasIdFor · richMenuAliasId ที่ปลอดภัยเสมอ ไม่ว่าคนจะตั้งชื่อเรียกเมนูเป็นอะไร', () => {
+  const UUID = 'a1b2c3d4-e5f6-4789-a012-3456789abcde'
+
+  it('ตัดขีดกลางของ UUID ออก เหลือตัวอักษร/ตัวเลขล้วน', () => {
+    expect(lineAliasIdFor(UUID)).toBe('a1b2c3d4e5f64789a0123456789abcde')
+  })
+
+  it('ผลลัพธ์ไม่เกิน 32 ตัวอักษร และมีแต่ a-z 0-9 (ตรงข้อจำกัดจริงของ LINE)', () => {
+    const result = lineAliasIdFor(UUID)
+    expect(result.length).toBeLessThanOrEqual(32)
+    expect(result).toMatch(/^[a-z0-9]+$/)
+  })
+
+  it('เมนู id เดิม ได้ผลลัพธ์เดิมเสมอ (คงที่ข้ามการ publish ซ้ำ — BR-77)', () => {
+    expect(lineAliasIdFor(UUID)).toBe(lineAliasIdFor(UUID))
+  })
+
+  it('เมนูคนละใบ (id ต่างกัน) ได้ผลลัพธ์ต่างกัน — ไม่ชนกัน', () => {
+    expect(lineAliasIdFor('11111111-1111-1111-1111-111111111111'))
+      .not.toBe(lineAliasIdFor('22222222-2222-2222-2222-222222222222'))
   })
 })
 
