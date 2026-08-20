@@ -9,7 +9,6 @@ const state: {
   screen: PublishScreenData
   statements: Array<{ text: string; values: unknown[] }>
   events: string[]
-  redirectedTo: string | null
   lineFails: boolean
   campaignCardIds: string[]
 } = {
@@ -18,7 +17,6 @@ const state: {
   screen: {} as PublishScreenData,
   statements: [],
   events: [],
-  redirectedTo: null,
   lineFails: false,
   campaignCardIds: ['c1'],
 }
@@ -58,12 +56,6 @@ vi.mock('next/headers', () => ({
   }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('next/navigation', () => ({
-  redirect: (to: string) => {
-    state.redirectedTo = to
-    throw new Error('NEXT_REDIRECT')
-  },
-}))
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 vi.mock('@/lib/db/publish', async (importOriginal) => ({
   ...(await importOriginal<typeof import('@/lib/db/publish')>()),
@@ -134,8 +126,18 @@ const form = (fields: Record<string, string>) => {
   return data
 }
 
-const runExpectingRedirect = async (data: FormData) => {
-  await expect(publish('camp-1', data)).rejects.toThrow('NEXT_REDIRECT')
+/** เรียก publish แล้วยืนยันว่าสำเร็จ · คืนเลขเวอร์ชันที่ได้ให้เทสต์ที่อยากตรวจต่อ */
+const expectSuccess = async (data: FormData, campaignId = 'camp-1') => {
+  const result = await publish(campaignId, data)
+  if (!result.ok) throw new Error(`คาดว่าสำเร็จ แต่ล้มด้วยข้อความ: ${result.message}`)
+  return result
+}
+
+/** เรียก publish แล้วยืนยันว่าล้ม · คืนข้อความ error ให้เทสต์ที่อยากตรวจเนื้อหาต่อ */
+const expectFailure = async (data: FormData, campaignId = 'camp-1') => {
+  const result = await publish(campaignId, data)
+  if (result.ok) throw new Error('คาดว่าล้ม แต่กลับสำเร็จ')
+  return result.message
 }
 
 beforeEach(() => {
@@ -143,7 +145,6 @@ beforeEach(() => {
   state.user = undefined
   state.statements = []
   state.events = []
-  state.redirectedTo = null
   state.lineFails = false
   state.screen = goodScreen([aChannel()])
   state.campaignCardIds = ['c1']
@@ -161,31 +162,31 @@ beforeEach(() => {
  */
 describe('publish · ด่านสิทธิ์', () => {
   it('ยังไม่ได้เข้าระบบ ส่งขึ้นไม่ได้', async () => {
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toContain('ต้องเข้าสู่ระบบก่อน')
     expect(writes()).toEqual([])
     expect(setWebhookEndpoint).not.toHaveBeenCalled()
   })
 
   it('มีคุกกี้แต่ไม่มีชื่อในรายชื่อที่อนุญาต ส่งขึ้นไม่ได้', async () => {
     state.cookie = 'ghost@example.com'
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toContain('ต้องเข้าสู่ระบบก่อน')
     expect(writes()).toEqual([])
   })
 
   it('สิทธิ์ถูกถอนแล้ว role เดิมไม่ช่วย', async () => {
     signedInAs('configurator', false)
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toContain('ต้องเข้าสู่ระบบก่อน')
     expect(writes()).toEqual([])
   })
 
   for (const role of ['content_editor', 'reporter']) {
     it(`${role} ส่งขึ้นไม่ได้ — การส่งขึ้นเป็นสิทธิ์ของผู้ตั้งค่าแคมเปญ`, async () => {
       signedInAs(role)
-      await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-        .rejects.toThrow('ไม่มีสิทธิ์')
+      const message = await expectFailure(form({ channel_id: 'ch-test' }))
+      expect(message).toContain('ไม่มีสิทธิ์')
       expect(writes()).toEqual([])
       expect(setWebhookEndpoint).not.toHaveBeenCalled()
     })
@@ -193,13 +194,13 @@ describe('publish · ด่านสิทธิ์', () => {
 
   it('ผู้ตั้งค่าแคมเปญส่งขึ้นได้', async () => {
     signedInAs('configurator')
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     expect(writes().length).toBeGreaterThan(0)
   })
 
   it('ด่านสิทธิ์มาก่อนการอ่านกุญแจ — role ที่ไม่มีสิทธิ์ต้องไม่ทำให้กุญแจถูกถอดรหัส', async () => {
     signedInAs('reporter')
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' }))).rejects.toThrow()
+    await expectFailure(form({ channel_id: 'ch-test' }))
     expect(readChannelSecret).not.toHaveBeenCalled()
   })
 })
@@ -208,13 +209,14 @@ describe('publish · เลือกบัญชีปลายทาง', () =>
   beforeEach(() => { signedInAs('configurator') })
 
   it('ยังไม่ได้เลือกบัญชี ไม่เขียนอะไรเลย', async () => {
-    await expect(publish('camp-1', form({ channel_id: '' }))).rejects.toThrow('บัญชี')
+    const message = await expectFailure(form({ channel_id: '' }))
+    expect(message).toContain('บัญชี')
     expect(writes()).toEqual([])
   })
 
   it('บัญชีที่ไม่มีอยู่ในรายการที่ส่งขึ้นได้ ถูกปฏิเสธ', async () => {
-    await expect(publish('camp-1', form({ channel_id: 'ch-preview' })))
-      .rejects.toThrow('ไม่พบบัญชี')
+    const message = await expectFailure(form({ channel_id: 'ch-preview' }))
+    expect(message).toContain('ไม่พบบัญชี')
     expect(writes()).toEqual([])
     expect(readChannelSecret).not.toHaveBeenCalled()
   })
@@ -228,8 +230,8 @@ describe('publish · ด่านตรวจความครบถ้วน',
 
   it('มีปัญหาค้างอยู่ ส่งขึ้นไม่ได้ และไม่มี version ถูกสร้าง', async () => {
     state.screen.base.cards = [{ id: 'c1', code: 'win', hasSampleText: true, blocks: 2 }]
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow('ยังส่งขึ้นไม่ได้')
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toContain('ยังส่งขึ้นไม่ได้')
     expect(writes()).toEqual([])
     expect(setWebhookEndpoint).not.toHaveBeenCalled()
   })
@@ -239,13 +241,13 @@ describe('publish · ด่านตรวจความครบถ้วน',
       { id: 'c1', code: 'win', hasSampleText: true, blocks: 2 },
       { id: 'c2', code: 'lose', hasSampleText: true, blocks: 0 },
     ]
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow(/ขาด \d+ รายการ/)
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toMatch(/ขาด \d+ รายการ/)
   })
 
   it('ด่านตรวจมาก่อนการอ่านกุญแจ — config ที่ยังไม่ครบต้องไม่ทำให้กุญแจถูกถอดรหัส', async () => {
     state.screen.base.keywordRules = []
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' }))).rejects.toThrow()
+    await expectFailure(form({ channel_id: 'ch-test' }))
     expect(readChannelSecret).not.toHaveBeenCalled()
   })
 })
@@ -260,30 +262,30 @@ describe('publish · BR-18', () => {
   })
 
   it('บัญชีจริงที่ไม่ได้พิมพ์ยืนยัน ส่งขึ้นไม่ได้', async () => {
-    await expect(publish('camp-1', form({ channel_id: 'ch-prod' })))
-      .rejects.toThrow('ยังส่งขึ้นไม่ได้')
+    const message = await expectFailure(form({ channel_id: 'ch-prod' }))
+    expect(message).toContain('ยังส่งขึ้นไม่ได้')
     expect(writes()).toEqual([])
   })
 
   it('พิมพ์คำอื่นมา ก็ยังไม่ผ่าน', async () => {
-    await expect(publish('camp-1', form({ channel_id: 'ch-prod', confirm: 'ok' })))
-      .rejects.toThrow('ยังส่งขึ้นไม่ได้')
+    const message = await expectFailure(form({ channel_id: 'ch-prod', confirm: 'ok' }))
+    expect(message).toContain('ยังส่งขึ้นไม่ได้')
     expect(writes()).toEqual([])
   })
 
   it('พิมพ์คำยืนยันถูก ผ่าน', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-prod', confirm: CONFIRM_WORD }))
+    await expectSuccess(form({ channel_id: 'ch-prod', confirm: CONFIRM_WORD }))
     expect(writes().length).toBeGreaterThan(0)
   })
 
   it('ช่องว่างหน้าหลังไม่ทำให้คำยืนยันใช้ไม่ได้', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-prod', confirm: `  ${CONFIRM_WORD} ` }))
+    await expectSuccess(form({ channel_id: 'ch-prod', confirm: `  ${CONFIRM_WORD} ` }))
     expect(writes().length).toBeGreaterThan(0)
   })
 
   it('บัญชีทดสอบไม่ต้องยืนยัน', async () => {
     state.screen = goodScreen([aChannel()])
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     expect(writes().length).toBeGreaterThan(0)
   })
 })
@@ -298,8 +300,8 @@ describe('publish · กันชนบัญชี', () => {
     state.screen = goodScreen([
       aChannel({ liveCampaign: { id: 'camp-2', name: 'ปีใหม่ 2569' } }),
     ])
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow('ปีใหม่ 2569')
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toContain('ปีใหม่ 2569')
     expect(writes()).toEqual([])
     expect(setWebhookEndpoint).not.toHaveBeenCalled()
   })
@@ -308,15 +310,15 @@ describe('publish · กันชนบัญชี', () => {
     state.screen = goodScreen([
       aChannel({ liveCampaign: { id: 'camp-2', name: 'ปีใหม่ 2569' } }),
     ])
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow(/ถอนแคมเปญนั้นก่อน/)
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toMatch(/ถอนแคมเปญนั้นก่อน/)
   })
 
   it('แคมเปญที่เปิดอยู่คือตัวเอง ส่งขึ้นซ้ำได้ — เป็นการทับด้วยเวอร์ชันใหม่', async () => {
     state.screen = goodScreen([
       aChannel({ liveCampaign: { id: 'camp-1', name: 'ตัวเอง' }, publishedVersion: 3 }),
     ])
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     expect(writes().length).toBeGreaterThan(0)
   })
 })
@@ -328,31 +330,31 @@ describe('publish · สิ่งที่เกิดขึ้นเมื่�
   beforeEach(() => { signedInAs('configurator') })
 
   it('สร้าง config_version ใหม่ · เลขเวอร์ชันมาจากฐานข้อมูล ไม่ใช่จากที่จอนับมา', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     const insert = writes().find((w) => /INSERT INTO config_version/.test(w.text))!
     expect(insert.text).toContain('max(version_no)')
     expect(insert.values).not.toContain(4)
   })
 
   it('ผูกบัญชีกับแคมเปญและตั้งว่าเปิดอยู่', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     const bind = writes().find((w) => /INSERT INTO campaign_channel/.test(w.text))!
     expect(bind.text).toContain('is_published = true')
   })
 
   it('แคมเปญถูกตั้งเป็นส่งขึ้นแล้ว', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     expect(writes().some((w) => /UPDATE campaign SET status = 'published'/.test(w.text))).toBe(true)
   })
 
   it('ตั้ง webhook ที่ LINE ด้วยโทเคนของบัญชีนั้น ไม่ใช่ของ env', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     expect(setWebhookEndpoint)
       .toHaveBeenCalledWith('oa-access-token', 'https://flex.example.com/api/line/webhook')
   })
 
   it('การอ่านกุญแจถูกบันทึกด้วยจุดประสงค์ publish และชื่อคนกด', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     expect(readChannelSecret).toHaveBeenCalledWith(sql, {
       channelId: 'ch-test', field: 'token', purpose: 'publish', appUserId: 'u1',
     })
@@ -366,7 +368,7 @@ describe('publish · สิ่งที่เกิดขึ้นเมื่�
    * ร่องรอยที่คนจะอยากหาที่สุด
    */
   it('กุญแจถูกอ่านก่อนธุรกรรมเปิด', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     const readAt = state.events.findIndex((e) => e.startsWith('read-token'))
     const txAt = state.events.indexOf('tx-open')
     expect(readAt).toBeGreaterThanOrEqual(0)
@@ -375,7 +377,7 @@ describe('publish · สิ่งที่เกิดขึ้นเมื่�
   })
 
   it('LINE ถูกเรียกหลังจาก version ถูกเขียน — ล้มแล้วธุรกรรมย้อนทั้งก้อน', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
+    await expectSuccess(form({ channel_id: 'ch-test' }))
     const writeAt = state.events.indexOf('write')
     const lineAt = state.events.findIndex((e) => e.startsWith('line:'))
     expect(writeAt).toBeLessThan(lineAt)
@@ -384,21 +386,21 @@ describe('publish · สิ่งที่เกิดขึ้นเมื่�
 
   it('LINE ปฏิเสธแล้วข้อผิดพลาดถูกส่งต่อ ไม่ถูกกลืน และไม่พาไปหน้าสำเร็จ', async () => {
     state.lineFails = true
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow(/webhook/)
-    expect(state.redirectedTo).toBeNull()
+    const result = await publish('camp-1', form({ channel_id: 'ch-test' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toMatch(/webhook/)
   })
 
   it('ยังไม่ได้ตั้งที่อยู่สาธารณะ ส่งขึ้นไม่ได้ และไม่เขียนอะไรเลย', async () => {
     vi.stubEnv('PUBLIC_BASE_URL', '')
-    await expect(publish('camp-1', form({ channel_id: 'ch-test' })))
-      .rejects.toThrow('PUBLIC_BASE_URL')
+    const message = await expectFailure(form({ channel_id: 'ch-test' }))
+    expect(message).toContain('PUBLIC_BASE_URL')
     expect(writes()).toEqual([])
   })
 
-  it('พากลับมาที่จอเดิมพร้อมเลขเวอร์ชันที่เพิ่งได้', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test' }))
-    expect(state.redirectedTo).toBe('/campaigns/camp-1/publish?done=4')
+  it('สำเร็จแล้วคืนเลขเวอร์ชันที่เพิ่งได้ — ไม่ redirect ข้าม Server Action boundary เอง', async () => {
+    const result = await expectSuccess(form({ channel_id: 'ch-test' }))
+    expect(result.versionNo).toBe(4)
   })
 })
 
@@ -409,14 +411,14 @@ describe('publish · ฟอร์มแต่งเองแล้วข้า�
   beforeEach(() => { signedInAs('configurator') })
 
   it('รหัสแคมเปญมาจากตัว action ไม่ใช่จากฟอร์ม', async () => {
-    await runExpectingRedirect(form({ channel_id: 'ch-test', campaign_id: 'camp-อื่น' }))
+    await expectSuccess(form({ channel_id: 'ch-test', campaign_id: 'camp-อื่น' }))
     const insert = writes().find((w) => /INSERT INTO config_version/.test(w.text))!
     expect(insert.values).toContain('camp-1')
     expect(insert.values).not.toContain('camp-อื่น')
   })
 
   it('ชื่อคนส่งขึ้นมาจาก session ไม่ใช่จากฟอร์ม', async () => {
-    await runExpectingRedirect(form({
+    await expectSuccess(form({
       channel_id: 'ch-test', published_by: 'ใครก็ไม่รู้', app_user_id: 'ใครก็ไม่รู้',
     }))
     const insert = writes().find((w) => /INSERT INTO config_version/.test(w.text))!
@@ -430,14 +432,16 @@ describe('publish · ฟอร์มแต่งเองแล้วข้า�
     for (const key of ['skip_validation', 'force', 'ignore_problems', 'confirmed']) {
       forged.append(key, 'true')
     }
-    await expect(publish('camp-1', forged)).rejects.toThrow('ยังส่งขึ้นไม่ได้')
+    const message = await expectFailure(forged)
+    expect(message).toContain('ยังส่งขึ้นไม่ได้')
     expect(writes()).toEqual([])
   })
 
   it('ส่งชนิดของบัญชีมาเองเพื่อเลี่ยง BR-18 ก็ไม่มีผล', async () => {
     state.screen = goodScreen([aChannel({ id: 'ch-prod', channelType: 'production' })])
     const forged = form({ channel_id: 'ch-prod', channel_type: 'test' })
-    await expect(publish('camp-1', forged)).rejects.toThrow('ยังส่งขึ้นไม่ได้')
+    const message = await expectFailure(forged)
+    expect(message).toContain('ยังส่งขึ้นไม่ได้')
     expect(writes()).toEqual([])
   })
 })

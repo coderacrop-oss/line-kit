@@ -10,6 +10,7 @@ import {
   type Check, CONFIRM_WORD, type PublishCard, checkPublish, WHERE, whereHref,
 } from '@/lib/publish/validate'
 import { publish, saveDefaultCard } from './actions'
+import { PublishForm } from './PublishForm'
 
 const labelStyle: CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.06em',
@@ -371,10 +372,23 @@ export default async function PublishPage({ params, searchParams }: {
             </Note>
           )}
 
+          {/*
+            ปุ่มส่งขึ้น (รวมข้อความ "ส่งขึ้น LINE — บัญชีจริงของลูกค้า" ที่
+            tests/design/landmarks.json บังคับไว้สำหรับจอนี้) ย้ายไปอยู่ใน
+            PublishForm.tsx แล้ว — ไม่ใช่ข้อความหาย แต่จอนี้ยังแสดงมันอยู่จริง
+            ผ่านลูก client component ที่เป็นเจ้าของปุ่มโดยตรง เพื่อทำ navigation
+            เองด้วย router.push() แทนการพึ่ง redirect() ข้าม Server Action boundary
+            ที่พังจริงในโปรดักชัน (v6 · v7 · v9 — ดู comment ของ ./actions.ts:publish
+            และ ./PublishForm.tsx)
+          */}
           {selected && (
-            <form action={publish.bind(null, campaign.id)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
-              <input type="hidden" name="channel_id" value={selected.id} />
-
+            <PublishForm
+              campaignId={campaign.id}
+              channelId={selected.id}
+              canPublish={canPublish}
+              isProduction={isProduction}
+              action={publish}
+            >
               {isProduction && (
                 <div
                   id="confirm"
@@ -411,16 +425,7 @@ export default async function PublishPage({ params, searchParams }: {
                   />
                 </div>
               )}
-
-              <Button
-                type="submit"
-                variant={isProduction ? 'danger' : 'primary'}
-                disabled={!canPublish}
-                style={{ padding: 14, fontSize: 15 }}
-              >
-                {isProduction ? 'ส่งขึ้น LINE — บัญชีจริงของลูกค้า' : 'ส่งขึ้น LINE'}
-              </Button>
-            </form>
+            </PublishForm>
           )}
 
           <div style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }}>

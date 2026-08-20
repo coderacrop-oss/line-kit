@@ -32,6 +32,10 @@ vi.mock('next/navigation', () => ({
     state.notFound = true
     throw new Error('NEXT_NOT_FOUND')
   },
+  // PublishForm (ฝั่ง client) เรียก useRouter().push() เอง แทนที่จะพึ่ง redirect()
+  // ของ Server Action — จอนี้ไม่ได้เทสต์ path นั้นตรงๆ (ดู PublishForm.test.tsx)
+  // แต่ต้อง mock ไว้เพราะ PublishForm ถูก render จริงเป็นลูกของจอนี้
+  useRouter: () => ({ push: () => {} }),
 }))
 vi.mock('@/lib/auth/session', () => ({ getSession: async () => state.session }))
 vi.mock('@/lib/db/client', () => ({ db: () => ({}) }))
