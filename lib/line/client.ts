@@ -183,15 +183,27 @@ export async function uploadRichMenuImage(
 }
 
 /** รหัสสถานะที่ LINE ตอบเมื่อ alias นี้มีอยู่แล้ว — ต้องเรียกอัปเดตแทนการสร้างใหม่ */
+/** เผื่อไว้ทั้งสองแบบ — ดูหมายเหตุใต้ alreadyExists() ว่าทำไมเช็คสถานะเดียวไม่พอ */
 const ALIAS_ALREADY_EXISTS = 409
+
+/**
+ * LINE ไม่ได้ตอบสถานะเดียวกันเสมอสำหรับ "alias นี้มีอยู่แล้ว" — เอกสารบอกไว้ 409
+ * แต่เจอจริงจากการ publish จริงเป็น **400** พร้อมข้อความ `"conflict richmenu
+ * alias id"` (ไม่ใช่ 409 ตามที่คาด) เช็คแค่สถานะอย่างเดียวจึงพลาดเคสนี้ไป โยน error
+ * ทั้งที่ควรอัปเดตแทน — เช็คทั้งสถานะและเนื้อความ ไม่ว่า LINE จะตอบมาแบบไหนก็จับได้
+ * (แบบเดียวกับที่ lib/assets/store.ts เช็คไฟล์ซ้ำของ Supabase Storage)
+ */
+function aliasAlreadyExists(status: number, body: string): boolean {
+  return status === ALIAS_ALREADY_EXISTS || body.includes('conflict')
+}
 
 /**
  * ขั้น 5b ของ §4.4 (BR-77) · ลงทะเบียน alias ให้ชี้ไปที่เมนูรุ่นล่าสุด
  *
  * alias ใหม่เอี่ยม (แคมเปญนี้เพิ่งใช้ชื่อนี้ครั้งแรก) → สร้าง (`POST .../alias`)
- * alias ที่มีอยู่แล้วจากแคมเปญก่อน (สร้างซ้ำแล้วโดน 409) → อัปเดตให้ชี้ใหม่แทน
- * (`POST .../alias/{id}`) — ไม่บังคับให้ผู้เรียกรู้ล่วงหน้าว่าเคยมีหรือยัง เพราะ
- * "เคยมีหรือยัง" เป็นสถานะของ LINE เอง ไม่ใช่สถานะที่ฝั่งเราต้องเก็บคู่ขนานไว้เอง
+ * alias ที่มีอยู่แล้วจากแคมเปญก่อน (สร้างซ้ำแล้วโดน alreadyExists()) → อัปเดตให้ชี้
+ * ใหม่แทน (`POST .../alias/{id}`) — ไม่บังคับให้ผู้เรียกรู้ล่วงหน้าว่าเคยมีหรือยัง
+ * เพราะ "เคยมีหรือยัง" เป็นสถานะของ LINE เอง ไม่ใช่สถานะที่ฝั่งเราต้องเก็บคู่ขนานไว้เอง
  */
 export async function setRichMenuAlias(
   accessToken: string, alias: { richMenuAliasId: string; richMenuId: string },
@@ -204,8 +216,9 @@ export async function setRichMenuAlias(
   })
   if (created.ok) return
 
-  if (created.status !== ALIAS_ALREADY_EXISTS) {
-    throw new Error(`ลงทะเบียน alias เมนูไม่สำเร็จ (${created.status}) ${await created.text()}`)
+  const createdBody = await created.text()
+  if (!aliasAlreadyExists(created.status, createdBody)) {
+    throw new Error(`ลงทะเบียน alias เมนูไม่สำเร็จ (${created.status}) ${createdBody}`)
   }
 
   const updated = await fetch(`${RICHMENU_ALIAS_ENDPOINT}/${alias.richMenuAliasId}`, {
