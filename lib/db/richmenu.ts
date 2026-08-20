@@ -6,7 +6,7 @@ import {
   validateRichMenuObject, type LineRichMenuPayload,
 } from '../line/client'
 import { menusNeedingAlias } from '../richmenu/alias'
-import { type AreaKind, asAreaKind, buildAreas, countEmpty, type RichMenuArea, toLineArea } from '../richmenu/areas'
+import { type AreaKind, asAreaKind, buildAreas, countEmpty, lineAliasIdFor, type RichMenuArea, toLineArea } from '../richmenu/areas'
 import { buildLinkOperations, chunkOperations } from '../richmenu/batch'
 import { identifyLayout, type LayoutKey } from '../richmenu/layouts'
 import { isValidMenuImageSize } from '../richmenu/image'
@@ -276,7 +276,7 @@ export async function publishRichMenus(
   const activities = await tx<{ id: string; code: string }[]>`
     SELECT id, code FROM activity WHERE campaign_id = ${input.campaignId}`
   const activityCodeById = Object.fromEntries(activities.map((a) => [a.id, a.code]))
-  const aliasByMenuId = Object.fromEntries(rows.map((r) => [r.id, r.alias]))
+  const aliasByMenuId = Object.fromEntries(rows.map((r) => [r.id, lineAliasIdFor(r.id)]))
 
   type Uploaded = {
     id: string
@@ -338,7 +338,7 @@ export async function publishRichMenus(
   for (const menu of needAlias) {
     const newId = uploaded.find((m) => m.id === menu.id)?.newLineRichMenuId
     if (!newId) continue
-    await setRichMenuAlias(input.accessToken, { richMenuAliasId: menu.alias, richMenuId: newId })
+    await setRichMenuAlias(input.accessToken, { richMenuAliasId: lineAliasIdFor(menu.id), richMenuId: newId })
   }
 
   // 5c · BR-97 · ERR-045 — ว่างเปล่าเองโดยธรรมชาติเมื่อเป็นการส่งขึ้นครั้งแรก (ดู lib/richmenu/batch.ts)

@@ -247,6 +247,19 @@ describe('ผูกเมนูตัวเข้าให้ผู้เล่�
     const out = await handleEvent(say('เล่น'), s.lineChannelId, ports, NOW, seededRng(1))
     expect(out?.linkRichMenu).toBeUndefined()
   })
+
+  it('แอดเป็นเพื่อน (ยังไม่เคยพิมพ์อะไรเลย) → ก็ติดคำสั่งผูกเมนูตัวเข้าเหมือนกัน', async () => {
+    const s = await seedLive(sql)
+    const richMenuLineId = await seedEntryRichMenu(s.campaignId)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    const out = await handleEvent(
+      { type: 'follow', replyToken: 'rt', source: { type: 'user', userId: 'U-e2e' } },
+      s.lineChannelId, ports, NOW, seededRng(1))
+
+    expect(out?.linkRichMenu?.richMenuId).toBe(richMenuLineId)
+    expect(out?.linkRichMenu?.lineUid).toBe('U-e2e')
+  })
 })
 
 /**

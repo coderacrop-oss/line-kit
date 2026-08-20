@@ -74,6 +74,19 @@ export type AreaLineContext = {
  * รูปแบบ แยก decoder กันชัดเจนที่ `lib/webhook/handle.ts` ดูที่มาและกติกาการแยกทั้งหมด
  * ที่ `lib/richmenu/postback.ts`
  */
+/**
+ * LINE จำกัด richMenuAliasId ไว้ที่ตัวอักษร/ตัวเลข/ขีดกลาง/ขีดล่างแบบ half-width
+ * เท่านั้น ไม่เกิน 32 ตัว — "ชื่อเรียกเมนู (alias)" ที่คนตั้งเองมีได้ทุกอย่าง (ไทย
+ * ช่องว่าง สัญลักษณ์) เพราะเป็นแค่ป้ายจำในจอเรา ไม่ใช่ค่าที่ต้องผ่านกติกาของ LINE —
+ * ใช้ค่านั้นตรงๆ เป็น richMenuAliasId (บั๊กที่เจอจริง: ERR-044 "invalid rich menu
+ * alias id format") จึงต้องแปลงเป็นค่าที่ปลอดภัยเสมอแทน · UUID ของเมนู (rich_menu.id)
+ * ตัดขีดกลางออกเหลือฮิว 32 ตัวอักษรพอดี ปลอดภัยแน่นอน และคงที่ตลอดไปแม้จะเปลี่ยน
+ * ชื่อเรียกทีหลัง (BR-77 ต้องการปลายทางที่ไม่เปลี่ยนข้ามการ publish ซ้ำ)
+ */
+export function lineAliasIdFor(richMenuId: string): string {
+  return richMenuId.replace(/-/g, '')
+}
+
 export function toLineArea(area: RichMenuArea, ctx: AreaLineContext): LineArea {
   const bounds = { x: area.x, y: area.y, width: area.width, height: area.height }
 
