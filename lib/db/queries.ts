@@ -1,6 +1,6 @@
 import type postgres from 'postgres'
 import type { Queryable } from './client'
-import { loadReadyImagemaps } from './card-imagemap'
+import { loadReadyImagemaps, toRenderableVideo } from './card-imagemap'
 import { publicImagemapBaseUrl } from '../imagemap/url'
 import type { CardBlock } from '../render/groups'
 import type { RenderableCard } from '../render/card'
@@ -126,6 +126,9 @@ async function loadCards(sql: Queryable, campaignId: string) {
         baseUrl, altText: ready.altText,
         baseSize: { width: ready.baseWidth, height: ready.baseHeight },
         actions: ready.actions,
+        // เฉพาะริชวิดีโอที่ครบทั้งวิดีโอ · ภาพตัวอย่าง · พื้นที่เล่นแล้ว — ready.video
+        // เป็น null เมื่อยังไม่ครบ ซึ่ง renderCard() เองตกไปเป็นข้อความสำรองต่อ (BR-01)
+        ...(ready.video ? { video: toRenderableVideo(ready.video) } : {}),
       }
     }
 

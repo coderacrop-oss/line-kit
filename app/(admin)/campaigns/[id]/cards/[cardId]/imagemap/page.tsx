@@ -6,14 +6,17 @@ import { loadCampaign } from '@/lib/db/campaigns'
 import { loadCard } from '@/lib/db/cards'
 import { loadCardImagemap } from '@/lib/db/card-imagemap'
 import { db } from '@/lib/db/client'
-import { applyImagemap, saveDraft, uploadBaseImage } from './actions'
+import {
+  applyImagemap, saveDraft, uploadBaseImage, uploadVideo, uploadVideoPreview,
+} from './actions'
 
 /**
- * ตัวแก้ไขริชเมสเสจ (Rich Message · imagemap ภาพล้วน) — ปลายทางเฉพาะของการ์ดที่
- * render_as = 'imagemap' เท่านั้น การ์ดใบนี้ไม่มีบล็อกให้แก้เลย (ต่างจาก M3-S02
- * ที่แก้ทีละบล็อก) จึงเป็นจอแยกต่างหาก ไม่ใช่กิ่งย่อยในบล็อกเอดิเตอร์เดิม —
- * app/(admin)/campaigns/[id]/cards/[cardId]/page.tsx เปลี่ยนเส้นทางมาที่นี่เองเมื่อ
- * renderAs ตรงเงื่อนไข ไม่ต้องให้ใครจำ URL นี้เอง
+ * ตัวแก้ไขริชเมสเสจ/ริชวิดีโอ (Rich Message/Rich Video · imagemap ภาพล้วน หรือ
+ * imagemap_video มีวิดีโอเล่นทับ) — ปลายทางเดียวกันสำหรับทั้งสอง render_as (จอ
+ * เดียวกัน คนละ cardKind ที่ส่งให้ ImagemapEditor) การ์ดทั้งสองแบบไม่มีบล็อกให้แก้
+ * เลย (ต่างจาก M3-S02 ที่แก้ทีละบล็อก) จึงเป็นจอแยกต่างหาก ไม่ใช่กิ่งย่อยในบล็อก
+ * เอดิเตอร์เดิม — app/(admin)/campaigns/[id]/cards/[cardId]/page.tsx เปลี่ยนเส้นทาง
+ * มาที่นี่เองเมื่อ renderAs ตรงเงื่อนไข ไม่ต้องให้ใครจำ URL นี้เอง
  *
  * ไม่มีต้นแบบจากไฟล์ prototype รองรับจอนี้ — เหมือนกับจอ M4-S02 (Rich Menu
  * Compositor) ซึ่ง LINE เองมีเครื่องมือคล้ายกัน (Rich Menu Creative Lab) แต่
@@ -36,21 +39,24 @@ export default async function ImagemapEditorPage({
 
   const card = await loadCard(sql, campaignId, cardId)
   if (!card) notFound()
-  if (card.renderAs !== 'imagemap') redirect(`/campaigns/${campaignId}/cards/${cardId}`)
+  if (card.renderAs !== 'imagemap' && card.renderAs !== 'imagemap_video') {
+    redirect(`/campaigns/${campaignId}/cards/${cardId}`)
+  }
 
   const imagemap = await loadCardImagemap(sql, campaignId, cardId)
   if (!imagemap) notFound()
 
   const canEdit = session.role === 'configurator' || session.role === 'content_editor'
   const backHref = `/campaigns/${campaignId}/cards`
+  const isVideo = card.renderAs === 'imagemap_video'
 
   return (
     <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 1200, margin: '0 auto' }}>
       <a href={backHref} style={{ fontSize: 12, color: 'var(--ink-3)' }}>← การ์ดทั้งหมด</a>
 
       <PageHead
-        code="M3-S02 · Rich Message"
-        title={`ริชเมสเสจ — ${card.code}`}
+        code={isVideo ? 'M3-S02 · Rich Video' : 'M3-S02 · Rich Message'}
+        title={`${isVideo ? 'ริชวิดีโอ' : 'ริชเมสเสจ'} — ${card.code}`}
         actions={!canEdit ? <Badge tone="mute">ดูอย่างเดียว</Badge> : null}
       />
 
@@ -58,6 +64,7 @@ export default async function ImagemapEditorPage({
         <ImagemapEditor
           campaignId={campaignId}
           cardId={cardId}
+          cardKind={card.renderAs}
           initial={{
             baseImageUrl: imagemap.baseImageUrl,
             baseWidth: imagemap.baseWidth,
@@ -65,12 +72,19 @@ export default async function ImagemapEditorPage({
             altText: imagemap.altText,
             actions: imagemap.actions,
             ready: Object.keys(imagemap.variantUrls).length > 0,
+            videoUrl: imagemap.videoUrl,
+            videoPreviewUrl: imagemap.videoPreviewUrl,
+            videoArea: imagemap.videoArea,
+            videoLinkUri: imagemap.videoLinkUri,
+            videoLinkLabel: imagemap.videoLinkLabel,
           }}
           canEdit={canEdit}
           backHref={backHref}
           uploadBaseImage={uploadBaseImage}
           saveDraft={saveDraft}
           applyImagemap={applyImagemap}
+          uploadVideo={uploadVideo}
+          uploadVideoPreview={uploadVideoPreview}
         />
       </div>
     </main>

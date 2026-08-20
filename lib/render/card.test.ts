@@ -82,9 +82,78 @@ describe('renderCard · imagemap', () => {
   })
 })
 
-describe('renderCard · imagemap_video ยังคงตกไปเป็นข้อความ (เฟส 2 นอกสโคป)', () => {
-  it('ไม่ถูกส่งเป็น imagemap message แม้จะมีชื่อใกล้กัน', () => {
+const videoArea = (patch: Partial<{ x: number; y: number; width: number; height: number }> = {}) => (
+  { x: 100, y: 100, width: 400, height: 300, ...patch }
+)
+
+const imagemapVideoCard = (patch: Partial<RenderableCard> = {}): RenderableCard => ({
+  code: 'v1', renderAs: 'imagemap_video', blocks: [],
+  imagemap: {
+    baseUrl: 'https://app.example.com/api/imagemap/card-v1',
+    altText: 'ริชวิดีโอทดสอบ',
+    baseSize: { width: 1040, height: 585 },
+    actions: [],
+    video: {
+      url: 'https://example.com/video.mp4', previewUrl: 'https://example.com/preview.jpg',
+      area: videoArea(),
+    },
+  },
+  ...patch,
+})
+
+describe('renderCard · imagemap_video', () => {
+  it('ยังไม่เคยกด "ใช้" (imagemap เป็น undefined) — ตกไปเป็นข้อความ (BR-01)', () => {
     const message = renderCard({ code: 'v1', renderAs: 'imagemap_video', blocks: [] }, STATE, THEME)
     expect(message.type).toBe('text')
+  })
+
+  it('มีภาพฐานพร้อมแล้วแต่ยังไม่มีวิดีโอ (card.imagemap.video เป็น undefined) — ตกไปเป็นข้อความ ไม่ส่งภาพเต็มใบเงียบๆ', () => {
+    const card = imagemapVideoCard({
+      imagemap: { ...imagemapVideoCard().imagemap!, video: undefined },
+    })
+    const message = renderCard(card, STATE, THEME)
+    expect(message.type).toBe('text')
+  })
+
+  it('ครบทั้งภาพฐานและวิดีโอ — ส่งเป็น imagemap message ที่มีฟิลด์ video ครบ', () => {
+    const message = renderCard(imagemapVideoCard(), STATE, THEME)
+    expect(message).toEqual({
+      type: 'imagemap',
+      baseUrl: 'https://app.example.com/api/imagemap/card-v1',
+      altText: 'ริชวิดีโอทดสอบ',
+      baseSize: { width: 1040, height: 585 },
+      actions: [],
+      video: {
+        originalContentUrl: 'https://example.com/video.mp4',
+        previewImageUrl: 'https://example.com/preview.jpg',
+        area: videoArea(),
+      },
+    })
+  })
+
+  it('มีลิงก์หลังเล่นจบ — ติดไปกับ externalLink', () => {
+    const card = imagemapVideoCard({
+      imagemap: {
+        ...imagemapVideoCard().imagemap!,
+        video: {
+          url: 'https://example.com/video.mp4', previewUrl: 'https://example.com/preview.jpg',
+          area: videoArea(), externalLink: { linkUri: 'https://example.com/more', label: 'ดูเพิ่ม' },
+        },
+      },
+    })
+    const message = renderCard(card, STATE, THEME)
+    if (message.type !== 'imagemap') throw new Error('expected imagemap')
+    expect(message.video?.externalLink).toEqual({ linkUri: 'https://example.com/more', label: 'ดูเพิ่ม' })
+  })
+
+  it('ไม่มีลิงก์หลังเล่นจบ — ไม่มีคีย์ externalLink เลย ไม่ใช่ externalLink ว่าง', () => {
+    const message = renderCard(imagemapVideoCard(), STATE, THEME)
+    if (message.type !== 'imagemap') throw new Error('expected imagemap')
+    expect(message.video).not.toHaveProperty('externalLink')
+  })
+
+  it('การ์ด imagemap ธรรมดา (ไม่ใช่ imagemap_video) ไม่มีคีย์ video เลยแม้จะพร้อมส่ง', () => {
+    const message = renderCard(imagemapCard(), STATE, THEME)
+    expect(message).not.toHaveProperty('video')
   })
 })

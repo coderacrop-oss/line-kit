@@ -44,7 +44,14 @@ const sql = (strings: TemplateStringsArray) => {
 
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 vi.mock('@/lib/db/cardEditor', () => ({ loadCardEditor: async () => state.screen }))
-vi.mock('@/lib/db/card-imagemap', () => ({ loadCardImagemap: async () => state.imagemap }))
+vi.mock('@/lib/db/card-imagemap', () => ({
+  loadCardImagemap: async () => state.imagemap,
+  // mock เดียวกับตัวจริง (lib/db/card-imagemap.ts) — null→undefined ของ externalLink เท่านั้น
+  toRenderableVideo: (v: { url: string; previewUrl: string; area: unknown; externalLink: { linkUri: string; label?: string } | null }) => ({
+    url: v.url, previewUrl: v.previewUrl, area: v.area,
+    ...(v.externalLink ? { externalLink: v.externalLink } : {}),
+  }),
+}))
 vi.mock('@/lib/imagemap/url', () => ({ publicImagemapBaseUrl: () => state.publicBaseUrl }))
 vi.mock('@/lib/db/users', () => ({ loadTestLineUid: async () => state.testLineUid }))
 vi.mock('@/lib/db/channels', () => ({ findTestSendChannel: async () => state.channel }))
@@ -281,6 +288,92 @@ describe('sendTestCard · ริชเมสเสจ (imagemap)', () => {
     state.imagemap = {
       baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'โปรโมชัน',
       actions: [], variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    const message = state.pushed[0].message as { type: string }
+    expect(message.type).toBe('text')
+  })
+})
+
+/**
+ * ริชวิดีโอ — ยืนยันว่าปุ่ม "ส่งการ์ดทดสอบเข้า LINE ของตัวเอง" (BR-62) ยังใช้ได้จริง
+ * กับการ์ดชนิดนี้ ไม่มีอะไรพิเศษกันวิดีโอออกจากเส้นทางนี้ (นี่คือด่านทดสอบเดียวที่
+ * ยืนยันได้จริงจากในนี้ — การเล่นวิดีโอได้จริงในแชทยังต้องให้คนกดปุ่มนี้แล้วเปิด LINE
+ * ของตัวเองดูเองอีกที ไม่มีทางยืนยันจากเทสต์อัตโนมัติได้)
+ */
+describe('sendTestCard · ริชวิดีโอ (imagemap_video)', () => {
+  beforeEach(() => {
+    signedInAs('configurator')
+    state.testLineUid = `U${'a'.repeat(32)}`
+    state.screen = screenFor({ card: { ...screenFor().card, renderAs: 'imagemap_video' }, blocks: [] })
+    state.publicBaseUrl = 'https://flex.example.com/api/imagemap/card-1'
+  })
+
+  it('ครบทั้งภาพฐาน วิดีโอ ภาพตัวอย่าง และพื้นที่เล่น — ส่งเป็น imagemap message ที่มีฟิลด์ video', async () => {
+    state.imagemap = {
+      baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'ริชวิดีโอ',
+      actions: [],
+      variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+      videoAssetId: 'v1', videoUrl: '/uploads/video.mp4',
+      videoPreviewAssetId: 'p1', videoPreviewUrl: '/uploads/preview.jpg',
+      videoArea: { x: 10, y: 10, width: 400, height: 225 },
+      videoLinkUri: '', videoLinkLabel: '',
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    expect(state.pushed).toHaveLength(1)
+    const message = state.pushed[0].message as {
+      type: string; video?: { originalContentUrl: string; previewImageUrl: string }
+    }
+    expect(message.type).toBe('imagemap')
+    expect(message.video?.originalContentUrl).toBe('/uploads/video.mp4')
+    expect(message.video?.previewImageUrl).toBe('/uploads/preview.jpg')
+  })
+
+  it('มีลิงก์หลังเล่นจบ — ติดไปกับ externalLink', async () => {
+    state.imagemap = {
+      baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'ริชวิดีโอ',
+      actions: [],
+      variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+      videoAssetId: 'v1', videoUrl: '/uploads/video.mp4',
+      videoPreviewAssetId: 'p1', videoPreviewUrl: '/uploads/preview.jpg',
+      videoArea: { x: 10, y: 10, width: 400, height: 225 },
+      videoLinkUri: 'https://example.com/more', videoLinkLabel: 'ดูเพิ่ม',
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    const message = state.pushed[0].message as { video?: { externalLink?: { linkUri: string; label?: string } } }
+    expect(message.video?.externalLink).toEqual({ linkUri: 'https://example.com/more', label: 'ดูเพิ่ม' })
+  })
+
+  it('มีภาพฐานพร้อมแล้วแต่ยังไม่ได้อัปโหลดวิดีโอเลย — ตกไปเป็นข้อความสำรอง ไม่ส่งภาพเต็มใบไม่มีวิดีโอ', async () => {
+    state.imagemap = {
+      baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'ริชวิดีโอ',
+      actions: [],
+      variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+      videoAssetId: null, videoUrl: null,
+      videoPreviewAssetId: null, videoPreviewUrl: null,
+      videoArea: null, videoLinkUri: '', videoLinkLabel: '',
+    }
+
+    await sendTestCard('camp-1', 'card-1', aPlayerState())
+
+    const message = state.pushed[0].message as { type: string }
+    expect(message.type).toBe('text')
+  })
+
+  it('มีวิดีโอกับภาพตัวอย่างแล้วแต่ยังไม่ได้วางพื้นที่เล่น — ตกไปเป็นข้อความสำรองเช่นกัน', async () => {
+    state.imagemap = {
+      baseAssetId: 'a1', baseImageUrl: '/x', baseWidth: 1040, baseHeight: 585, altText: 'ริชวิดีโอ',
+      actions: [],
+      variantUrls: { 240: '/x/240', 300: '/x/300', 460: '/x/460', 700: '/x/700', 1040: '/x/1040' },
+      videoAssetId: 'v1', videoUrl: '/uploads/video.mp4',
+      videoPreviewAssetId: 'p1', videoPreviewUrl: '/uploads/preview.jpg',
+      videoArea: null, videoLinkUri: '', videoLinkLabel: '',
     }
 
     await sendTestCard('camp-1', 'card-1', aPlayerState())

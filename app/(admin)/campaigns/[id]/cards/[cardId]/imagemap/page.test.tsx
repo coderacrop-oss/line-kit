@@ -32,6 +32,7 @@ vi.mock('@/lib/db/cards', () => ({ loadCard: async () => state.card }))
 vi.mock('@/lib/db/card-imagemap', () => ({ loadCardImagemap: async () => state.imagemap }))
 vi.mock('./actions', () => ({
   uploadBaseImage: vi.fn(), saveDraft: vi.fn(), applyImagemap: vi.fn(),
+  uploadVideo: vi.fn(), uploadVideoPreview: vi.fn(),
 }))
 
 const ImagemapPage = (await import('./page')).default
@@ -45,6 +46,8 @@ const goodCard = (patch: Partial<CardView> = {}): CardView => ({
 const emptyImagemap = (patch: Partial<CardImagemap> = {}): CardImagemap => ({
   cardId: 'card-1', baseAssetId: null, baseImageUrl: null, baseWidth: null, baseHeight: null,
   altText: '', actions: [], variantUrls: {},
+  videoAssetId: null, videoUrl: null, videoPreviewAssetId: null, videoPreviewUrl: null,
+  videoArea: null, videoLinkUri: '', videoLinkLabel: '',
   ...patch,
 })
 
@@ -85,9 +88,16 @@ describe('ตัวแก้ไขริชเมสเสจ · โครงจ
     await expect(open()).rejects.toThrow('NEXT_NOT_FOUND')
   })
 
-  it('การ์ดที่ไม่ใช่ imagemap ถูกส่งกลับไปบล็อกเอดิเตอร์ปกติ', async () => {
+  it('การ์ดที่ไม่ใช่ imagemap/imagemap_video ถูกส่งกลับไปบล็อกเอดิเตอร์ปกติ', async () => {
     state.card = goodCard({ renderAs: 'flex_bubble' })
     await expect(open()).rejects.toThrow('NEXT_REDIRECT:/campaigns/c1/cards/card-1')
+  })
+
+  it('การ์ด imagemap_video ไม่ถูกส่งกลับ — เปิดจอเดียวกันนี้ พร้อมป้าย Rich Video', async () => {
+    state.card = goodCard({ renderAs: 'imagemap_video', renderName: 'ริชวิดีโอ' })
+    await open()
+    expect(screen.getByText('M3-S02 · Rich Video')).toBeDefined()
+    expect(screen.getByRole('heading', { name: /ริชวิดีโอ — promo/ })).toBeDefined()
   })
 })
 

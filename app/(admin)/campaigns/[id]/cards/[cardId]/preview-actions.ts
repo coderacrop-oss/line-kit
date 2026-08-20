@@ -4,7 +4,7 @@ import { requireRole } from '@/lib/auth/require'
 import { findTestSendChannel } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { loadCardEditor } from '@/lib/db/cardEditor'
-import { loadCardImagemap } from '@/lib/db/card-imagemap'
+import { loadCardImagemap, toRenderableVideo } from '@/lib/db/card-imagemap'
 import { readChannelSecret } from '@/lib/db/tokens'
 import { loadTestLineUid } from '@/lib/db/users'
 import { publicImagemapBaseUrl } from '@/lib/imagemap/url'
@@ -62,18 +62,32 @@ export async function sendTestCard(
 
   const card: RenderableCard = { code: screen.card.code, renderAs: screen.card.renderAs, blocks: screen.blocks }
 
-  // ริชเมสเสจไม่ได้ประกอบจากบล็อก (screen.blocks) เลย — ต้องโหลดสถานะของมันเองแยก
-  // ต่างหาก แล้วมี "พร้อมส่ง" ก็ต่อเมื่อเคยกด "ใช้" สำเร็จ (มีภาพ 5 ขนาดจริง) และตั้ง
-  // ที่อยู่สาธารณะของระบบไว้แล้วเท่านั้น — เหมือนเงื่อนไขเดียวกับที่ lib/db/queries.ts
-  // ใช้ตอนโหลด config ให้ผู้เล่นจริง เพื่อให้ปุ่มนี้ตอบตรงกับสิ่งที่ผู้เล่นจะได้เห็นจริง
-  if (screen.card.renderAs === 'imagemap') {
+  // ริชเมสเสจ/ริชวิดีโอไม่ได้ประกอบจากบล็อก (screen.blocks) เลย — ต้องโหลดสถานะของ
+  // มันเองแยกต่างหาก แล้วมี "พร้อมส่ง" ก็ต่อเมื่อเคยกด "ใช้" สำเร็จ (มีภาพ 5 ขนาดจริง)
+  // และตั้งที่อยู่สาธารณะของระบบไว้แล้วเท่านั้น — เหมือนเงื่อนไขเดียวกับที่
+  // lib/db/queries.ts ใช้ตอนโหลด config ให้ผู้เล่นจริง เพื่อให้ปุ่มนี้ตอบตรงกับสิ่งที่
+  // ผู้เล่นจะได้เห็นจริง (รวมทั้งกรณีริชวิดีโอที่ยังไม่ครบวิดีโอ/ภาพตัวอย่าง/พื้นที่
+  // เล่น — ปุ่มนี้ต้องตกไปเป็นข้อความสำรองเหมือนกับที่ renderCard() จะทำ ไม่ใช่ส่ง
+  // ภาพเต็มใบไม่มีวิดีโอไปทดสอบเงียบๆ)
+  if (screen.card.renderAs === 'imagemap' || screen.card.renderAs === 'imagemap_video') {
     const imagemap = await loadCardImagemap(sql, campaignId, cardId)
     const baseUrl = publicImagemapBaseUrl(cardId)
     if (imagemap && baseUrl && imagemap.baseWidth && imagemap.baseHeight && Object.keys(imagemap.variantUrls).length > 0) {
+      const hasVideo = screen.card.renderAs === 'imagemap_video'
+        && imagemap.videoUrl && imagemap.videoPreviewAssetId && imagemap.videoPreviewUrl && imagemap.videoArea
+
       card.imagemap = {
         baseUrl, altText: imagemap.altText,
         baseSize: { width: imagemap.baseWidth, height: imagemap.baseHeight },
         actions: imagemap.actions,
+        ...(hasVideo ? {
+          video: toRenderableVideo({
+            url: imagemap.videoUrl!, previewUrl: imagemap.videoPreviewUrl!, area: imagemap.videoArea!,
+            externalLink: imagemap.videoLinkUri
+              ? { linkUri: imagemap.videoLinkUri, ...(imagemap.videoLinkLabel ? { label: imagemap.videoLinkLabel } : {}) }
+              : null,
+          }),
+        } : {}),
       }
     }
   }
