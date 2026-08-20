@@ -1,10 +1,17 @@
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type { ActionResult } from '@/lib/actions/result'
-import { decryptSecret } from '@/lib/crypto/secretbox'
+import { decryptSecret, encryptSecret } from '@/lib/crypto/secretbox'
 
 type UserRow = { id: string; email: string; role: string; is_active: boolean }
-type ChannelRow = { id: string; channel_type: string; token_last4: string | null }
+type ChannelRow = {
+  id: string
+  channel_type: string
+  token_last4: string | null
+  encrypted_token?: string | null
+  encrypted_secret?: string | null
+  key_version?: number | null
+}
 
 const state: {
   cookie: string | undefined
@@ -40,7 +47,11 @@ vi.mock('next/headers', () => ({
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 
-const { saveChannel } = await import('./actions')
+/** ปุ่ม "ดึง Bot User ID อัตโนมัติ" เรียกจริงผ่าน lib/line/client — mock ที่นี่เพื่อคุมว่า LINE ตอบอะไรกลับมา โดยไม่ยิง fetch จริง */
+const mockGetBotInfo = vi.fn()
+vi.mock('@/lib/line/client', () => ({ getBotInfo: (...args: unknown[]) => mockGetBotInfo(...args) }))
+
+const { fetchBotUserId, saveChannel } = await import('./actions')
 
 const saved = { ...process.env }
 afterAll(() => { process.env = { ...saved } })
@@ -99,6 +110,7 @@ beforeEach(() => {
   state.channel = { id: 'ch1', channel_type: 'test', token_last4: 'oldk' }
   state.writes = []
   state.writeError = undefined
+  mockGetBotInfo.mockReset()
 })
 
 /**
@@ -435,5 +447,120 @@ describe('saveChannel · หลังบันทึก', () => {
     await expectSuccess(saveChannel(null, validForm()))
     expect(lastWrite().text).toContain('created_by')
     expect(lastWrite().values).toContain('u1')
+  })
+})
+
+/**
+ * ปุ่ม "ดึง Bot User ID อัตโนมัติ" — แก้เหตุการณ์จริงที่คนกรอกช่อง line_bot_user_id ผิด
+ * เพราะไปก๊อปค่า "Your user ID" จากคอนโซล LINE มา ทำให้บัญชีจริงตอบ 401 ทุก webhook อยู่
+ * หลายชั่วโมง (ดู comment ของ fetchBotUserId ใน ./actions.ts)
+ */
+describe('fetchBotUserId', () => {
+  beforeEach(() => { signedInAs('configurator') })
+
+  it('ด่านสิทธิ์เดียวกับ saveChannel — ยังไม่เข้าระบบ ดึงไม่ได้', async () => {
+    state.cookie = undefined
+    state.user = undefined
+    const result = await fetchBotUserId('ch1', form({ access_token: '' }))
+    expect(result.ok, 'คาดว่าปฏิเสธ (ok:false)').toBe(false)
+    if (!result.ok) expect(result.message).toContain('ต้องเข้าสู่ระบบก่อน')
+    expect(mockGetBotInfo).not.toHaveBeenCalled()
+  })
+
+  it('ผู้ดูรายงานดึงไม่ได้', async () => {
+    signedInAs('reporter')
+    const result = await fetchBotUserId('ch1', form({ access_token: '' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ไม่มีสิทธิ์')
+    expect(mockGetBotInfo).not.toHaveBeenCalled()
+  })
+
+  it('พิมพ์โทเคนใหม่มาตรงๆ ในฟอร์ม — ใช้ค่านั้นเรียก LINE ทันที ไม่แตะฐานข้อมูลเลย', async () => {
+    mockGetBotInfo.mockResolvedValue({ userId: 'Ubotnew0000' })
+
+    const result = await fetchBotUserId('ch1', form({ access_token: 'typed-fresh-token' }))
+
+    expect(result).toEqual({ ok: true, userId: 'Ubotnew0000' })
+    expect(mockGetBotInfo).toHaveBeenCalledWith('typed-fresh-token')
+    expect(state.writes).toEqual([])
+  })
+
+  it('ตัดช่องว่างหัวท้ายของโทเคนที่พิมพ์มาก่อนเรียก LINE', async () => {
+    mockGetBotInfo.mockResolvedValue({ userId: 'Ubotnew0000' })
+    await fetchBotUserId('ch1', form({ access_token: '  typed-fresh-token  ' }))
+    expect(mockGetBotInfo).toHaveBeenCalledWith('typed-fresh-token')
+  })
+
+  it('บัญชีใหม่ (channelId เป็น null) ที่ยังไม่พิมพ์โทเคน — ปฏิเสธก่อนแตะ LINE', async () => {
+    const result = await fetchBotUserId(null, form({ access_token: '' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('กรอก Channel access token')
+    expect(mockGetBotInfo).not.toHaveBeenCalled()
+  })
+
+  it('เว้นช่องโทเคนไว้ตอนแก้ของเดิม — อ่านโทเคนที่เก็บไว้แล้วในฐานข้อมูลมาเรียก LINE แทน', async () => {
+    const TOKEN = 'anAlreadySavedLineChannelAccessToken'
+    const encrypted = encryptSecret(TOKEN)
+    state.channel = {
+      id: 'ch1', channel_type: 'test', token_last4: 'oldk',
+      encrypted_token: encrypted.cipher, encrypted_secret: null, key_version: encrypted.keyVersion,
+    }
+    mockGetBotInfo.mockResolvedValue({ userId: 'UbotExisting' })
+
+    const result = await fetchBotUserId('ch1', form({ access_token: '' }))
+
+    expect(result).toEqual({ ok: true, userId: 'UbotExisting' })
+    expect(mockGetBotInfo).toHaveBeenCalledWith(TOKEN)
+  })
+
+  it('บันทึกร่องรอยการอ่านกุญแจด้วย purpose fetch_bot_info ตอนอ่านโทเคนที่เก็บไว้แล้ว', async () => {
+    const encrypted = encryptSecret('a-saved-token')
+    state.channel = {
+      id: 'ch1', channel_type: 'test', token_last4: 'oldk',
+      encrypted_token: encrypted.cipher, encrypted_secret: null, key_version: encrypted.keyVersion,
+    }
+    mockGetBotInfo.mockResolvedValue({ userId: 'Ubot' })
+
+    await fetchBotUserId('ch1', form({ access_token: '' }))
+
+    expect(lastWrite().text).toContain('INSERT INTO token_access_log')
+    expect(lastWrite().values).toContain('fetch_bot_info')
+    expect(lastWrite().values).toContain('u1')
+  })
+
+  it('บัญชีที่ยังไม่มีกุญแจเก็บไว้เลย (encrypted_token เป็น NULL) — บอกตรงๆ ว่ายังไม่ได้ผูกกุญแจ', async () => {
+    state.channel = {
+      id: 'ch1', channel_type: 'test', token_last4: null,
+      encrypted_token: null, encrypted_secret: null, key_version: null,
+    }
+    const result = await fetchBotUserId('ch1', form({ access_token: '' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ยังไม่ได้ผูกกุญแจ')
+    expect(mockGetBotInfo).not.toHaveBeenCalled()
+  })
+
+  it('แก้บัญชีที่ไม่มีอยู่จริง ดึงไม่ได้', async () => {
+    state.channel = undefined
+    const result = await fetchBotUserId('ไม่มีจริง', form({ access_token: '' }))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ไม่พบบัญชี')
+  })
+
+  // ข้อความของ LINE ต้องไปถึงฝั่ง client จริงๆ ไม่ถูกเซ็นเซอร์ — เหตุผลเดียวกับ saveChannel
+  it('LINE ปฏิเสธโทเคน — ข้อความจริงของ LINE ไปถึงผลลัพธ์ ไม่ใช่ error ทั่วไป', async () => {
+    mockGetBotInfo.mockRejectedValue(new Error('ดึงข้อมูลบอทจาก LINE ไม่สำเร็จ (401) Invalid channel access token'))
+
+    const result = await fetchBotUserId('ch1', form({ access_token: 'bad-token' }))
+
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('Invalid channel access token')
+  })
+
+  it('ไม่มีทางที่โทเคนตัวจริงหลุดออกไปในผลลัพธ์ — คืนแค่ userId เท่านั้น', async () => {
+    mockGetBotInfo.mockResolvedValue({ userId: 'Ubot999' })
+    const result = await fetchBotUserId('ch1', form({ access_token: 'super-secret-token-value' }))
+
+    expect(result.ok).toBe(true)
+    expect(JSON.stringify(result)).not.toContain('super-secret-token-value')
   })
 })

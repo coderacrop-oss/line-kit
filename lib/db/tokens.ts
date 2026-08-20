@@ -2,14 +2,23 @@ import type postgres from 'postgres'
 import { decryptSecret } from '../crypto/secretbox'
 
 /**
- * ค่าที่ CHECK ของ token_access_log.purpose ยอมรับ (§5.2 + migration 0005)
+ * ค่าที่ CHECK ของ token_access_log.purpose ยอมรับ (§5.2 + migration 0005 + 0012)
  *
  * `test_send` เพิ่มโดย Task 14 สำหรับปุ่มส่งการ์ดทดสอบของ M3-S02 — คนละเหตุการณ์กับ
  * `send_reply` ซึ่งสงวนไว้ให้เส้นทางตอบผู้เล่นจริงผ่าน webhook (route.ts เรียกด้วย
  * purpose นี้ทุกครั้งที่ตอบ — replyMessage เลิกอ่านโทเคนจาก env แล้ว ดู migration
  * 0010_channel_bot_user_id.sql)
+ *
+ * `fetch_bot_info` เพิ่มโดย migration 0012 สำหรับปุ่ม "ดึง Bot User ID อัตโนมัติ" ของจอ
+ * แก้บัญชี LINE — คนละเหตุการณ์กับทั้ง `test_send` (ส่งข้อความออกไปหาผู้เล่น) และ
+ * `publish` (ส่งขึ้นแคมเปญ) เพราะที่นี่แค่ "ถาม" LINE ว่าบอทตัวนี้คือ userId อะไร
+ * ไม่ได้ส่งอะไรออกไปหาใครเลย และเกิดเฉพาะตอนช่อง Channel access token บนฟอร์มถูก
+ * เว้นว่างไว้ (แก้บัญชีเดิมโดยไม่พิมพ์โทเคนใหม่) จึงต้องอ่านโทเคนที่เก็บไว้แล้วผ่าน
+ * readChannelSecret() — พิมพ์โทเคนใหม่มาตรงๆ ในฟอร์มไม่ต้องอ่านจากตรงนี้เลย เพราะมีค่า
+ * อยู่ในมือ (ฝั่ง client) แล้ว
  */
-export type TokenPurpose = 'send_reply' | 'publish' | 'verify_signature' | 'display_last4' | 'test_send'
+export type TokenPurpose =
+  | 'send_reply' | 'publish' | 'verify_signature' | 'display_last4' | 'test_send' | 'fetch_bot_info'
 
 /** สองกุญแจที่บัญชีหนึ่งบัญชีเก็บไว้ · โทเคนไว้พูด ซีเคร็ตไว้ตรวจว่าใครพูด */
 export type SecretField = 'token' | 'secret'

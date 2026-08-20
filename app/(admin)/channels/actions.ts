@@ -6,6 +6,8 @@ import { requireRole } from '@/lib/auth/require'
 import { encryptSecret, last4 } from '@/lib/crypto/secretbox'
 import type { ChannelType } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
+import { readChannelSecret } from '@/lib/db/tokens'
+import { getBotInfo } from '@/lib/line/client'
 
 /**
  * ชั้นที่จอนี้สร้างหรือแก้ได้ · preview ไม่อยู่ในนี้
@@ -181,5 +183,56 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
     return { ok: true }
   } catch (err) {
     return { ok: false, message: resultMessage(err, 'บันทึกไม่สำเร็จ — ลองใหม่') }
+  }
+}
+
+/**
+ * ผลของปุ่ม "ดึง Bot User ID อัตโนมัติ" — พ่วง userId ที่ได้จาก LINE มาด้วยตอนสำเร็จ
+ * ใช้ ActionResult ตรงๆ ไม่ได้เพราะที่นั่นไม่มีที่เก็บค่า (เหตุผลเดียวกับที่ PublishResult
+ * ของ ../campaigns/[id]/publish/actions.ts แยกออกมาเป็นของตัวเอง เพราะผลสำเร็จต้อง
+ * พ่วง versionNo) — คนละบริบทกับ ActionResult ที่ใช้ร่วมกับ saveChannel ข้างบนได้
+ * เพราะที่นั่นผลสำเร็จไม่มีอะไรให้ฝั่ง client อ่านต่อนอกจาก ok:true เฉยๆ
+ */
+export type FetchBotInfoResult = { ok: true; userId: string } | { ok: false; message: string }
+
+/**
+ * ดึง userId ตัวจริงของบอทจาก LINE มาเติมช่อง Bot user ID ให้เอง — แก้ปัญหาที่เพิ่งทำ
+ * บัญชีจริงพังไปหลายชั่วโมง: คนกรอกช่องนี้ผิดเพราะไปก๊อปค่า "Your user ID" จากแท็บ
+ * Basic settings ของ LINE Developers Console มา ซึ่งเป็น userId ส่วนตัวของนักพัฒนา
+ * ไม่ใช่ของบอทเลย (ดู comment ของ getBotInfo() ใน lib/line/client.ts)
+ *
+ * โทเคนที่ใช้เรียก LINE มาจากสองทางแล้วแต่สถานการณ์ของฟอร์มตอนกดปุ่ม:
+ *
+ * 1) ช่อง Channel access token มีค่าอยู่ (กำลังสร้างบัญชีใหม่ หรือกำลังพิมพ์โทเคนใหม่
+ *    ทับของเดิม) → ใช้ค่านั้นตรงๆ ที่ส่งมากับ FormData ไม่ต้องแตะฐานข้อมูลเลย เพราะค่า
+ *    ยังไม่ถูกเข้ารหัสเก็บที่ไหน
+ * 2) ช่องนั้นถูกเว้นว่างไว้ตอนแก้บัญชีเดิม (ความหมายคือ "ใช้กุญแจเดิม" — ดู saveChannel
+ *    ด้านบน) → หน้าเว็บไม่มีโทเคนตัวจริงให้ใช้เลย ต้องอ่านของที่เข้ารหัสเก็บไว้แล้วผ่าน
+ *    readChannelSecret() (บันทึกร่องรอยทุกครั้งเหมือนทุกจุดที่อ่านกุญแจ) แล้วค่อยเรียก
+ *    LINE — ไม่มีทางไหนที่โทเคนที่ถอดแล้วไหลกลับไปถึงฝั่ง client เลย คืนแค่ userId
+ *
+ * คืนค่า FetchBotInfoResult เสมอ ไม่ throw ข้าม Server Action boundary — เหตุผลเดียวกับ
+ * saveChannel ทุกประการ (ดู comment ยาวด้านบน)
+ */
+export async function fetchBotUserId(id: string | null, formData: FormData): Promise<FetchBotInfoResult> {
+  try {
+    const session = await requireRole('configurator')
+
+    const typedToken = trimmed(formData, 'access_token')
+    let token = typedToken
+
+    if (!token) {
+      if (!id) {
+        throw new Error('กรอก Channel access token ก่อน หรือบันทึกบัญชีนี้ไว้ก่อนแล้วค่อยกดดึงอัตโนมัติ')
+      }
+      token = await readChannelSecret(db(), {
+        channelId: id, field: 'token', purpose: 'fetch_bot_info', appUserId: session.userId,
+      })
+    }
+
+    const { userId } = await getBotInfo(token)
+    return { ok: true, userId }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'ดึง Bot User ID จาก LINE ไม่สำเร็จ — ลองใหม่') }
   }
 }
