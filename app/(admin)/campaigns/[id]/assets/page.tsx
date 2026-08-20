@@ -1,6 +1,7 @@
 import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, Button, Empty, Note, PageHead, Panel, STATUS_TONES } from '@/components/ui'
+import { CopyUrlButton } from '@/components/assets/CopyUrlButton'
 import { getSession } from '@/lib/auth/session'
 import { decodeOutcome } from '@/lib/assets/outcome'
 import { ASSET_FILTERS, asAssetFilter, type AssetView, filterAssets, listAssets } from '@/lib/db/assets'
@@ -100,9 +101,12 @@ function AssetCard({ campaignId, asset, canDelete }: {
           {asset.usedBy.map((label) => <span key={label} style={chipStyle}>{label}</span>)}
         </div>
 
-        {canDelete && (
-          <div style={{ marginTop: 'auto', paddingTop: 8 }}>
-            {asset.canDelete ? (
+        <div style={{ marginTop: 'auto', paddingTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {/* คัดลอก URL ไม่ใช่การเขียนข้อมูล ทุกคนที่เห็นภาพจึงก็อปได้ ต่างจากลบที่จำกัดเฉพาะ configurator */}
+          <CopyUrlButton url={asset.publicUrl} />
+
+          {canDelete && (
+            asset.canDelete ? (
               <form action={deleteAsset.bind(null, campaignId, asset.id)}>
                 <Button
                   variant="ghost"
@@ -116,9 +120,9 @@ function AssetCard({ campaignId, asset, canDelete }: {
               <span style={{ fontSize: 10, color: 'var(--ink-3)', lineHeight: 1.5 }}>
                 {asset.deleteBlockedWhy}
               </span>
-            )}
-          </div>
-        )}
+            )
+          )}
+        </div>
       </div>
     </div>
   )
