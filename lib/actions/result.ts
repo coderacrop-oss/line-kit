@@ -8,8 +8,12 @@
  * แต่ return ค่านี้แทน เพราะเป็นแค่ข้อมูลธรรมดาที่ส่งกลับไปในผลลัพธ์ ไม่ใช่ exception
  * ที่ผ่าน pipeline เซ็นเซอร์ของ Next.js เลย
  *
- * ใช้กับ createMenu/saveMenu ของ Rich Menu (app/(admin)/campaigns/[id]/richmenu/
- * actions.ts) ซึ่งทุก error ที่โยนได้ในนั้นเป็นข้อความที่ตั้งใจให้คนอ่านอยู่แล้ว
- * (ดู comment ในไฟล์นั้น) จึงแปลงเป็นค่าที่ return ได้ทั้งหมดอย่างปลอดภัย
+ * ใช้ร่วมกันได้กับ Server Action ไหนก็ได้ที่ทุก error ที่โยนเป็นข้อความที่ตั้งใจให้คน
+ * อ่านอยู่แล้ว (ไม่ใช่ stack trace ดิบ) — เดิมอยู่ใต้ lib/richmenu/ เพราะเป็นที่แรกที่
+ * ต้องใช้ (createMenu/saveMenu ของ app/(admin)/campaigns/[id]/richmenu/actions.ts,
+ * ดู comment เต็มในไฟล์นั้น) แต่ตัวมันเองไม่มีอะไรเฉพาะ Rich Menu เลย จึงย้ายมาไว้ที่
+ * เป็นกลางตอนที่ตัวที่สาม (saveChannel ของ app/(admin)/channels/actions.ts) ต้องใช้
+ * ด้วย — ใช้ซ้ำกับ publish() ของ app/(admin)/campaigns/[id]/publish/actions.ts ไม่ได้
+ * ตรงๆ เพราะที่นั่นผลสำเร็จต้องพ่วง versionNo ไปด้วย จึงมี PublishResult ของตัวเอง
  */
 export type ActionResult = { ok: true } | { ok: false; message: string }

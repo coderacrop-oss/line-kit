@@ -9,7 +9,7 @@ import { db } from '@/lib/db/client'
 import {
   createRichMenu, deleteRichMenu, setAreaTarget, setEntryMenu, setLayout, updateRichMenu,
 } from '@/lib/db/richmenu'
-import type { ActionResult } from '@/lib/richmenu/action-result'
+import type { ActionResult } from '@/lib/actions/result'
 import { asAreaKind, type AreaKind, type RichMenuArea } from '@/lib/richmenu/areas'
 import { fitImageToCanvas } from '@/lib/richmenu/fit'
 import { asLayoutKey, canvasFor, identifyLayout, LAYOUT_KEYS, type LayoutKey } from '@/lib/richmenu/layouts'
@@ -154,7 +154,7 @@ const resultMessage = (err: unknown, fallback: string): string =>
  * คืนค่า `ActionResult` แทนที่จะ throw ตรงๆ — เดิมฟังก์ชันนี้ throw ทุก error (alias
  * ว่าง, ยังไม่อัปโหลดภาพ, ERR-037 ภาพเล็กเกินไป ฯลฯ) แต่ Next.js เซ็นเซอร์ข้อความของ
  * error ที่ throw ออกจาก Server Action ทิ้งเสมอในโปรดักชัน ไม่ว่าฝั่ง client จะ catch
- * เองหรือไม่ (ดู lib/richmenu/action-result.ts) ทุกข้อความในฟังก์ชันนี้ตั้งใจให้คน
+ * เองหรือไม่ (ดู lib/actions/result.ts) ทุกข้อความในฟังก์ชันนี้ตั้งใจให้คน
  * อ่านอยู่แล้วทั้งหมด (รวมถึง DuplicateAliasError จาก lib/db/richmenu.ts) จึงห่อทั้ง
  * ฟังก์ชันด้วย try/catch แล้วแปลงเป็นค่าที่ return แทนอย่างปลอดภัย
  */

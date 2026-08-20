@@ -1,7 +1,7 @@
 'use server'
 
 import { revalidatePath } from 'next/cache'
-import { redirect } from 'next/navigation'
+import type { ActionResult } from '@/lib/actions/result'
 import { requireRole } from '@/lib/auth/require'
 import { encryptSecret, last4 } from '@/lib/crypto/secretbox'
 import type { ChannelType } from '@/lib/db/channels'
@@ -37,6 +37,14 @@ function uniqueViolationMessage(error: unknown): unknown {
   }
   return new Error('Channel ID นี้ถูกผูกกับบัญชีอื่นอยู่แล้ว — หนึ่ง Channel ID ผูกได้แถวเดียว')
 }
+
+/**
+ * error ที่ไม่คาดคิดจริงๆ (ไม่ใช่ Error instance) ยังต้องมีข้อความให้คนอ่านได้อยู่ดี —
+ * ไม่ใช่ปล่อยให้ ActionResult พังหรือแสดง "undefined" (เหตุผลเดียวกับ resultMessage
+ * ของ ../campaigns/[id]/publish/actions.ts)
+ */
+const resultMessage = (err: unknown, fallback: string): string =>
+  err instanceof Error ? err.message : fallback
 
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
 
@@ -78,88 +86,100 @@ function asKeywordList(raw: string): string[] {
  * The channel id is bound to the action rather than carried in the form: the
  * form is written by whoever submits it, and this is the one screen where that
  * distinction is worth the extra argument.
+ *
+ * คืนค่า `ActionResult` แทนที่จะ throw/redirect ตรงๆ — จอนี้เจอบั๊กเดียวกับที่
+ * createMenu/saveMenu ของ Rich Menu (../campaigns/[id]/richmenu/actions.ts) และ
+ * publish() (../campaigns/[id]/publish/actions.ts) เจอมาแล้ว: Next.js เซ็นเซอร์
+ * ข้อความของ error ที่ throw ออกจาก Server Action ทิ้งเสมอในโปรดักชัน (พิสูจน์จริงกับ
+ * `next build && next start` แล้ว) — คนที่กรอกกุญแจมาแค่ช่องเดียวเคยเจอเคสนี้จริง:
+ * บันทึกไม่สำเร็จเงียบๆ (token_last4 ไม่ขยับ) โดยไม่มีข้อความอะไรบอกว่าทำไม ห้าม
+ * throw หรือ redirect ข้าม Server Action boundary เด็ดขาด ให้ฝั่ง client ทำ
+ * navigation เองด้วย useRouter() แทนเสมอ — ดู ChannelForm.tsx
  */
-export async function saveChannel(id: string | null, formData: FormData): Promise<void> {
-  const session = await requireRole('configurator')
-  const sql = db()
+export async function saveChannel(id: string | null, formData: FormData): Promise<ActionResult> {
+  try {
+    const session = await requireRole('configurator')
+    const sql = db()
 
-  const name = trimmed(formData, 'name')
-  if (!name) throw new Error('ต้องตั้งชื่อบัญชีให้ทีมรู้ว่าเป็นบัญชีไหน')
+    const name = trimmed(formData, 'name')
+    if (!name) throw new Error('ต้องตั้งชื่อบัญชีให้ทีมรู้ว่าเป็นบัญชีไหน')
 
-  const channelType = trimmed(formData, 'channel_type')
-  if (!isBindable(channelType)) {
-    throw new Error('ชั้นของบัญชีต้องเป็นบัญชีทดสอบหรือบัญชีจริงของลูกค้า')
-  }
-
-  if (id) {
-    const [current] = await sql<{ channel_type: string }[]>`
-      SELECT channel_type FROM channel WHERE id = ${id}`
-    if (!current) throw new Error('ไม่พบบัญชี LINE นี้')
-    if (current.channel_type === 'preview') {
-      throw new Error('บัญชีสำหรับทดลองเล่นในระบบไม่มีกุญแจให้แก้ — ระบบเป็นคนสร้างไว้เอง')
+    const channelType = trimmed(formData, 'channel_type')
+    if (!isBindable(channelType)) {
+      throw new Error('ชั้นของบัญชีต้องเป็นบัญชีทดสอบหรือบัญชีจริงของลูกค้า')
     }
-  }
 
-  const token = trimmed(formData, 'access_token')
-  const secret = trimmed(formData, 'channel_secret')
-  const keywords = asKeywordList(String(formData.get('existing_keywords') ?? ''))
-  const lineChannelId = trimmedOrNull(formData, 'line_channel_id')
-  const lineBotUserId = trimmedOrNull(formData, 'line_bot_user_id')
+    if (id) {
+      const [current] = await sql<{ channel_type: string }[]>`
+        SELECT channel_type FROM channel WHERE id = ${id}`
+      if (!current) throw new Error('ไม่พบบัญชี LINE นี้')
+      if (current.channel_type === 'preview') {
+        throw new Error('บัญชีสำหรับทดลองเล่นในระบบไม่มีกุญแจให้แก้ — ระบบเป็นคนสร้างไว้เอง')
+      }
+    }
 
-  if (!token && !secret) {
-    // แก้ของเดิมโดยไม่แตะกุญแจ · บัญชีใหม่ต้องมีกุญแจ เพราะ CHECK ของตารางบังคับ
-    if (!id) throw new Error('บัญชีใหม่ต้องมีกุญแจทั้งสองตัวจาก LINE Developers Console')
+    const token = trimmed(formData, 'access_token')
+    const secret = trimmed(formData, 'channel_secret')
+    const keywords = asKeywordList(String(formData.get('existing_keywords') ?? ''))
+    const lineChannelId = trimmedOrNull(formData, 'line_channel_id')
+    const lineBotUserId = trimmedOrNull(formData, 'line_bot_user_id')
+
+    if (!token && !secret) {
+      // แก้ของเดิมโดยไม่แตะกุญแจ · บัญชีใหม่ต้องมีกุญแจ เพราะ CHECK ของตารางบังคับ
+      if (!id) throw new Error('บัญชีใหม่ต้องมีกุญแจทั้งสองตัวจาก LINE Developers Console')
+
+      try {
+        await sql`
+          UPDATE channel
+             SET name = ${name}, channel_type = ${channelType},
+                 existing_keywords = ${sql.array(keywords)},
+                 line_channel_id = ${lineChannelId},
+                 line_bot_user_id = ${lineBotUserId}
+           WHERE id = ${id}`
+      } catch (error) {
+        throw uniqueViolationMessage(error)
+      }
+
+      revalidatePath('/channels')
+      return { ok: true }
+    }
+
+    if (!token || !secret) {
+      throw new Error('กุญแจต้องเปลี่ยนพร้อมกันทั้งสองช่อง — โทเคนของ OA หนึ่งกับซีเคร็ตของอีก OA หนึ่งใช้ด้วยกันไม่ได้')
+    }
+
+    const encryptedToken = encryptSecret(token)
+    const encryptedSecret = encryptSecret(secret)
 
     try {
-      await sql`
-        UPDATE channel
-           SET name = ${name}, channel_type = ${channelType},
-               existing_keywords = ${sql.array(keywords)},
-               line_channel_id = ${lineChannelId},
-               line_bot_user_id = ${lineBotUserId}
-         WHERE id = ${id}`
+      if (id) {
+        await sql`
+          UPDATE channel
+             SET name = ${name}, channel_type = ${channelType},
+                 existing_keywords = ${sql.array(keywords)},
+                 line_channel_id = ${lineChannelId},
+                 line_bot_user_id = ${lineBotUserId},
+                 encrypted_token = ${encryptedToken.cipher},
+                 encrypted_secret = ${encryptedSecret.cipher},
+                 token_last4 = ${last4(token)},
+                 key_version = ${encryptedToken.keyVersion}
+           WHERE id = ${id}`
+      } else {
+        await sql`
+          INSERT INTO channel
+                 (name, channel_type, existing_keywords, line_channel_id, line_bot_user_id,
+                  encrypted_token, encrypted_secret, token_last4, key_version, created_by)
+          VALUES (${name}, ${channelType}, ${sql.array(keywords)}, ${lineChannelId}, ${lineBotUserId},
+                  ${encryptedToken.cipher}, ${encryptedSecret.cipher},
+                  ${last4(token)}, ${encryptedToken.keyVersion}, ${session.userId})`
+      }
     } catch (error) {
       throw uniqueViolationMessage(error)
     }
 
     revalidatePath('/channels')
-    redirect('/channels')
-    return
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'บันทึกไม่สำเร็จ — ลองใหม่') }
   }
-
-  if (!token || !secret) {
-    throw new Error('กุญแจต้องเปลี่ยนพร้อมกันทั้งสองช่อง — โทเคนของ OA หนึ่งกับซีเคร็ตของอีก OA หนึ่งใช้ด้วยกันไม่ได้')
-  }
-
-  const encryptedToken = encryptSecret(token)
-  const encryptedSecret = encryptSecret(secret)
-
-  try {
-    if (id) {
-      await sql`
-        UPDATE channel
-           SET name = ${name}, channel_type = ${channelType},
-               existing_keywords = ${sql.array(keywords)},
-               line_channel_id = ${lineChannelId},
-               line_bot_user_id = ${lineBotUserId},
-               encrypted_token = ${encryptedToken.cipher},
-               encrypted_secret = ${encryptedSecret.cipher},
-               token_last4 = ${last4(token)},
-               key_version = ${encryptedToken.keyVersion}
-         WHERE id = ${id}`
-    } else {
-      await sql`
-        INSERT INTO channel
-               (name, channel_type, existing_keywords, line_channel_id, line_bot_user_id,
-                encrypted_token, encrypted_secret, token_last4, key_version, created_by)
-        VALUES (${name}, ${channelType}, ${sql.array(keywords)}, ${lineChannelId}, ${lineBotUserId},
-                ${encryptedToken.cipher}, ${encryptedSecret.cipher},
-                ${last4(token)}, ${encryptedToken.keyVersion}, ${session.userId})`
-    }
-  } catch (error) {
-    throw uniqueViolationMessage(error)
-  }
-
-  revalidatePath('/channels')
-  redirect('/channels')
 }

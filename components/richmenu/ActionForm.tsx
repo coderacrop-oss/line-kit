@@ -4,7 +4,7 @@ import { useRef, useState } from 'react'
 import type { CSSProperties, FormEvent, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { ErrorModal } from '@/components/ui'
-import type { ActionResult } from '@/lib/richmenu/action-result'
+import type { ActionResult } from '@/lib/actions/result'
 import { getFormOverride } from './formOverride'
 
 /**

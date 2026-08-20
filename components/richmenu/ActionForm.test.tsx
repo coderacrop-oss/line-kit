@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import type { ActionResult } from '@/lib/richmenu/action-result'
+import type { ActionResult } from '@/lib/actions/result'
 import { ActionForm } from './ActionForm'
 import { setFormOverride } from './formOverride'
 
@@ -47,7 +47,7 @@ describe('ActionForm · ส่งสำเร็จ', () => {
  * error ที่ throw ทิ้งเสมอในโปรดักชัน พิสูจน์แล้วกับ next build && next start จริง
  * ไม่ว่าจะเรียกผ่าน `<form action=>` หรือเรียกตรงๆ ก็ตาม) แต่คืนค่า `{ok:false,
  * message}` แทน ซึ่งเป็นข้อมูลธรรมดา ไม่ผ่าน pipeline เซ็นเซอร์เลย — ดู doc comment
- * ของ ActionForm.tsx และ lib/richmenu/action-result.ts
+ * ของ ActionForm.tsx และ lib/actions/result.ts
  */
 describe('ActionForm · action คืนค่า {ok:false} (ปฏิเสธแบบตั้งใจ เช่น ERR-037)', () => {
   it('แสดงข้อความเป๊ะๆ ใน ErrorModal — ไม่ปล่อยหลุดเป็น unhandled rejection', async () => {

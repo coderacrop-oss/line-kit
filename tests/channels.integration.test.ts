@@ -26,7 +26,6 @@ vi.mock('next/headers', () => ({
   }),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
-vi.mock('next/navigation', () => ({ redirect: vi.fn() }))
 vi.mock('@/lib/db/client', async (importOriginal) => ({
   ...(await importOriginal<typeof import('../lib/db/client')>()),
   db: () => sql,
@@ -287,7 +286,9 @@ describe('saveChannel · แก้ของเดิมบนตารางจ�
       SELECT email FROM app_user WHERE id = ${s.userId}`
     cookie = row.email
 
-    await expect(saveChannel(s.channelId, validForm())).rejects.toThrow('ทดลองเล่นในระบบ')
+    const result = await saveChannel(s.channelId, validForm())
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ทดลองเล่นในระบบ')
 
     const [after] = await rawChannel(s.channelId)
     expect(after.encrypted_token).toBeNull()
@@ -299,7 +300,9 @@ describe('saveChannel · แก้ของเดิมบนตารางจ�
     await sql`UPDATE app_user SET role = 'reporter' WHERE id = ${user.id}`
     cookie = user.email
 
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ไม่มีสิทธิ์')
+    const result = await saveChannel(null, validForm())
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ไม่มีสิทธิ์')
     expect(await newestChannelOf(user.id)).toBeUndefined()
   })
 
@@ -308,7 +311,9 @@ describe('saveChannel · แก้ของเดิมบนตารางจ�
     await sql`UPDATE app_user SET role = 'content_editor' WHERE id = ${user.id}`
     cookie = user.email
 
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ไม่มีสิทธิ์')
+    const result = await saveChannel(null, validForm())
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ไม่มีสิทธิ์')
     expect(await newestChannelOf(user.id)).toBeUndefined()
   })
 
@@ -317,7 +322,9 @@ describe('saveChannel · แก้ของเดิมบนตารางจ�
     await sql`UPDATE app_user SET is_active = false WHERE id = ${user.id}`
     cookie = user.email
 
-    await expect(saveChannel(null, validForm())).rejects.toThrow('ต้องเข้าสู่ระบบก่อน')
+    const result = await saveChannel(null, validForm())
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ต้องเข้าสู่ระบบก่อน')
     expect(await newestChannelOf(user.id)).toBeUndefined()
   })
 })
