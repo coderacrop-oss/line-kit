@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto'
 import { findChannelByBotUserId } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { makePorts } from '@/lib/db/queries'
@@ -73,6 +74,19 @@ export async function POST(request: Request): Promise<Response> {
       channelId: channel.id, field: 'secret', purpose: 'verify_signature', appUserId: null,
     })
     verified = verifySignature(raw, request.headers.get('x-line-signature'), channelSecret)
+    // TEMPORARY — เพื่อไล่ปัญหา 401 ที่เกิดจริงในโปรดักชันวันนี้ (Dew channel) โดยไม่
+    // เผยกุญแจจริง: log แค่ความยาวของกุญแจที่อ่านได้ (บอกได้ว่าอ่านค่าว่างมาหรือเปล่า)
+    // กับลายเซ็นที่คำนวณได้เทียบกับที่ LINE ส่งมา — ลายเซ็นเป็นผลลัพธ์จาก HMAC ทาง
+    // เดียว ไม่ใช่กุญแจเอง จึง log เต็มได้อย่างปลอดภัย ต้องเอาออกหลังไล่บั๊กเสร็จ
+    if (!verified) {
+      console.warn('signature mismatch diagnostic', {
+        channelId: channel.id,
+        secretLength: channelSecret.length,
+        bodyLength: raw.length,
+        receivedSignature: request.headers.get('x-line-signature'),
+        expectedSignature: createHmac('sha256', channelSecret).update(raw, 'utf8').digest('base64'),
+      })
+    }
   } catch (error) {
     // A channel row that exists but has no key yet (mid-setup) cannot be
     // verified against — that is not different from a signature that fails.
