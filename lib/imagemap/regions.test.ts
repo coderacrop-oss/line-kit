@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   MAX_AREAS, MAX_ALT_TEXT_LENGTH, MAX_LABEL_LENGTH, MAX_TEXT_LENGTH, MAX_URI_LENGTH, MIN_AREA_SIZE,
-  validateAltText, validateAltTextDraft, validateTapAreas, validateTapAreasDraft, type TapArea,
+  validateAltText, validateAltTextDraft, validateTapAreas, validateTapAreasDraft,
+  validateVideoArea, validateVideoExternalLink, type TapArea,
 } from './regions'
 
 const CANVAS_HEIGHT = 600
@@ -185,5 +186,76 @@ describe('validateAltText', () => {
 
   it(`ยาวเกิน ${MAX_ALT_TEXT_LENGTH} ตัวอักษร ปฏิเสธ`, () => {
     expect(validateAltText('ก'.repeat(MAX_ALT_TEXT_LENGTH + 1)).ok).toBe(false)
+  })
+})
+
+describe('validateVideoArea · พื้นที่เล่นวิดีโอของริชวิดีโอ', () => {
+  it('null (ยังไม่เคยวางพื้นที่เลย) เป็นค่าที่ถูกต้อง ไม่ใช่ error', () => {
+    expect(validateVideoArea(null, CANVAS_HEIGHT)).toEqual({ ok: true, area: null })
+  })
+
+  it('undefined ก็เป็นค่าที่ถูกต้องเช่นกัน', () => {
+    expect(validateVideoArea(undefined, CANVAS_HEIGHT)).toEqual({ ok: true, area: null })
+  })
+
+  it('กรอบที่ถูกต้อง — ผ่าน คืนกรอบเดิมกลับมา', () => {
+    const box = { x: 10, y: 20, width: 300, height: 150 }
+    expect(validateVideoArea(box, CANVAS_HEIGHT)).toEqual({ ok: true, area: box })
+  })
+
+  it('เล็กกว่า MIN_AREA_SIZE — ปฏิเสธ กฎเดียวกับพื้นที่กด', () => {
+    const out = validateVideoArea({ x: 0, y: 0, width: MIN_AREA_SIZE - 1, height: 100 }, CANVAS_HEIGHT)
+    expect(out.ok).toBe(false)
+  })
+
+  it('หลุดขอบภาพด้านล่าง — ปฏิเสธ', () => {
+    const out = validateVideoArea({ x: 0, y: CANVAS_HEIGHT - 10, width: 100, height: 100 }, CANVAS_HEIGHT)
+    expect(out.ok).toBe(false)
+  })
+
+  it('หลุดขอบด้านขวา (เกิน 1040 กว้างอ้างอิง) — ปฏิเสธ', () => {
+    const out = validateVideoArea({ x: 900, y: 0, width: 300, height: 100 }, CANVAS_HEIGHT)
+    expect(out.ok).toBe(false)
+  })
+
+  it('รูปร่างไม่ใช่ object — ปฏิเสธ', () => {
+    expect(validateVideoArea('not-an-object', CANVAS_HEIGHT).ok).toBe(false)
+  })
+
+  it('ไม่มีชนิดแอ็กชัน/label ติดมาด้วยเลย — คืนแค่กรอบสี่ค่า ไม่มีฟิลด์เกิน', () => {
+    const result = validateVideoArea({ x: 1, y: 2, width: 100, height: 100, action: { type: 'uri' } }, CANVAS_HEIGHT)
+    expect(result).toEqual({ ok: true, area: { x: 1, y: 2, width: 100, height: 100 } })
+  })
+})
+
+describe('validateVideoExternalLink · ลิงก์หลังวิดีโอเล่นจบ', () => {
+  it('ว่างทั้งคู่ — ผ่าน (ไม่บังคับต้องมี ต่างจากลิงก์ของพื้นที่กด)', () => {
+    expect(validateVideoExternalLink('', '')).toEqual({ ok: true, linkUri: '', label: '' })
+  })
+
+  it('ลิงก์ http/https ปกติ — ผ่าน', () => {
+    expect(validateVideoExternalLink('https://example.com/more', 'ดูเพิ่ม'))
+      .toEqual({ ok: true, linkUri: 'https://example.com/more', label: 'ดูเพิ่ม' })
+  })
+
+  it('ลิงก์ไม่ใช่ http/https (เช่น javascript:) — ปฏิเสธ', () => {
+    expect(validateVideoExternalLink('javascript:alert(1)', '').ok).toBe(false)
+  })
+
+  it('ลิงก์รูปแบบผิด (parse ไม่ได้เลย) — ปฏิเสธ', () => {
+    expect(validateVideoExternalLink('not a url', '').ok).toBe(false)
+  })
+
+  it(`ลิงก์ยาวเกิน ${MAX_URI_LENGTH} ตัวอักษร — ปฏิเสธ`, () => {
+    expect(validateVideoExternalLink('https://example.com/' + 'a'.repeat(MAX_URI_LENGTH), '').ok).toBe(false)
+  })
+
+  it(`ป้ายกำกับยาวเกิน ${MAX_LABEL_LENGTH} ตัวอักษร — ปฏิเสธ`, () => {
+    expect(validateVideoExternalLink('', 'ก'.repeat(MAX_LABEL_LENGTH + 1)).ok).toBe(false)
+  })
+
+  it('ไม่ใช่ข้อความ (ชนิดผิด) — ปฏิเสธ', () => {
+    expect(validateVideoExternalLink(123, '').ok).toBe(false)
+    expect(validateVideoExternalLink('', 123).ok).toBe(false)
   })
 })

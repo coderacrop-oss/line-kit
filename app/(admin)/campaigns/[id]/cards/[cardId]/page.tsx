@@ -48,10 +48,14 @@ export default async function CardEditPage({ params }: {
   const screen = await loadCardEditor(sql, id, cardId)
   if (!screen) notFound()
 
-  // ริชเมสเสจไม่มีบล็อกให้แก้เลย — เป็นภาพฐานภาพเดียวบวกพื้นที่กด ไม่ใช่รูปร่างที่
-  // บล็อกเอดิเตอร์ข้างล่างนี้วาดได้ (BlockForm/BlockList ผูกกับ card_block ทั้งไฟล์)
-  // จอนี้จึงส่งต่อไปตัวแก้ไขของมันเองแทนเสมอ ไม่ว่าจะมาจากลิงก์ไหนก็ตาม
-  if (screen.card.renderAs === 'imagemap') redirect(`/campaigns/${id}/cards/${cardId}/imagemap`)
+  // ริชเมสเสจ/ริชวิดีโอไม่มีบล็อกให้แก้เลย — เป็นภาพฐานภาพเดียวบวกพื้นที่กด (และวิดีโอ
+  // เล่นทับสำหรับริชวิดีโอ) ไม่ใช่รูปร่างที่บล็อกเอดิเตอร์ข้างล่างนี้วาดได้
+  // (BlockForm/BlockList ผูกกับ card_block ทั้งไฟล์) จอนี้จึงส่งต่อไปตัวแก้ไขของมันเอง
+  // แทนเสมอ (จอเดียวกันสำหรับทั้งสองชนิด — ดู components/imagemap/ImagemapEditor.tsx)
+  // ไม่ว่าจะมาจากลิงก์ไหนก็ตาม
+  if (screen.card.renderAs === 'imagemap' || screen.card.renderAs === 'imagemap_video') {
+    redirect(`/campaigns/${id}/cards/${cardId}/imagemap`)
+  }
 
   // ปุ่มส่งการ์ดทดสอบ (Task 14) ต้องรู้ว่าคนที่กำลังดูจอนี้มี LINE user id ของตัวเอง
   // ไว้รับการ์ดหรือยัง (BR-62) — อ่านจาก session.userId เสมอ ไม่ใช่ให้จอกรอกเอง

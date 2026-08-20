@@ -1,7 +1,8 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import type postgres from 'postgres'
 import {
-  loadCardImagemap, markImagemapApplied, resolveImagemapVariantAsset, saveImagemapDraft, setImagemapBaseImage,
+  loadCardImagemap, loadReadyImagemaps, markImagemapApplied, resolveImagemapVariantAsset,
+  saveImagemapDraft, setImagemapBaseImage, setImagemapVideoAsset, setImagemapVideoPreview,
 } from '../lib/db/card-imagemap'
 import { testDb } from '../lib/db/client'
 import type { TapArea } from '../lib/imagemap/regions'
@@ -23,7 +24,7 @@ const tag = () =>
 
 type Scene = { userId: string; campaignId: string; cardId: string; assetId: string }
 
-async function scene(renderAs: 'imagemap' | 'text' = 'imagemap'): Promise<Scene> {
+async function scene(renderAs: 'imagemap' | 'imagemap_video' | 'text' = 'imagemap'): Promise<Scene> {
   const t = tag()
   const [user] = await sql<{ id: string }[]>`
     INSERT INTO app_user (email, role) VALUES (${`ci-${t}@example.com`}, 'configurator')
@@ -247,5 +248,185 @@ describe('resolveImagemapVariantAsset · ฐานข้อมูลจริง
    */
   it('cardId ที่รูปร่างไม่ใช่ UUID เลย ทำให้ Postgres ปฏิเสธตรงๆ — เหตุผลที่ route.ts ต้องกันไว้ก่อน', async () => {
     await expect(resolveImagemapVariantAsset(sql, 'not-a-uuid', 1040)).rejects.toThrow(/uuid/i)
+  })
+})
+
+async function makeVideoAsset(s: Scene, path = 'video.mp4'): Promise<string> {
+  const t = tag()
+  const [row] = await sql<{ id: string }[]>`
+    INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, duration_sec,
+                        bytes, width, height, uploaded_by)
+    VALUES (${s.campaignId}, ${`uploads/${s.cardId}/${t}-${path}`}, ${`/uploads/${s.cardId}/${t}-${path}`},
+            'video', 'video/mp4', 10, 1024, 640, 360, ${s.userId})
+    RETURNING id`
+  return row.id
+}
+
+describe('setImagemapVideoAsset · ฐานข้อมูลจริง (ริชวิดีโอ)', () => {
+  it('ตั้งวิดีโอครั้งแรก แล้วโหลดกลับมาได้ url ตรงกัน', async () => {
+    const s = await scene('imagemap_video')
+    const videoAssetId = await makeVideoAsset(s)
+    await setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: videoAssetId })
+
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoAssetId).toBe(videoAssetId)
+    expect(loaded?.videoUrl).toContain('video.mp4')
+  })
+
+  it('การ์ดที่เป็น imagemap ธรรมดา (ไม่ใช่ imagemap_video) ถูกปฏิเสธ', async () => {
+    const s = await scene('imagemap')
+    const videoAssetId = await makeVideoAsset(s)
+    await expect(setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: videoAssetId }))
+      .rejects.toThrow('ไม่พบการ์ดริชวิดีโอนี้')
+  })
+
+  it('การ์ดของแคมเปญอื่น ถูกปฏิเสธ', async () => {
+    const s = await scene('imagemap_video')
+    const other = await scene('imagemap_video')
+    const videoAssetId = await makeVideoAsset(s)
+    await expect(setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: other.campaignId, assetId: videoAssetId }))
+      .rejects.toThrow('ไม่พบการ์ดริชวิดีโอนี้')
+  })
+
+  it('เปลี่ยนวิดีโอใหม่ — ไม่ล้างพื้นที่เล่น/ภาพตัวอย่างเดิมทิ้ง (ต่างจากภาพฐานที่ล้าง variant_assets)', async () => {
+    const s = await scene('imagemap_video')
+    const firstVideoId = await makeVideoAsset(s, 'first.mp4')
+    await setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: firstVideoId })
+    await saveImagemapDraft(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'x', userId: s.userId,
+      videoArea: { x: 10, y: 10, width: 400, height: 225 },
+    })
+
+    const secondVideoId = await makeVideoAsset(s, 'second.mp4')
+    await setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: secondVideoId })
+
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoAssetId).toBe(secondVideoId)
+    expect(loaded?.videoArea).toEqual({ x: 10, y: 10, width: 400, height: 225 })
+  })
+})
+
+describe('setImagemapVideoPreview · ฐานข้อมูลจริง (ริชวิดีโอ)', () => {
+  it('ตั้งภาพตัวอย่างครั้งแรก แล้วโหลดกลับมาได้ url ตรงกัน', async () => {
+    const s = await scene('imagemap_video')
+    await setImagemapVideoPreview(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, userId: s.userId })
+
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoPreviewAssetId).toBe(s.assetId)
+    expect(loaded?.videoPreviewUrl).toContain('base.jpg')
+  })
+
+  it('เรียกซ้ำ (แทนที่ภาพตัวอย่าง) เขียนทับแถวเดิม ไม่สร้างแถวใหม่ซ้อน', async () => {
+    const s = await scene('imagemap_video')
+    await setImagemapVideoPreview(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, userId: s.userId })
+
+    const [secondAsset] = await sql<{ id: string }[]>`
+      INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, bytes, width, height, uploaded_by)
+      VALUES (${s.campaignId}, ${`uploads/${s.cardId}/preview2.jpg`}, ${`/uploads/${s.cardId}/preview2.jpg`},
+              'image', 'image/jpeg', 100, 800, 600, ${s.userId})
+      RETURNING id`
+    await setImagemapVideoPreview(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: secondAsset.id, userId: s.userId })
+
+    const rows = await sql`SELECT id FROM card_imagemap WHERE card_id = ${s.cardId}`
+    expect(rows).toHaveLength(1)
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoPreviewAssetId).toBe(secondAsset.id)
+  })
+})
+
+describe('saveImagemapDraft · พื้นที่เล่นวิดีโอ/ลิงก์หลังเล่นจบ (ริชวิดีโอ)', () => {
+  it('บันทึกพื้นที่เล่นวิดีโอกับลิงก์ แล้วโหลดกลับมาตรงกันทุกฟิลด์', async () => {
+    const s = await scene('imagemap_video')
+    await saveImagemapDraft(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'x', userId: s.userId,
+      videoArea: { x: 5, y: 6, width: 300, height: 200 },
+      videoLinkUri: 'https://example.com/more', videoLinkLabel: 'ดูเพิ่ม',
+    })
+
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoArea).toEqual({ x: 5, y: 6, width: 300, height: 200 })
+    expect(loaded?.videoLinkUri).toBe('https://example.com/more')
+    expect(loaded?.videoLinkLabel).toBe('ดูเพิ่ม')
+  })
+
+  it('ไม่ส่งฟิลด์วิดีโอมาเลย (ธรรมเนียมเดิมของ imagemap ธรรมดา) — ยังบันทึกได้ปกติ ได้ค่าว่าง', async () => {
+    const s = await scene('imagemap')
+    await saveImagemapDraft(sql, { cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'x', userId: s.userId })
+
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoArea).toBeNull()
+    expect(loaded?.videoLinkUri).toBe('')
+  })
+
+  it('ลบพื้นที่เล่นวิดีโอ (ส่ง null) — เขียนทับเป็น null จริง ไม่ใช่ค้างค่าเดิม', async () => {
+    const s = await scene('imagemap_video')
+    await saveImagemapDraft(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'x', userId: s.userId,
+      videoArea: { x: 5, y: 6, width: 300, height: 200 },
+    })
+    await saveImagemapDraft(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'x', userId: s.userId,
+      videoArea: null,
+    })
+
+    const loaded = await loadCardImagemap(sql, s.campaignId, s.cardId)
+    expect(loaded?.videoArea).toBeNull()
+  })
+})
+
+describe('loadReadyImagemaps · ริชวิดีโอ (ฐานข้อมูลจริง)', () => {
+  it('ครบทั้งภาพฐาน วิดีโอ ภาพตัวอย่าง และพื้นที่เล่น — video ไม่เป็น null', async () => {
+    const s = await scene('imagemap_video')
+    await setImagemapBaseImage(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, baseWidth: 1040, baseHeight: 585, userId: s.userId,
+    })
+    await markImagemapApplied(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'พร้อมส่ง',
+      baseWidth: 1040, baseHeight: 585, variantAssetIds: (await makeVariantAssets(s)) as never, userId: s.userId,
+    })
+    const videoAssetId = await makeVideoAsset(s)
+    await setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: videoAssetId })
+    await setImagemapVideoPreview(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, userId: s.userId })
+    await saveImagemapDraft(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'พร้อมส่ง', userId: s.userId,
+      videoArea: { x: 1, y: 2, width: 300, height: 150 }, videoLinkUri: 'https://example.com', videoLinkLabel: 'ไป',
+    })
+
+    const ready = await loadReadyImagemaps(sql, s.campaignId)
+    expect(ready[s.cardId].video).toEqual({
+      url: expect.stringContaining('video.mp4'),
+      previewUrl: expect.stringContaining('base.jpg'),
+      area: { x: 1, y: 2, width: 300, height: 150 },
+      externalLink: { linkUri: 'https://example.com', label: 'ไป' },
+    })
+  })
+
+  it('มีภาพฐานพร้อมแล้วแต่ยังไม่ครบวิดีโอ — video เป็น null (ไม่ตกทั้งการ์ดออกจากรายการ)', async () => {
+    const s = await scene('imagemap_video')
+    await setImagemapBaseImage(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, baseWidth: 1040, baseHeight: 585, userId: s.userId,
+    })
+    await markImagemapApplied(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'พร้อมส่ง',
+      baseWidth: 1040, baseHeight: 585, variantAssetIds: (await makeVariantAssets(s)) as never, userId: s.userId,
+    })
+
+    const ready = await loadReadyImagemaps(sql, s.campaignId)
+    expect(ready[s.cardId]).toBeDefined()
+    expect(ready[s.cardId].video).toBeNull()
+  })
+
+  it('การ์ด imagemap ธรรมดาที่พร้อมส่งแล้ว — video เป็น null เสมอ แม้จะมี video_asset_id ค้างอยู่ (ไม่ควรมีทางเกิดจริง)', async () => {
+    const s = await scene('imagemap')
+    await setImagemapBaseImage(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, baseWidth: 1040, baseHeight: 585, userId: s.userId,
+    })
+    await markImagemapApplied(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'พร้อมส่ง',
+      baseWidth: 1040, baseHeight: 585, variantAssetIds: (await makeVariantAssets(s)) as never, userId: s.userId,
+    })
+
+    const ready = await loadReadyImagemaps(sql, s.campaignId)
+    expect(ready[s.cardId].video).toBeNull()
   })
 })

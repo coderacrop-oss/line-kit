@@ -33,7 +33,12 @@ export const MAX_ALT_TEXT_LENGTH = 400
 const isFiniteNumber = (value: unknown): value is number =>
   typeof value === 'number' && Number.isFinite(value)
 
-function validateRect(box: unknown, canvasHeight: number, label: string): string | null {
+/**
+ * ตรวจกรอบสี่เหลี่ยมหนึ่งกรอบว่าอยู่ในภาพไหม — ใช้ร่วมกันทั้งพื้นที่กด (TapArea)
+ * และพื้นที่เล่นวิดีโอของริชวิดีโอ (lib/imagemap/video.ts) เพราะกฎเรื่องขอบเขต/
+ * ขนาดขั้นต่ำเป็นกฎเดียวกันเป๊ะ — ส่งออกไว้แทนที่จะให้ video.ts ประดิษฐ์ชุดที่สอง
+ */
+export function validateRect(box: unknown, canvasHeight: number, label: string): string | null {
   if (typeof box !== 'object' || box === null) return `${label}: รูปร่างไม่ถูกต้อง`
   const b = box as Record<string, unknown>
   for (const key of ['x', 'y', 'width', 'height'] as const) {
@@ -49,8 +54,12 @@ function validateRect(box: unknown, canvasHeight: number, label: string): string
   return null
 }
 
-/** true เมื่อ URI ปลอดภัยพอจะส่งให้ LINE — LINE เองบังคับ http/https เท่านั้น */
-function isHttpUrl(value: string): boolean {
+/**
+ * true เมื่อ URI ปลอดภัยพอจะส่งให้ LINE — LINE เองบังคับ http/https เท่านั้น
+ * ส่งออกไว้ให้ lib/imagemap/video.ts ใช้ตรวจลิงก์หลังเล่นจบของริชวิดีโอด้วย —
+ * กฎเดียวกันเป๊ะกับลิงก์ของพื้นที่กดชนิด uri
+ */
+export function isHttpUrl(value: string): boolean {
   try {
     const url = new URL(value)
     return url.protocol === 'http:' || url.protocol === 'https:'
@@ -179,4 +188,49 @@ export function validateAltText(raw: unknown): AltTextResult {
     return { ok: false, reason: `ข้อความสำรองยาวเกิน ${MAX_ALT_TEXT_LENGTH} ตัวอักษร` }
   }
   return { ok: true, altText: raw }
+}
+
+/**
+ * พื้นที่เล่นวิดีโอของริชวิดีโอ (imagemap_video) — สี่เหลี่ยมหนึ่งกรอบ พิกัดอ้างอิง
+ * เดียวกับพื้นที่กด (กว้าง 1040) แต่ไม่ใช่พื้นที่กด (ไม่มี action) จึงไม่ผ่าน
+ * validateTapAreas — ใช้ validateRect กฎเดียวกันตรงๆ ไม่ประดิษฐ์ชุดที่สอง
+ *
+ * `null` เป็นค่าที่ถูกต้อง — การ์ดที่ยังไม่เคยวางพื้นที่เล่นวิดีโอเลย (อัปโหลดวิดีโอ
+ * แต่ยังไม่ได้ลากวางตำแหน่ง) ไม่ใช่ความผิดพลาด renderCard() ตกไปเป็นข้อความสำรองเอง
+ * เมื่อพื้นที่นี้ยังไม่มี (BR-01) ไม่มีโหมด strict/draft แยกกันเหมือน TapArea เพราะ
+ * ไม่มีสถานะกลางทางที่ต้อง "ปล่อยว่างชั่วคราว" — ค่าที่ส่งมามีแค่สองแบบ: ไม่มีเลย
+ * (null) หรือมีและต้องถูกต้องตามกฎกรอบเดียวกันเสมอ
+ */
+export type VideoAreaResult = { ok: true; area: TapRect | null } | { ok: false; reason: string }
+
+export function validateVideoArea(raw: unknown, canvasHeight: number): VideoAreaResult {
+  if (raw === null || raw === undefined) return { ok: true, area: null }
+  const label = 'พื้นที่เล่นวิดีโอ'
+  const boxError = validateRect(raw, canvasHeight, label)
+  if (boxError) return { ok: false, reason: boxError }
+  const { x, y, width, height } = raw as TapRect
+  return { ok: true, area: { x, y, width, height } }
+}
+
+/**
+ * ลิงก์ที่โชว์หลังวิดีโอเล่นจบ (ImagemapExternalLink ของ LINE) — ต่างจากลิงก์ของ
+ * พื้นที่กด (uri action) ตรงที่ "ไม่บังคับต้องมี" เลย (LINE ไม่ได้ประกาศ externalLink
+ * ไว้ใน required ของ ImagemapVideo — ยืนยันจาก line/line-openapi:messaging-api.yml)
+ * ปล่อยว่างได้เสมอทั้งร่างและตอนกด "ใช้" — ไม่มีโหมด strict เพราะไม่มีอะไรบังคับ
+ * ให้ต้องกรอก มีแค่กฎว่าถ้ากรอกแล้วต้องเป็นลิงก์ http/https จริง
+ */
+export type VideoExternalLinkResult =
+  | { ok: true; linkUri: string; label: string } | { ok: false; reason: string }
+
+export function validateVideoExternalLink(rawUri: unknown, rawLabel: unknown): VideoExternalLinkResult {
+  if (typeof rawUri !== 'string') return { ok: false, reason: 'ลิงก์หลังเล่นจบต้องเป็นข้อความ' }
+  if (typeof rawLabel !== 'string') return { ok: false, reason: 'ป้ายกำกับลิงก์หลังเล่นจบต้องเป็นข้อความ' }
+  if (rawUri.length > MAX_URI_LENGTH) return { ok: false, reason: `ลิงก์หลังเล่นจบยาวเกิน ${MAX_URI_LENGTH} ตัวอักษร` }
+  if (rawLabel.length > MAX_LABEL_LENGTH) {
+    return { ok: false, reason: `ป้ายกำกับลิงก์หลังเล่นจบยาวเกิน ${MAX_LABEL_LENGTH} ตัวอักษร` }
+  }
+  if (rawUri.trim() !== '' && !isHttpUrl(rawUri)) {
+    return { ok: false, reason: 'ลิงก์หลังเล่นจบต้องขึ้นต้นด้วย http:// หรือ https://' }
+  }
+  return { ok: true, linkUri: rawUri, label: rawLabel }
 }

@@ -28,7 +28,7 @@ vi.mock('@/lib/db/client', async (importOriginal) => ({
   db: () => sql,
 }))
 
-const { applyImagemap, saveDraft, uploadBaseImage } =
+const { applyImagemap, saveDraft, uploadBaseImage, uploadVideo, uploadVideoPreview } =
   await import('../app/(admin)/campaigns/[id]/cards/[cardId]/imagemap/actions')
 const { assetStore } = await import('../lib/assets/store')
 
@@ -64,7 +64,7 @@ const tag = () =>
 
 type Scene = { campaignId: string; cardId: string }
 
-async function scene(): Promise<Scene> {
+async function scene(renderAs: 'imagemap' | 'imagemap_video' = 'imagemap'): Promise<Scene> {
   const t = tag()
   const [user] = await sql<{ id: string; email: string }[]>`
     INSERT INTO app_user (email, role) VALUES (${`${t}@example.com`}, 'configurator')
@@ -76,16 +76,41 @@ async function scene(): Promise<Scene> {
     VALUES ('ริชเมสเสจ actions', ${`c_${t}`}, now() - interval '1 day', now() + interval '30 days', ${user.id})
     RETURNING id`
   const [card] = await sql<{ id: string }[]>`
-    INSERT INTO card (campaign_id, code, render_as) VALUES (${campaign.id}, ${`card_${t}`}, 'imagemap')
+    INSERT INTO card (campaign_id, code, render_as) VALUES (${campaign.id}, ${`card_${t}`}, ${renderAs})
     RETURNING id`
 
   return { campaignId: campaign.id, cardId: card.id }
 }
 
-const uploadForm = (bytes: Uint8Array, name = 'base.jpg') => {
+const uploadForm = (bytes: Uint8Array, name = 'base.jpg', mime = 'image/jpeg') => {
   const form = new FormData()
-  form.append('file', new File([bytes as BlobPart], name, { type: 'image/jpeg' }))
+  form.append('file', new File([bytes as BlobPart], name, { type: mime }))
   return form
+}
+
+/**
+ * ไบต์ MP4/ISO-BMFF จริงตัวเล็กสุดที่ probeMp4 (lib/imagemap/video.ts) อ่านได้ครบ —
+ * กล่องประกอบเองแบบเดียวกับ lib/imagemap/video.test.ts (ออฟเซตตรวจกับไฟล์จริงจาก
+ * ffmpeg แล้ว) ไฟล์นี้ไม่ผูกกับ ffmpeg เพื่อให้รันได้ในทุกเครื่อง CI
+ */
+const be32 = (n: number): number[] => [(n >>> 24) & 255, (n >>> 16) & 255, (n >>> 8) & 255, n & 255]
+const fourcc = (s: string): number[] => [...s].map((c) => c.charCodeAt(0))
+const zeros = (n: number): number[] => new Array(n).fill(0)
+const box = (type: string, body: number[]): number[] => [...be32(8 + body.length), ...fourcc(type), ...body]
+
+function realMp4(durationSec = 10, width = 640, height = 360): Uint8Array {
+  const ftyp = box('ftyp', [...fourcc('isom'), ...zeros(4), ...fourcc('isom')])
+  const mvhd = box('mvhd', [0, 0, 0, 0, ...zeros(4), ...zeros(4), ...be32(1000), ...be32(durationSec * 1000)])
+  const hdlr = box('hdlr', [0, 0, 0, 0, ...zeros(4), ...fourcc('vide')])
+  const tkhd = box('tkhd', [
+    0, 0, 0, 0, ...zeros(4), ...zeros(4), ...zeros(4), ...zeros(4), ...zeros(4),
+    ...zeros(8), ...zeros(2), ...zeros(2), ...zeros(2), ...zeros(2), ...zeros(36),
+    ...be32(width << 16), ...be32(height << 16),
+  ])
+  const mdia = box('mdia', hdlr)
+  const trak = box('trak', [...tkhd, ...mdia])
+  const moov = box('moov', [...mvhd, ...trak])
+  return Uint8Array.from([...ftyp, ...moov])
 }
 
 describe('uploadBaseImage · ยิง SQL จริง', () => {
@@ -212,5 +237,99 @@ describe('applyImagemap · ปั้นภาพจริงห้าขนา�
 
     const rows = await sql`SELECT id FROM card_imagemap WHERE card_id = ${s.cardId}`
     expect(rows).toHaveLength(1) // แถวเดียวเสมอ ไม่พอกซ้อน
+  })
+})
+
+describe('uploadVideo · ยิง SQL จริง (ริชวิดีโอ)', () => {
+  it('อัปโหลดวิดีโอ — เก็บไฟล์จริง เขียนแถว asset ชนิด video และชี้ card.video_asset_id ไปที่แถวนั้น', async () => {
+    const s = await scene('imagemap_video')
+    const result = await uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(10, 640, 360), 'clip.mp4', 'video/mp4'))
+    expect(result.url).toBeDefined()
+
+    const [row] = await sql<{
+      video_asset_id: string | null
+    }[]>`SELECT video_asset_id FROM card WHERE id = ${s.cardId}`
+    expect(row.video_asset_id).not.toBeNull()
+
+    const [asset] = await sql<{ media_type: string; mime_type: string; duration_sec: number; width: number; height: number }[]>`
+      SELECT media_type, mime_type, duration_sec, width, height FROM asset WHERE id = ${row.video_asset_id}`
+    expect(asset).toEqual({ media_type: 'video', mime_type: 'video/mp4', duration_sec: 10, width: 640, height: 360 })
+  })
+
+  it('การ์ดที่เป็น imagemap ธรรมดา — ปฏิเสธ ไม่เขียน asset ใดๆ', async () => {
+    const s = await scene('imagemap')
+    await expect(uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(), 'clip.mp4', 'video/mp4')))
+      .rejects.toThrow('ไม่พบการ์ดริชวิดีโอนี้')
+  })
+
+  it('วิดีโอยาวเกินเพดาน — ปฏิเสธก่อนเขียนอะไรเลย', async () => {
+    const s = await scene('imagemap_video')
+    await expect(uploadVideo(s.campaignId, s.cardId, uploadForm(realMp4(61), 'clip.mp4', 'video/mp4')))
+      .rejects.toThrow('เกินเพดาน')
+
+    const [row] = await sql<{ video_asset_id: string | null }[]>`SELECT video_asset_id FROM card WHERE id = ${s.cardId}`
+    expect(row.video_asset_id).toBeNull()
+  })
+
+  it('ไฟล์ไม่ใช่ MP4 จริง (ไม่มีก้อน ftyp) — ปฏิเสธ', async () => {
+    const s = await scene('imagemap_video')
+    await expect(uploadVideo(s.campaignId, s.cardId, uploadForm(Uint8Array.from([1, 2, 3, 4]), 'clip.mp4', 'video/mp4')))
+      .rejects.toThrow('ftyp')
+  })
+})
+
+describe('uploadVideoPreview · ยิง SQL จริง (ริชวิดีโอ)', () => {
+  it('อัปโหลดภาพตัวอย่าง — เขียน card_imagemap.video_preview_asset_id ชี้ไปแถว asset ชนิดภาพ', async () => {
+    const s = await scene('imagemap_video')
+    const result = await uploadVideoPreview(s.campaignId, s.cardId, uploadForm(await realJpeg(400, 225), 'preview.jpg'))
+    expect(result.url).toBeDefined()
+
+    const [row] = await sql<{ video_preview_asset_id: string | null }[]>`
+      SELECT video_preview_asset_id FROM card_imagemap WHERE card_id = ${s.cardId}`
+    expect(row.video_preview_asset_id).not.toBeNull()
+  })
+
+  it('ภาพเล็กกว่า 800px กว้าง — ยังผ่าน (ภาพตัวอย่างไม่ใช้เพดานความกว้างของคลังภาพทั่วไป/ภาพฐาน)', async () => {
+    const s = await scene('imagemap_video')
+    await expect(uploadVideoPreview(s.campaignId, s.cardId, uploadForm(await realJpeg(200, 150), 'preview.jpg')))
+      .resolves.toBeDefined()
+  })
+})
+
+describe('saveDraft · พื้นที่เล่นวิดีโอ/ลิงก์หลังเล่นจบ ยิง SQL จริง (ริชวิดีโอ)', () => {
+  it('บันทึกพื้นที่เล่นวิดีโอกับลิงก์ผ่าน Server Action จริง แล้วอ่านกลับจากฐานข้อมูลตรงกัน', async () => {
+    const s = await scene('imagemap_video')
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+
+    await saveDraft(s.campaignId, s.cardId, {
+      actions: [], altText: 'x',
+      videoArea: { x: 10, y: 10, width: 300, height: 150 },
+      videoLinkUri: 'https://example.com/more', videoLinkLabel: 'ดูเพิ่ม',
+    })
+
+    const [card] = await sql<{ video_end_uri: string; video_end_label: string }[]>`
+      SELECT video_end_uri, video_end_label FROM card WHERE id = ${s.cardId}`
+    expect(card).toEqual({ video_end_uri: 'https://example.com/more', video_end_label: 'ดูเพิ่ม' })
+
+    const [ci] = await sql<{ video_area: unknown }[]>`SELECT video_area FROM card_imagemap WHERE card_id = ${s.cardId}`
+    expect(ci.video_area).toEqual({ x: 10, y: 10, width: 300, height: 150 })
+  })
+
+  it('พื้นที่เล่นวิดีโอหลุดขอบภาพ — ปฏิเสธเหมือนพื้นที่กด', async () => {
+    const s = await scene('imagemap_video')
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+
+    await expect(saveDraft(s.campaignId, s.cardId, {
+      actions: [], altText: 'x', videoArea: { x: 900, y: 900, width: 300, height: 300 },
+    })).rejects.toThrow('นอกขอบภาพ')
+  })
+
+  it('ลิงก์หลังเล่นจบไม่ใช่ http/https — ปฏิเสธ', async () => {
+    const s = await scene('imagemap_video')
+    await uploadBaseImage(s.campaignId, s.cardId, uploadForm(await realJpeg(1040, 1040)))
+
+    await expect(saveDraft(s.campaignId, s.cardId, {
+      actions: [], altText: 'x', videoLinkUri: 'javascript:alert(1)',
+    })).rejects.toThrow('http')
   })
 })

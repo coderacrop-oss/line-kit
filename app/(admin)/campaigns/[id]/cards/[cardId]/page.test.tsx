@@ -138,6 +138,12 @@ describe('M3-S02-edit · เข้าถึงจอ', () => {
     await expect(show()).rejects.toThrow('NEXT_REDIRECT')
     expect(state.redirectedTo).toBe('/campaigns/c1/cards/card-1/imagemap')
   })
+
+  it('การ์ดริชวิดีโอ (imagemap_video) ถูกส่งต่อไปตัวแก้ไขเดียวกันกับริชเมสเสจ', async () => {
+    state.screen = screenFor({ card: { ...screenFor().card, renderAs: 'imagemap_video' } })
+    await expect(show()).rejects.toThrow('NEXT_REDIRECT')
+    expect(state.redirectedTo).toBe('/campaigns/c1/cards/card-1/imagemap')
+  })
 })
 
 describe('M3-S02-edit · กล่องเตือนตามสถานะ', () => {

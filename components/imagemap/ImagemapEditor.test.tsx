@@ -233,3 +233,131 @@ describe('ImagemapEditor · ปุ่ม "ใช้"', () => {
     expect((screen.getByText('ใช้') as HTMLButtonElement).disabled).toBe(true)
   })
 })
+
+describe('ImagemapEditor · cardKind imagemap_video', () => {
+  const drawVideo = (over: Partial<Parameters<typeof ImagemapEditor>[0]> = {}) => {
+    const saveDraft = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => {})
+    const applyImagemap = vi.fn(async (_c: string, _k: string, _p: ImagemapDraftPayload) => {})
+    const uploadBaseImage = vi.fn(async () => ({ url: '/uploads/new.jpg', baseWidth: 1040, baseHeight: 700 }))
+    const uploadVideo = vi.fn(async () => ({ url: '/uploads/video.mp4' }))
+    const uploadVideoPreview = vi.fn(async () => ({ url: '/uploads/preview.jpg' }))
+
+    const utils = render(
+      <ImagemapEditor
+        campaignId="c1" cardId="card-1" initial={withImage()} canEdit backHref="/campaigns/c1/cards"
+        cardKind="imagemap_video"
+        uploadBaseImage={uploadBaseImage} saveDraft={saveDraft} applyImagemap={applyImagemap}
+        uploadVideo={uploadVideo} uploadVideoPreview={uploadVideoPreview}
+        {...over}
+      />,
+    )
+    return { ...utils, saveDraft, applyImagemap, uploadBaseImage, uploadVideo, uploadVideoPreview }
+  }
+
+  it('imagemap ธรรมดา (cardKind เริ่มต้น) — ไม่มีช่องอัปโหลดวิดีโอเลย', () => {
+    draw()
+    expect(screen.queryByText('+ อัปโหลดวิดีโอ')).toBeNull()
+    expect(screen.queryByText('+ อัปโหลดภาพตัวอย่าง')).toBeNull()
+  })
+
+  it('imagemap_video — ยังไม่อัปโหลดอะไรเลย บอกว่าวิดีโอยังไม่พร้อมส่ง ปุ่มวางพื้นที่เล่นถูกปิดไว้', () => {
+    drawVideo()
+    expect(screen.getByText(/วิดีโอยังไม่พร้อมส่ง/)).toBeDefined()
+    expect((screen.getByText('+ วางพื้นที่เล่นวิดีโอ') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('อัปโหลดวิดีโอ — เรียก uploadVideo แล้วปุ่มวางพื้นที่เล่นยังปิดอยู่จนกว่าจะมีภาพตัวอย่างด้วย', async () => {
+    const { container, uploadVideo } = drawVideo()
+    const inputs = container.querySelectorAll('input[type="file"]')
+    const videoInput = inputs[1] as HTMLInputElement // [0]=ภาพฐาน [1]=วิดีโอ [2]=ภาพตัวอย่าง
+    const file = new File([new Uint8Array([1, 2, 3])], 'a.mp4', { type: 'video/mp4' })
+    fireEvent.change(videoInput, { target: { files: [file] } })
+
+    await waitFor(() => expect(uploadVideo).toHaveBeenCalled())
+    expect((screen.getByText('+ วางพื้นที่เล่นวิดีโอ') as HTMLButtonElement).disabled).toBe(true)
+  })
+
+  it('อัปโหลดวิดีโอและภาพตัวอย่างครบ — ปุ่มวางพื้นที่เล่นเปิดใช้ได้ กดแล้วปรากฏพื้นที่บนเวทีและบันทึกร่าง', async () => {
+    const { container, saveDraft } = drawVideo()
+    const inputs = container.querySelectorAll('input[type="file"]')
+    fireEvent.change(inputs[1], { target: { files: [new File([new Uint8Array([1])], 'a.mp4', { type: 'video/mp4' })] } })
+    fireEvent.change(inputs[2], { target: { files: [new File([new Uint8Array([1])], 'p.jpg', { type: 'image/jpeg' })] } })
+
+    await waitFor(() => expect((screen.getByText('+ วางพื้นที่เล่นวิดีโอ') as HTMLButtonElement).disabled).toBe(false))
+
+    fireEvent.click(screen.getByText('+ วางพื้นที่เล่นวิดีโอ'))
+
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled())
+    expect(container.querySelector('[data-area-id="__video__"]')).not.toBeNull()
+    const call = saveDraft.mock.calls.at(-1)
+    expect(call?.[2].videoArea).toEqual({ x: expect.any(Number), y: expect.any(Number), width: 400, height: 225 })
+  })
+
+  it('มีพื้นที่เล่นวิดีโออยู่แล้ว — ลากเปลี่ยนขนาด/ตำแหน่งบันทึกผ่าน onCommitBox เหมือนพื้นที่กด', async () => {
+    const { container, saveDraft } = drawVideo({
+      initial: withImage({
+        videoUrl: '/uploads/video.mp4', videoPreviewUrl: '/uploads/preview.jpg',
+        videoArea: { x: 10, y: 10, width: 400, height: 225 },
+      }),
+    })
+    const node = container.querySelector('[data-area-id="__video__"]')!
+    expect(node).not.toBeNull()
+
+    fireEvent.pointerDown(node)
+    fireEvent.pointerMove(node, { clientX: 50, clientY: 0 })
+    fireEvent.pointerUp(node)
+
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled())
+  })
+
+  it('ลบพื้นที่เล่นวิดีโอ — หายไปจากเวที', async () => {
+    const { container, saveDraft } = drawVideo({
+      initial: withImage({
+        videoUrl: '/uploads/video.mp4', videoPreviewUrl: '/uploads/preview.jpg',
+        videoArea: { x: 10, y: 10, width: 400, height: 225 },
+      }),
+    })
+    expect(container.querySelector('[data-area-id="__video__"]')).not.toBeNull()
+
+    fireEvent.click(screen.getByLabelText('ลบพื้นที่เล่นวิดีโอ'))
+
+    await waitFor(() => expect(saveDraft).toHaveBeenCalled())
+    expect(container.querySelector('[data-area-id="__video__"]')).toBeNull()
+  })
+
+  it('แก้ลิงก์หลังเล่นจบแล้ว blur — บันทึกค่าใหม่', async () => {
+    const { saveDraft } = drawVideo()
+    const input = screen.getByLabelText('ลิงก์หลังเล่นจบ (ไม่บังคับ)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'https://example.com/more' } })
+    fireEvent.blur(input)
+
+    await waitFor(() => {
+      const call = saveDraft.mock.calls.at(-1)
+      expect(call?.[2].videoLinkUri).toBe('https://example.com/more')
+    })
+  })
+
+  it('แก้ป้ายกำกับลิงก์แล้ว blur — บันทึกค่าใหม่', async () => {
+    const { saveDraft } = drawVideo()
+    const input = screen.getByLabelText('ป้ายกำกับลิงก์ (ไม่บังคับ)') as HTMLInputElement
+    fireEvent.change(input, { target: { value: 'ดูเพิ่ม' } })
+    fireEvent.blur(input)
+
+    await waitFor(() => {
+      const call = saveDraft.mock.calls.at(-1)
+      expect(call?.[2].videoLinkLabel).toBe('ดูเพิ่ม')
+    })
+  })
+
+  it('canEdit=false — ไม่มีปุ่มอัปโหลดวิดีโอ/ภาพตัวอย่าง และไม่มีปุ่มลบพื้นที่เล่น', () => {
+    drawVideo({
+      canEdit: false,
+      initial: withImage({
+        videoUrl: '/uploads/video.mp4', videoPreviewUrl: '/uploads/preview.jpg',
+        videoArea: { x: 10, y: 10, width: 400, height: 225 },
+      }),
+    })
+    expect(screen.queryByText('+ อัปโหลดวิดีโอ')).toBeNull()
+    expect(screen.queryByLabelText('ลบพื้นที่เล่นวิดีโอ')).toBeNull()
+  })
+})

@@ -22,8 +22,17 @@ import { computeMove, computeResize, RESIZE_HANDLES, type Rect, type ResizeHandl
  *      ทั้งที่มองเห็น (ไม่ใช่แค่มองไม่เห็น)
  */
 
+/**
+ * กรอบสี่เหลี่ยมหนึ่งกรอบที่ AreaNode ลาก/ปรับขนาดได้ — TapArea (พื้นที่กด) มีครบ
+ * ทุกฟิลด์นี้อยู่แล้วบวก action จึงส่งตรงๆ ได้โดยไม่ต้องแปลง ส่วนพื้นที่เล่นวิดีโอ
+ * ของริชวิดีโอ (ไม่มี action) ประกอบ id ปลอมขึ้นมาคู่กับกรอบเพื่อส่งเข้าพร็อพนี้
+ */
+export type AreaBox = { id: string; x: number; y: number; width: number; height: number }
+
 export type AreaNodeProps = {
-  area: TapArea
+  area: AreaBox
+  /** ป้ายข้อความในกล่อง — คำนวณจากภายนอก (areaSummary สำหรับพื้นที่กด · ข้อความคงที่สำหรับพื้นที่เล่นวิดีโอ) ไม่ใช่ผูกกับ TapArea.action ตรงๆ */
+  label: string
   /** พิกเซลจอต่อพิกเซลจริงของพิกัดอ้างอิง 1040 — ผืนใหญ่ย่อลงมาแสดงที่จอเท่านี้เท่า */
   scale: number
   selected: boolean
@@ -64,7 +73,7 @@ export function areaSummary(area: TapArea): string {
     : `💬 ${area.action.label ?? area.action.text}`
 }
 
-export function AreaNode({ area, scale, selected, canEdit, onSelect, onCommitBox }: AreaNodeProps) {
+export function AreaNode({ area, label, scale, selected, canEdit, onSelect, onCommitBox }: AreaNodeProps) {
   const nodeRef = useRef<HTMLDivElement>(null)
   const drag = useRef<DragState | null>(null)
 
@@ -147,7 +156,7 @@ export function AreaNode({ area, scale, selected, canEdit, onSelect, onCommitBox
           textOverflow: 'ellipsis', whiteSpace: 'nowrap',
         }}
         >
-          {areaSummary(area)}
+          {label}
         </div>
       </div>
 

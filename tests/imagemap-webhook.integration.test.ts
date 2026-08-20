@@ -1,6 +1,9 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest'
 import type postgres from 'postgres'
-import { markImagemapApplied, setImagemapBaseImage } from '../lib/db/card-imagemap'
+import {
+  markImagemapApplied, saveImagemapDraft, setImagemapBaseImage,
+  setImagemapVideoAsset, setImagemapVideoPreview,
+} from '../lib/db/card-imagemap'
 import { testDb } from '../lib/db/client'
 import { clearConfigCache, makePorts } from '../lib/db/queries'
 import { handleEvent } from '../lib/webhook/handle'
@@ -32,7 +35,9 @@ const say = (text: string) => ({
  * ไว้ในตัวแก้ไข (card.tap_areas + card_imagemap) ไหลออกไปเป็น LINE imagemap message
  * จริงที่ผู้เล่นได้รับ ไม่ใช่แค่ที่ renderCard() ทดสอบแยกหน่วยผ่าน
  */
-async function seedImagemapScene(): Promise<{ lineChannelId: string; cardId: string; assetId: string }> {
+async function seedImagemapScene(
+  renderAs: 'imagemap' | 'imagemap_video' = 'imagemap',
+): Promise<{ lineChannelId: string; cardId: string; assetId: string; campaignId: string; userId: string }> {
   const tag = uid()
   const [user] = await sql<{ id: string }[]>`
     INSERT INTO app_user (email, role) VALUES (${`imw-${tag}@example.com`}, 'configurator') RETURNING id`
@@ -42,7 +47,7 @@ async function seedImagemapScene(): Promise<{ lineChannelId: string; cardId: str
             now() - interval '2 days', now() + interval '20 days', ${user.id})
     RETURNING id`
   const [card] = await sql<{ id: string }[]>`
-    INSERT INTO card (campaign_id, code, render_as) VALUES (${campaign.id}, ${`promo_${tag}`}, 'imagemap')
+    INSERT INTO card (campaign_id, code, render_as) VALUES (${campaign.id}, ${`promo_${tag}`}, ${renderAs})
     RETURNING id`
   const [asset] = await sql<{ id: string }[]>`
     INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, bytes,
@@ -68,7 +73,10 @@ async function seedImagemapScene(): Promise<{ lineChannelId: string; cardId: str
     INSERT INTO config_version (campaign_id, version_no, snapshot, channel_id, published_by)
     VALUES (${campaign.id}, 1, '{}'::jsonb, ${channel.id}, ${user.id})`
 
-  return { lineChannelId: `LINE-${tag}`, cardId: card.id, assetId: asset.id }
+  return {
+    lineChannelId: `LINE-${tag}`, cardId: card.id, assetId: asset.id,
+    campaignId: campaign.id, userId: user.id,
+  }
 }
 
 async function makeVariantAssets(campaignId: string, cardId: string, userId: string): Promise<Record<string, string>> {
@@ -122,6 +130,85 @@ describe('ริชเมสเสจ (imagemap) ผ่านเส้นทา�
   it('การ์ดริชเมสเสจที่ยังไม่เคยกด "ใช้" เลย → ตอบข้อความสำรอง ไม่ใช่ imagemap message ที่พัง', async () => {
     vi.stubEnv('PUBLIC_BASE_URL', 'https://flex.example.com')
     const s = await seedImagemapScene()
+    clearConfigCache()
+
+    const ports = makePorts(sql, s.lineChannelId)
+    const out = await handleEvent(say('โปรโมชัน'), s.lineChannelId, ports, NOW, seededRng(1))
+
+    expect(out?.message).toMatchObject({ type: 'text' })
+  })
+})
+
+/**
+ * เส้นทางเต็มของริชวิดีโอ (เฟส 2) — เหมือนชุดข้างบนทุกประการ บวกวิดีโอ/ภาพตัวอย่าง/
+ * พื้นที่เล่น เพื่อพิสูจน์ว่าสิ่งที่บันทึกไว้ในตัวแก้ไข (card.video_asset_id ·
+ * card.video_end_uri/label · card_imagemap.video_preview_asset_id/video_area) ไหล
+ * ออกไปเป็นฟิลด์ video ของ LINE imagemap message จริง ผ่านฐานข้อมูลจริงทั้งเส้นทาง
+ * ไม่ mock อะไรเลย — เหมือนกันกับที่ชุดริชเมสเสจข้างบนพิสูจน์ไว้ก่อนแล้ว
+ */
+describe('ริชวิดีโอ (imagemap_video) ผ่านเส้นทาง webhook เต็มระบบ', () => {
+  it('ครบทั้งภาพฐาน วิดีโอ ภาพตัวอย่าง และพื้นที่เล่น → ได้ LINE imagemap message ที่มีฟิลด์ video จริง', async () => {
+    vi.stubEnv('PUBLIC_BASE_URL', 'https://flex.example.com')
+    const s = await seedImagemapScene('imagemap_video')
+
+    await setImagemapBaseImage(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, baseWidth: 1040, baseHeight: 585, userId: s.userId,
+    })
+    const variantIds = await makeVariantAssets(s.campaignId, s.cardId, s.userId)
+    await markImagemapApplied(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [],
+      altText: 'ริชวิดีโอ', baseWidth: 1040, baseHeight: 585, variantAssetIds: variantIds as never, userId: s.userId,
+    })
+
+    const [videoAsset] = await sql<{ id: string }[]>`
+      INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, duration_sec,
+                          bytes, width, height, uploaded_by)
+      VALUES (${s.campaignId}, ${`uploads/${s.cardId}/video.mp4`}, ${`/uploads/${s.cardId}/video.mp4`},
+              'video', 'video/mp4', 10, 1024, 640, 360, ${s.userId})
+      RETURNING id`
+    await setImagemapVideoAsset(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: videoAsset.id })
+
+    const [previewAsset] = await sql<{ id: string }[]>`
+      INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type, bytes, width, height, uploaded_by)
+      VALUES (${s.campaignId}, ${`uploads/${s.cardId}/preview.jpg`}, ${`/uploads/${s.cardId}/preview.jpg`},
+              'image', 'image/jpeg', 100, 400, 225, ${s.userId})
+      RETURNING id`
+    await setImagemapVideoPreview(sql, { cardId: s.cardId, campaignId: s.campaignId, assetId: previewAsset.id, userId: s.userId })
+
+    await saveImagemapDraft(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [], altText: 'ริชวิดีโอ', userId: s.userId,
+      videoArea: { x: 10, y: 10, width: 400, height: 225 },
+      videoLinkUri: 'https://example.com/more', videoLinkLabel: 'ดูเพิ่ม',
+    })
+    clearConfigCache()
+
+    const ports = makePorts(sql, s.lineChannelId)
+    const out = await handleEvent(say('โปรโมชัน'), s.lineChannelId, ports, NOW, seededRng(1))
+
+    expect(out?.message).toMatchObject({
+      type: 'imagemap',
+      baseUrl: `https://flex.example.com/api/imagemap/${s.cardId}`,
+      video: {
+        originalContentUrl: '/uploads/' + s.cardId + '/video.mp4',
+        previewImageUrl: '/uploads/' + s.cardId + '/preview.jpg',
+        area: { x: 10, y: 10, width: 400, height: 225 },
+        externalLink: { linkUri: 'https://example.com/more', label: 'ดูเพิ่ม' },
+      },
+    })
+  })
+
+  it('มีภาพฐานพร้อมแล้วแต่ยังไม่ได้อัปโหลดวิดีโอเลย → ตอบข้อความสำรอง ไม่ส่งภาพเต็มใบไม่มีวิดีโอ (BR-01)', async () => {
+    vi.stubEnv('PUBLIC_BASE_URL', 'https://flex.example.com')
+    const s = await seedImagemapScene('imagemap_video')
+
+    await setImagemapBaseImage(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, assetId: s.assetId, baseWidth: 1040, baseHeight: 585, userId: s.userId,
+    })
+    const variantIds = await makeVariantAssets(s.campaignId, s.cardId, s.userId)
+    await markImagemapApplied(sql, {
+      cardId: s.cardId, campaignId: s.campaignId, actions: [],
+      altText: 'ริชวิดีโอ', baseWidth: 1040, baseHeight: 585, variantAssetIds: variantIds as never, userId: s.userId,
+    })
     clearConfigCache()
 
     const ports = makePorts(sql, s.lineChannelId)

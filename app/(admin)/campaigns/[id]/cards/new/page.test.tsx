@@ -166,17 +166,17 @@ describe('สิทธิ์และทางเข้า', () => {
 })
 
 /**
- * ขั้นที่ 1 · ห้าชนิด แต่สไลซ์นี้เปิดสี่ (imagemap_video ยังปิด — BR-89)
+ * ขั้นที่ 1 · ห้าชนิด และสไลซ์นี้เปิดครบทั้งห้า (imagemap_video เปิดแล้ว — เฟส 2)
  */
 describe('ขั้นที่ 1 · ชนิดการส่ง', () => {
-  it('แสดงครบทั้งห้าชนิด ไม่ได้ซ่อนตัวที่ยังทำไม่ได้', async () => {
+  it('แสดงครบทั้งห้าชนิด ไม่ได้ซ่อนตัวไหนเลย', async () => {
     const { container } = await show()
     for (const name of ['การ์ดเดี่ยว', 'การ์ดปัดได้', 'ข้อความล้วน', 'ริชเมสเสจ', 'ริชวิดีโอ']) {
       expect(container.textContent, name).toContain(name)
     }
   })
 
-  it('สี่ตัวที่เปิดเป็นลิงก์ที่พาไปขั้นถัดไป', async () => {
+  it('ทั้งห้าตัวเป็นลิงก์ที่พาไปขั้นถัดไป — ไม่มีตัวไหนถูกล็อกไว้แล้ว', async () => {
     const { container } = await show()
     const hrefs = Array.from(container.querySelectorAll('a'))
       .map((a) => a.getAttribute('href') ?? '')
@@ -184,40 +184,26 @@ describe('ขั้นที่ 1 · ชนิดการส่ง', () => {
     expect(hrefs).toContain('?send=flex_carousel')
     expect(hrefs).toContain('?send=text')
     expect(hrefs).toContain('?send=imagemap')
-  })
-
-  it('ริชวิดีโอกดไม่ได้ และไม่ใช่ลิงก์', async () => {
-    const { container } = await show()
-    expect(lockedTypes(container).sort()).toEqual(['imagemap_video'])
-    const hrefs = Array.from(container.querySelectorAll('a'))
-      .map((a) => a.getAttribute('href') ?? '')
-    expect(hrefs.some((href) => href.includes('imagemap_video'))).toBe(false)
-  })
-
-  it('ตัวที่กดไม่ได้บอกเหตุผลไว้ข้างตัวมันเอง ไม่ใช่ปล่อยให้เดา', async () => {
-    const { container } = await show()
-    for (const node of container.querySelectorAll('[data-send-type-locked]')) {
-      expect(node.textContent).toContain('รอตัววาดภาพ · OI-27')
-    }
-  })
-
-  it('บอกเครื่องช่วยอ่านด้วยว่ากดไม่ได้ ไม่ใช่แค่จางลง', async () => {
-    const { container } = await show()
-    for (const node of container.querySelectorAll('[data-send-type-locked]')) {
-      expect(node.getAttribute('aria-disabled')).toBe('true')
-    }
-  })
-
-  it('ชนิดที่ยิงมาจาก URL แต่ยังไม่เปิด ถือว่ายังไม่ได้เลือก', async () => {
-    const { container } = await show({ send: 'imagemap_video', tpl: 'line_buttons' })
-    expect(container.textContent).toContain('ยังไม่เลือกชนิด')
-    expect(container.querySelector('form')).toBeNull()
+    expect(hrefs).toContain('?send=imagemap_video')
+    expect(lockedTypes(container)).toEqual([])
   })
 
   it('ริชเมสเสจ (imagemap) เลือกได้จริงแล้ว — เข้าขั้นเทมเพลตตามปกติ', async () => {
     const { container } = await show({ send: 'imagemap', tpl: 'line_buttons' })
     expect(container.textContent).not.toContain('ยังไม่เลือกชนิด')
     expect(container.querySelector('form')).not.toBeNull()
+  })
+
+  it('ริชวิดีโอ (imagemap_video) เลือกได้จริงแล้ว — เข้าขั้นเทมเพลตตามปกติเช่นกัน', async () => {
+    const { container } = await show({ send: 'imagemap_video', tpl: 'line_buttons' })
+    expect(container.textContent).not.toContain('ยังไม่เลือกชนิด')
+    expect(container.querySelector('form')).not.toBeNull()
+  })
+
+  it('ชนิดที่ CHECK ของคอลัมน์ไม่รู้จักเลย (แต่งเอง) ยังถือว่ายังไม่ได้เลือก', async () => {
+    const { container } = await show({ send: 'made_up_type', tpl: 'line_buttons' })
+    expect(container.textContent).toContain('ยังไม่เลือกชนิด')
+    expect(container.querySelector('form')).toBeNull()
   })
 })
 

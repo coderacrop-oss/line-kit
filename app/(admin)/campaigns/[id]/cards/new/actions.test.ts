@@ -167,11 +167,15 @@ describe('สิ่งที่ถูกเขียนลงไป', () => {
 })
 
 describe('ค่าที่ยิงเข้ามาแล้วต้องถูกปฏิเสธ', () => {
-  it('ชนิดที่สไลซ์นี้ยังไม่เปิด (imagemap_video) ถูกปฏิเสธแม้ CHECK ของคอลัมน์จะรับได้', async () => {
-    // จอแสดง imagemap_video เป็นตัวเลือกที่กดไม่ได้ · การซ่อนปุ่มไม่ได้ปิดทาง POST
+  it('imagemap_video (ริชวิดีโอ) สร้างได้แล้ว — เฟส 2 เปิดชนิดนี้แล้ว ไม่ถูกปฏิเสธอีกต่อไป', async () => {
     signedInAs('configurator')
-    await expect(createCard(validForm({ send_type: 'imagemap_video' })))
-      .rejects.toThrow('OI-27')
+    await runExpectingRedirect(validForm({ send_type: 'imagemap_video' }))
+    expect(cardInsert()?.values).toContain('imagemap_video')
+  })
+
+  it('ชนิดที่ CHECK ของคอลัมน์ไม่รู้จักเลย (แต่งเอง) ถูกปฏิเสธ', async () => {
+    signedInAs('configurator')
+    await expect(createCard(validForm({ send_type: 'made_up_type' }))).rejects.toThrow()
     expect(writes()).toEqual([])
   })
 
