@@ -56,7 +56,7 @@ describe('layoutRects · §5.2 พิกัดต้องเป็นจำน�
 })
 
 describe('LAYOUTS · รายการสำหรับปุ่มเลือกผัง', () => {
-  it('มีสิบสองแบบตรงกับ LAYOUT_KEYS', () => {
+  it('มีสิบสี่แบบตรงกับ LAYOUT_KEYS', () => {
     expect(LAYOUTS.map((l) => l.key)).toEqual([...LAYOUT_KEYS])
   })
 
@@ -83,16 +83,16 @@ describe('LAYOUTS · รายการสำหรับปุ่มเลื�
     }
   })
 
-  it('แปดผังเป็นของผืนใหญ่ (เจ็ดแบบ LINE + หนึ่งแบบกำหนดเอง) ห้าผังเป็นของผืนเล็ก', () => {
-    expect(layoutsOfSize('large')).toHaveLength(8)
+  it('เก้าผังเป็นของผืนใหญ่ (เจ็ดแบบ LINE + สองแบบกำหนดเอง) ห้าผังเป็นของผืนเล็ก', () => {
+    expect(layoutsOfSize('large')).toHaveLength(9)
     expect(layoutsOfSize('small')).toHaveLength(5)
   })
 })
 
 describe('origin · ผังไหนลอกมาจาก LINE ตรงๆ ผังไหนระบบนี้เพิ่มเอง', () => {
-  it('มีผังแบบกำหนดเองอยู่หนึ่งแบบเท่านั้น (large_8 · ตาราง 2×4)', () => {
+  it('มีผังแบบกำหนดเองอยู่สองแบบ (large_8 · ตาราง 2×4, large_9 · hero + แบนเนอร์ + แถว 3 + แถว 4)', () => {
     const custom = LAYOUTS.filter((option) => option.origin === 'custom')
-    expect(custom.map((option) => option.key)).toEqual(['large_8'])
+    expect(custom.map((option) => option.key)).toEqual(['large_8', 'large_9'])
   })
 
   it('ที่เหลืออีกสิบสองแบบเป็นแบบ LINE ทั้งหมด', () => {

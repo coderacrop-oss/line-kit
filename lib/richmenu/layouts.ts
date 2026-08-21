@@ -5,7 +5,7 @@
  * ไม่มีหน่วยเปอร์เซ็นต์ และ "ระบบต้องคำนวณจากผังช่องเอง" — ต้นแบบวาดเป็นปุ่มเลือก
  * ผังสำเร็จรูป (`m.layouts`) ไม่ใช่ให้ลากวาดเอง ที่นี่คือตัวคำนวณนั้น
  *
- * สิบสองในสิบสามผังนี้ลอกมาจากชุด template ที่ LINE Official Account Manager
+ * สิบสองในสิบสี่ผังนี้ลอกมาจากชุด template ที่ LINE Official Account Manager
  * เสนอเองตอนสร้าง Rich Menu จริง — เจ็ดแบบสำหรับผืนภาพใหญ่ (2500×1686) และห้าแบบ
  * สำหรับผืนภาพเล็ก (2500×843) เดิมระบบนี้มีให้เลือกแค่สี่แบบทั้งหมดอยู่บนผืนใหญ่
  * อย่างเดียว (ตัดสินใจของงาน M4-S01 รอบแรก) ผู้ใช้เทียบกับหน้าจริงของ LINE แล้วขอ
@@ -13,10 +13,13 @@
  * ลากวาดเอง (ส่วนอัปโหลดภาพแยกทีละช่องแล้วให้ระบบต่อภาพเองเป็นคนละงาน ถูกพักไว้
  * ต่างหาก)
  *
- * ผังที่สิบสาม (large_8 · ตาราง 2×4) ไม่ใช่แบบที่ LINE เสนอเอง — เพิ่มตามคำขอ
- * เพราะ LINE รับพิกัดอะไรก็ได้ที่ถูกต้อง ไม่จำเป็นต้องเป็นหนึ่งในชุด template ของ
- * ตัวเองเท่านั้น (เพดานจริงคือ MAX_AREAS = 20 ช่อง) `origin: 'custom'` แยกผังนี้
- * ออกจากอีกสิบสองแบบให้เห็นชัดว่าไม่ได้ลอกมาจาก LINE ตรงๆ
+ * อีกสองผัง (large_8 · ตาราง 2×4, large_9 · hero ใหญ่ + แบนเนอร์ + แถว 3 + แถว 4)
+ * ไม่ใช่แบบที่ LINE เสนอเอง — เพิ่มตามคำขอ เพราะ LINE รับพิกัดอะไรก็ได้ที่ถูกต้อง
+ * ไม่จำเป็นต้องเป็นหนึ่งในชุด template ของตัวเองเท่านั้น (เพดานจริงคือ
+ * MAX_AREAS = 20 ช่อง) large_9 ลอกสัดส่วนคร่าวๆ มาจากริชเมนูจริงของ Starbucks
+ * (บล็อกโปรโมทด้านบนสูงกว่าแถวไอคอนด้านล่างชัดเจน ไม่ใช่ตารางสม่ำเสมอ) —
+ * `origin: 'custom'` แยกสองผังนี้ออกจากอีกสิบสองแบบให้เห็นชัดว่าไม่ได้ลอกมาจาก
+ * LINE ตรงๆ
  */
 
 export type Rect = { x: number; y: number; width: number; height: number }
@@ -36,7 +39,7 @@ export const MENU_IMAGE_HEIGHT = MENU_CANVAS.large.height
 export const MAX_AREAS = 20
 
 export const LAYOUT_KEYS = [
-  'large_1', 'large_2h', 'large_2v', 'large_3top1', 'large_3top2', 'large_4', 'large_6', 'large_8',
+  'large_1', 'large_2h', 'large_2v', 'large_3top1', 'large_3top2', 'large_4', 'large_6', 'large_8', 'large_9',
   'small_1', 'small_2', 'small_3', 'small_3left1', 'small_3left2',
 ] as const
 export type LayoutKey = (typeof LAYOUT_KEYS)[number]
@@ -104,6 +107,20 @@ const LAYOUT_RECTS: Record<LayoutKey, Rect[]> = {
     { x: 1250, y: 843, width: 625, height: 843 },
     { x: 1875, y: 843, width: 625, height: 843 },
   ],
+  // 9 ช่อง (hero 1 + แบนเนอร์ 1 + แถว 3 + แถว 4) — ไม่ใช่แบบที่ LINE เสนอเอง เหมือน
+  // large_8 (ดูหมายเหตุ origin: 'custom' ด้านบนไฟล์) เพิ่มตามคำขอเทียบกับริชเมนู
+  // ของ Starbucks ที่มีบล็อกโปรโมทด้านบนสูงกว่าแถวไอคอนด้านล่าง
+  large_9: [
+    { x: 0, y: 0, width: 2500, height: 674 },
+    { x: 0, y: 674, width: 2500, height: 168 },
+    { x: 0, y: 842, width: 834, height: 422 },
+    { x: 834, y: 842, width: 833, height: 422 },
+    { x: 1667, y: 842, width: 833, height: 422 },
+    { x: 0, y: 1264, width: 625, height: 422 },
+    { x: 625, y: 1264, width: 625, height: 422 },
+    { x: 1250, y: 1264, width: 625, height: 422 },
+    { x: 1875, y: 1264, width: 625, height: 422 },
+  ],
   // ── ผืนเล็ก 2500×843 ───────────────────────────────────────────────────
   small_1: [
     { x: 0, y: 0, width: 2500, height: 843 },
@@ -139,6 +156,7 @@ const LAYOUT_LABELS: Record<LayoutKey, string> = {
   large_4: '4 ช่อง (ซ้าย 1 ใหญ่ + ขวา 3)',
   large_6: '6 ช่อง (ตาราง 2×3)',
   large_8: '8 ช่อง (ตาราง 2×4)',
+  large_9: '9 ช่อง (บนสุด 1 ใหญ่ + แบนเนอร์ 1 + แถว 3 + แถว 4)',
   small_1: 'เต็มภาพ',
   small_2: '2 ช่อง (ซ้าย–ขวา)',
   small_3: '3 ช่อง (แนวตั้ง 3 คอลัมน์)',
@@ -148,8 +166,8 @@ const LAYOUT_LABELS: Record<LayoutKey, string> = {
 
 const sizeOfKey = (key: LayoutKey): MenuSize => (key.startsWith('small') ? 'small' : 'large')
 
-/** ผังเดียวที่ไม่ได้ลอกมาจาก LINE ตรงๆ — ที่เหลือทั้งหมดมาจากหน้าเลือกเทมเพลตของ LINE เอง */
-const CUSTOM_LAYOUTS: ReadonlySet<LayoutKey> = new Set(['large_8'])
+/** สองผังที่ไม่ได้ลอกมาจาก LINE ตรงๆ — ที่เหลือทั้งหมดมาจากหน้าเลือกเทมเพลตของ LINE เอง */
+const CUSTOM_LAYOUTS: ReadonlySet<LayoutKey> = new Set(['large_8', 'large_9'])
 const originOfKey = (key: LayoutKey): LayoutOrigin => (CUSTOM_LAYOUTS.has(key) ? 'custom' : 'line')
 
 export const LAYOUTS: readonly LayoutOption[] = LAYOUT_KEYS.map((key) => ({
