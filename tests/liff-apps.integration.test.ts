@@ -1,8 +1,8 @@
-// lib/db/liffApps.test.ts
+// tests/liff-apps.integration.test.ts
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { testDb } from './client'
-import { createLiffApp, listLiffApps, loadLiffAppByLiffId, verifyLiffApiKey } from './liffApps'
+import { testDb } from '../lib/db/client'
+import { createLiffApp, listLiffApps, loadLiffAppByLiffId, verifyLiffApiKey } from '../lib/db/liffApps'
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
 let sql: Awaited<ReturnType<typeof testDb>>

@@ -1,7 +1,8 @@
+// tests/participants.integration.test.ts
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
-import { testDb } from './client'
-import { ensureParticipantByChannelId } from './participants'
+import { testDb } from '../lib/db/client'
+import { ensureParticipantByChannelId } from '../lib/db/participants'
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
 let sql: Awaited<ReturnType<typeof testDb>>
