@@ -72,6 +72,19 @@ describe('ImagemapCropModal · โครงเริ่มต้น', () => {
     render(<ImagemapCropModal open file={file} onConfirm={() => {}} onSkip={() => {}} onCancel={() => {}} />)
     expect((screen.getByRole('button', { name: 'ยืนยันการครอบตัด' }) as HTMLButtonElement).disabled).toBe(true)
   })
+
+  // เคยพังจริง: object URL เก็บไว้ใน ref ไม่ใช่ state — .current ถูกตั้งค่าหลัง render
+  // แรกไปแล้ว แต่แก้ ref ไม่ทำให้ React re-render จึง <img src> ไม่เคยได้ค่าจริงเลย
+  // ภาพไม่โหลด ปุ่มยืนยันปิดค้างตลอด (ผู้ใช้จริงเจอกล่องเทาว่างๆ ไม่มีภาพให้ครอบเลย)
+  // เทสต์อื่นในไฟล์นี้ไม่จับเคสนี้เพราะ loadImage() ยิง fireEvent.load ตรงๆ โดยไม่เช็ค
+  // ว่า src ถูกตั้งค่าจริงก่อนหรือเปล่า — เทสต์นี้เช็ค src ตรงๆ แทน
+  it('object URL ที่สร้างจาก URL.createObjectURL ต้องไปโผล่ที่ src ของ <img> จริง ไม่ใช่ค้างที่ undefined', () => {
+    const { container } = render(
+      <ImagemapCropModal open file={file} onConfirm={() => {}} onSkip={() => {}} onCancel={() => {}} />,
+    )
+    const img = container.querySelector('img') as HTMLImageElement
+    expect(img.src).toContain('blob:fake')
+  })
 })
 
 describe('ImagemapCropModal · ทางลัด/ยกเลิก', () => {
