@@ -122,20 +122,20 @@ describe('ฟอร์มสร้างจากนิยามชนิด (BR
   })
 
   /** คอลัมน์ของตารางผลลัพธ์ก็มาจากนิยามชนิดเหมือนกัน */
-  it('วิธีสุ่มตามน้ำหนัก มีช่องน้ำหนักในแถวผลลัพธ์ ไม่มีช่องช่วงคะแนน', () => {
+  it('วิธีสุ่มตามโอกาสที่ตั้งไว้ มีช่องน้ำหนักในแถวผลลัพธ์ ไม่มีช่องช่วงคะแนน', () => {
     const { container } = draw()
     expect(container.querySelector('input[name="weight"]')).not.toBeNull()
     expect(container.querySelector('input[name="score_min"]')).toBeNull()
   })
 
-  it('ตัดสินตามคะแนน มีช่องช่วงคะแนน ไม่มีช่องน้ำหนัก', () => {
+  it('ตัดสินจากคะแนนที่ตอบถูก มีช่องช่วงคะแนน ไม่มีช่องน้ำหนัก', () => {
     const { container } = draw({ ...configFor('quiz'), resolve_method: 'score' })
     expect(container.querySelector('input[name="score_min"]')).not.toBeNull()
     expect(container.querySelector('input[name="score_max"]')).not.toBeNull()
     expect(container.querySelector('input[name="weight"]')).toBeNull()
   })
 
-  it('ตายตัวตามที่เลือก ไม่มีทั้งน้ำหนักและช่วงคะแนน', () => {
+  it('ได้ตามที่กด ไม่มีทั้งน้ำหนักและช่วงคะแนน', () => {
     const { container } = draw({ ...configFor('pick_one'), resolve_method: 'fixed' })
     expect(container.querySelector('input[name="weight"]')).toBeNull()
     expect(container.querySelector('input[name="score_min"]')).toBeNull()

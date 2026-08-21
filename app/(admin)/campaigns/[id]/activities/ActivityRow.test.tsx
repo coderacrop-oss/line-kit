@@ -51,8 +51,8 @@ describe('แถวหนึ่งของกิจกรรม · โครง
 
   it('บอกคู่แกนด้วยชื่อที่คนอ่านออก ไม่ใช่ค่าดิบจากคอลัมน์', () => {
     draw({ input_type: 'pick_one', resolve_method: 'quota', fallback_card_id: 'card-2' })
-    expect(screen.getByText('เลือกหนึ่งช่อง')).toBeDefined()
-    expect(screen.getByText('สุ่มตามน้ำหนักและของที่เหลือ')).toBeDefined()
+    expect(screen.getByText('ให้เลือกจากตาราง')).toBeDefined()
+    expect(screen.getByText('สุ่มจนกว่าของจะหมด')).toBeDefined()
   })
 
   it('ประโยคสรุปเงื่อนไขอยู่ใต้ชื่อ', () => {

@@ -161,7 +161,7 @@ describe('ช่องบอกวิธีวาดและที่เก็�
     expect(inputConfigFields('none', 'weighted')).toEqual([])
   })
 
-  it('เลือกหนึ่งช่องกับตอบคำถาม มีช่องที่ต้องเก็บลง input_config', () => {
+  it('ให้เลือกจากตารางกับตอบคำถาม มีช่องที่ต้องเก็บลง input_config', () => {
     expect(inputConfigFields('pick_one', 'weighted').map((f) => f.key))
       .toEqual(['grid', 'slots', 'meaningful'])
     expect(inputConfigFields('quiz', 'weighted').map((f) => f.key)).toEqual(['questions'])

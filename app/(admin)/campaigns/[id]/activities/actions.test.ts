@@ -303,7 +303,7 @@ describe('createActivity', () => {
   /** BR-36 · คู่ที่ engine ตัดสินไม่ได้ ต้องไม่ถูกสร้างขึ้นมาตั้งแต่แรก */
   it('คู่แกนที่ผสมกันไม่ได้ ถูกปฏิเสธตั้งแต่ตอนสร้าง', async () => {
     await expect(createActivity('camp-1', createForm({ resolve_method: 'fixed' })))
-      .rejects.toThrow('เลือกหนึ่งช่อง')
+      .rejects.toThrow('ให้เลือกจากตาราง')
     expect(state.writes).toEqual([])
   })
 
@@ -448,12 +448,12 @@ describe('BR-90 · กิจกรรมทักทายมีได้ตั�
 describe('saveInputConfig · ฟอร์มที่สร้างจากนิยามชนิด', () => {
   beforeEach(() => signedInAs('configurator'))
 
-  it('กิจกรรมที่ไม่รับอินพุต ไม่เขียนอะไรลง input_config แม้จะมีคนยัดค่ามา', async () => {
+  it('กิจกรรมที่กดปุ่มเดียวจบ ไม่เขียนอะไรลง input_config แม้จะมีคนยัดค่ามา', async () => {
     await saveInputConfig('camp-1', 'act-1', form({ slots: 'ก\nข', prompt: 'พิมพ์มาสิ' }))
     expect(written<Record<string, unknown>>(/UPDATE activity SET input_config/)).toEqual({})
   })
 
-  it('เลือกหนึ่งช่อง เก็บผังช่องและป้ายของแต่ละช่อง', async () => {
+  it('ให้เลือกจากตาราง เก็บผังช่องและป้ายของแต่ละช่อง', async () => {
     state.activities = [activity({ input_type: 'pick_one' })]
     await saveInputConfig('camp-1', 'act-1', form({ grid: '3x3', slots: 'ก\nข\nค' }))
     expect(written<{ grid: string; slots: string[] }>(/UPDATE activity SET input_config/))
@@ -498,7 +498,7 @@ describe('saveInputConfig · ฟอร์มที่สร้างจากน
   /**
    * ค่าที่ชนิดปัจจุบันไม่ได้ถาม ยังอยู่ครบ
    *
-   * Somebody switching an activity from ตอบคำถาม to เลือกหนึ่งช่อง to look at
+   * Somebody switching an activity from ตอบคำถาม to ให้เลือกจากตาราง to look at
    * the difference should not come back to find their questions deleted.
    */
   it('ค่าของชนิดอื่นที่เคยตั้งไว้ ไม่ถูกลบทิ้งตอนบันทึกชนิดปัจจุบัน', async () => {

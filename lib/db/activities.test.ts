@@ -88,7 +88,7 @@ describe('ปัญหาที่ทำให้ยังส่งขึ้น�
   it('คู่แกนที่ผสมกันไม่ได้ ถูกฟ้อง (BR-36)', () => {
     const problems = activityProblems(row({ input_type: 'none', resolve_method: 'fixed' }))
     expect(problems.length).toBeGreaterThan(0)
-    expect(problems[0]).toContain('เลือกหนึ่งช่อง')
+    expect(problems[0]).toContain('ให้เลือกจากตาราง')
   })
 
   it('score ที่ผลลัพธ์ยังไม่มีช่วงคะแนน ถูกฟ้อง', () => {
@@ -111,7 +111,7 @@ describe('ปัญหาที่ทำให้ยังส่งขึ้น�
     expect(problems).toEqual([])
   })
 
-  it('เลือกหนึ่งช่องที่ยังไม่มีช่อง ถูกฟ้อง', () => {
+  it('ให้เลือกจากตารางที่ยังไม่มีช่อง ถูกฟ้อง', () => {
     const problems = activityProblems(row({
       input_type: 'pick_one', resolve_method: 'weighted', input_config: {},
     }))
@@ -242,7 +242,7 @@ describe('ประโยคสรุปการตั้งค่าปัจ�
       entry_rules: [{ type: 'limit', cardId: 'c2', count: 1 }],
       resolve_config: { outcomes: [{ id: 'o1', cardId: 'c1' }, { id: 'o2', cardId: 'c3' }] },
     })))
-    expect(said).toContain('ไม่รับอินพุต × สุ่มตามน้ำหนัก')
+    expect(said).toContain('กดปุ่มเดียวจบ × สุ่มตามโอกาสที่ตั้งไว้')
     expect(said).toContain('ผลลัพธ์ 2')
     expect(said).toContain('เงื่อนไข 1')
   })
@@ -328,7 +328,7 @@ describe('ประโยคสรุปเงื่อนไข', () => {
 
 describe('ชื่อคู่แกนบนหัวจอ', () => {
   it('อ่านเป็น "อินพุต × วิธีตัดสิน"', () => {
-    expect(comboName('pick_one', 'weighted')).toBe('เลือกหนึ่งช่อง × สุ่มตามน้ำหนัก')
+    expect(comboName('pick_one', 'weighted')).toBe('ให้เลือกจากตาราง × สุ่มตามโอกาสที่ตั้งไว้')
   })
 
   it('lookup ยังมีชื่ออ่านได้ ไม่ใช่ค่าดิบจากคอลัมน์', () => {

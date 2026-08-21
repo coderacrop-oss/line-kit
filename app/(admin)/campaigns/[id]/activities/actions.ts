@@ -268,7 +268,7 @@ export async function saveActivity(
  * rather than another branch in this file.
  *
  * Keys the current pair does not ask for are left alone rather than cleared.
- * Somebody switching an activity from ตอบคำถาม to เลือกหนึ่งช่อง to see the
+ * Somebody switching an activity from ตอบคำถาม to ให้เลือกจากตาราง to see the
  * difference should not come back to find their questions deleted.
  */
 export async function saveInputConfig(
