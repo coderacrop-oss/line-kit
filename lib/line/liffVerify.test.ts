@@ -64,4 +64,10 @@ describe('verifyLiffIdToken', () => {
     const [, init] = fetchMock.mock.calls[0]
     expect(init.signal).toBeInstanceOf(AbortSignal)
   })
+
+  it('returns ok:false when fetch rejects (timeout/network failure)', async () => {
+    fetchMock.mockRejectedValue(new Error('The operation timed out'))
+    const result = await verifyLiffIdToken('id-token-abc', '2011037337')
+    expect(result).toEqual({ ok: false, reason: 'เชื่อมต่อ LINE ไม่ได้: The operation timed out' })
+  })
 })

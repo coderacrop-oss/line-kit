@@ -15,24 +15,29 @@ export type LiffVerifyResult =
 export async function verifyLiffIdToken(
   idToken: string, lineLoginChannelId: string,
 ): Promise<LiffVerifyResult> {
-  const response = await fetch(VERIFY_ENDPOINT, {
-    method: 'POST',
-    signal: AbortSignal.timeout(5000),
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({ id_token: idToken, client_id: lineLoginChannelId }).toString(),
-  })
+  try {
+    const response = await fetch(VERIFY_ENDPOINT, {
+      method: 'POST',
+      signal: AbortSignal.timeout(5000),
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({ id_token: idToken, client_id: lineLoginChannelId }).toString(),
+    })
 
-  const body = await response.json() as { sub?: string; aud?: string; error_description?: string }
+    const body = await response.json() as { sub?: string; aud?: string; error_description?: string }
 
-  if (!response.ok) {
-    return { ok: false, reason: body.error_description ?? `LINE ปฏิเสธ id_token (${response.status})` }
-  }
-  if (!body.sub) {
-    return { ok: false, reason: 'LINE ตอบกลับมาโดยไม่มี sub — token นี้อ่านตัวตนไม่ได้' }
-  }
-  if (body.aud !== lineLoginChannelId) {
-    return { ok: false, reason: 'audience ของ id_token ไม่ตรงกับ LINE Login channel ที่ลงทะเบียนไว้' }
-  }
+    if (!response.ok) {
+      return { ok: false, reason: body.error_description ?? `LINE ปฏิเสธ id_token (${response.status})` }
+    }
+    if (!body.sub) {
+      return { ok: false, reason: 'LINE ตอบกลับมาโดยไม่มี sub — token นี้อ่านตัวตนไม่ได้' }
+    }
+    if (body.aud !== lineLoginChannelId) {
+      return { ok: false, reason: 'audience ของ id_token ไม่ตรงกับ LINE Login channel ที่ลงทะเบียนไว้' }
+    }
 
-  return { ok: true, lineUserId: body.sub }
+    return { ok: true, lineUserId: body.sub }
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'ไม่ทราบสาเหตุ'
+    return { ok: false, reason: `เชื่อมต่อ LINE ไม่ได้: ${message}` }
+  }
 }
