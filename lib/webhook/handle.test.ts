@@ -381,6 +381,52 @@ describe('แอดเป็นเพื่อน', () => {
     const { ports: p } = ports({}, campaign({ greetingEnabled: false }))
     expect(await run(userEvent({ type: 'follow' }), p)).toBeNull()
   })
+
+  it('เปิดการทักทายไว้ แคมเปญมีเมนูตัวเข้า → ได้ทั้งข้อความทักทายและคำสั่งผูกเมนูมาด้วยกัน (พฤติกรรมเดิมต้องไม่เปลี่ยน)', async () => {
+    const { ports: p } = ports(
+      { hasRichMenuLinked: async () => false },
+      campaign({ greetingEnabled: true, entryRichMenuLineId: 'line-rm-entry' }),
+    )
+    const out = await run(userEvent({ type: 'follow' }), p)
+
+    expect(out).toMatchObject({
+      replyToken: 'rt-1',
+      message: { type: 'text', text: 'ยินดีต้อนรับ' },
+      linkRichMenu: { participantId: 'p-1', lineUid: 'U1', richMenuId: 'line-rm-entry' },
+    })
+  })
+})
+
+describe('แอดเป็นเพื่อน ปิดการทักทายไว้ แต่การผูกเมนูตัวเข้าต้องยังทำงาน (แยกอิสระจากข้อความทักทาย)', () => {
+  it('มีเมนูตัวเข้า ยังไม่เคยผูก → ได้ผลลัพธ์ผูกเมนูอย่างเดียว ไม่มี message/replyToken', async () => {
+    const hasRichMenuLinked = vi.fn(async () => false)
+    const { ports: p, logEvent } = ports(
+      { hasRichMenuLinked },
+      campaign({ greetingEnabled: false, entryRichMenuLineId: 'line-rm-entry' }),
+    )
+    const out = await run(userEvent({ type: 'follow' }), p)
+
+    expect(hasRichMenuLinked).toHaveBeenCalledWith('p-1')
+    expect(out).toEqual({
+      linkRichMenu: { participantId: 'p-1', lineUid: 'U1', richMenuId: 'line-rm-entry' },
+    })
+    expect(out && 'message' in out).toBe(false)
+    // ไม่มีการตอบเกิดขึ้นจริง จึงไม่มีอะไรให้บันทึกเป็น event
+    expect(logEvent).not.toHaveBeenCalled()
+  })
+
+  it('ไม่มีเมนูตัวเข้า (entryRichMenuLineId เป็น null) → ไม่ตอบอะไรเลย', async () => {
+    const { ports: p } = ports({}, campaign({ greetingEnabled: false, entryRichMenuLineId: null }))
+    expect(await run(userEvent({ type: 'follow' }), p)).toBeNull()
+  })
+
+  it('เคยผูกเมนูไปแล้ว (hasRichMenuLinked คืนจริง) → ไม่ผูกซ้ำ ไม่ตอบอะไรเลย', async () => {
+    const { ports: p } = ports(
+      { hasRichMenuLinked: async () => true },
+      campaign({ greetingEnabled: false, entryRichMenuLineId: 'line-rm-entry' }),
+    )
+    expect(await run(userEvent({ type: 'follow' }), p)).toBeNull()
+  })
 })
 
 describe('กรณีที่ต้องไม่ตอบ', () => {

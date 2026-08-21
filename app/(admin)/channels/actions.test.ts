@@ -19,7 +19,12 @@ const state: {
   channel: ChannelRow | undefined
   writes: Array<{ text: string; values: unknown[] }>
   writeError: { code: string } | undefined
-} = { cookie: undefined, user: undefined, channel: undefined, writes: [], writeError: undefined }
+  /** ควบคุมผลของ query ตรวจว่าการ์ดทักทายที่ส่งมาเป็นของแคมเปญที่กำลังรันอยู่บนบัญชีนี้จริงหรือไม่ */
+  cardBelongsToLiveCampaign: boolean
+} = {
+  cookie: undefined, user: undefined, channel: undefined, writes: [], writeError: undefined,
+  cardBelongsToLiveCampaign: true,
+}
 
 const sql = Object.assign(
   (strings: TemplateStringsArray, ...values: unknown[]) => {
@@ -28,6 +33,9 @@ const sql = Object.assign(
     if (/^SELECT/.test(text)) {
       if (/FROM app_user/.test(text)) return Promise.resolve(state.user ? [state.user] : [])
       if (/FROM channel/.test(text)) return Promise.resolve(state.channel ? [state.channel] : [])
+      if (/FROM card/.test(text)) {
+        return Promise.resolve(state.cardBelongsToLiveCampaign ? [{ id: 'card-1' }] : [])
+      }
       return Promise.resolve([])
     }
 
@@ -110,6 +118,7 @@ beforeEach(() => {
   state.channel = { id: 'ch1', channel_type: 'test', token_last4: 'oldk' }
   state.writes = []
   state.writeError = undefined
+  state.cardBelongsToLiveCampaign = true
   mockGetBotInfo.mockReset()
 })
 
@@ -430,6 +439,65 @@ describe('saveChannel · คีย์เวิร์ดเดิมของล�
   it('รับ CRLF ที่มาจากการก๊อปจากวินโดวส์', async () => {
     await expectSuccess(saveChannel(null, validForm({ existing_keywords: 'โปรโมชั่น\r\nสาขา' })))
     expect(keywordsWritten()).toEqual(['โปรโมชั่น', 'สาขา'])
+  })
+})
+
+/**
+ * เปิด/ปิดข้อความต้อนรับกับการ์ดที่ใช้ตอบ — คนละเรื่องกับการผูกเมนูตัวเข้า (BR-78) ซึ่งเกิด
+ * เสมอไม่ว่าค่าพวกนี้จะเป็นอะไร (ดู lib/webhook/handle.ts) ที่นี่ตรวจแค่ว่าค่าถูกเขียนลง
+ * ฐานข้อมูลถูกคอลัมน์ และการ์ดที่เลือกต้องเป็นของแคมเปญที่กำลังรันอยู่บนบัญชีนี้เท่านั้น
+ */
+describe('saveChannel · ข้อความต้อนรับ', () => {
+  beforeEach(() => { signedInAs('configurator') })
+
+  it('ติ๊กเปิดข้อความต้อนรับไว้ (บัญชีใหม่) → เขียนค่า true ลงไป', async () => {
+    await expectSuccess(saveChannel(null, validForm({ greeting_enabled: 'on' })))
+    expect(lastWrite().text).toContain('greeting_enabled')
+    expect(lastWrite().values).toContain(true)
+  })
+
+  it('ไม่ติ๊ก → เขียนค่า false ลงไปตรงๆ ไม่ใช่ปล่อยว่างหรือ NULL', async () => {
+    await expectSuccess(saveChannel(null, validForm()))
+    expect(lastWrite().values).toContain(false)
+  })
+
+  // บัญชีใหม่ยังไม่มี id เลย จึงไม่มีทางมี campaign_channel ชี้มาหาได้ตั้งแต่ต้น — ปฏิเสธ
+  // ทันทีโดยไม่ต้อง query เลย
+  it('บัญชีใหม่ (ยังไม่บันทึก) เลือกการ์ดทักทายมาด้วย → ปฏิเสธ ไม่เขียนอะไรเลย', async () => {
+    await expectFailure(
+      saveChannel(null, validForm({ greeting_card_id: 'card-1' })),
+      'บันทึกบัญชีนี้ไว้ก่อน',
+    )
+    expect(state.writes).toEqual([])
+  })
+
+  it('แก้ของเดิม เลือกการ์ดของแคมเปญที่กำลังรันอยู่บนบัญชีนี้จริง → บันทึกได้', async () => {
+    state.cardBelongsToLiveCampaign = true
+    await expectSuccess(saveChannel('ch1', validForm({
+      access_token: '', channel_secret: '', greeting_enabled: 'on', greeting_card_id: 'card-1',
+    })))
+    expect(lastWrite().text).toContain('greeting_card_id')
+    expect(lastWrite().values).toContain('card-1')
+  })
+
+  // จอที่ค้างเปิดไว้ตั้งแต่ก่อนสลับแคมเปญที่รันอยู่บนบัญชีนี้ อาจส่งการ์ดของแคมเปญเก่ามา —
+  // ต้องเช็คฝั่งเซิร์ฟเวอร์เสมอ ไม่เชื่อค่าจาก <select> ตรงๆ
+  it('แก้ของเดิม เลือกการ์ดที่ไม่ใช่ของแคมเปญที่กำลังรันอยู่บนบัญชีนี้ → ปฏิเสธ ไม่เขียนอะไรเลย', async () => {
+    state.cardBelongsToLiveCampaign = false
+    await expectFailure(
+      saveChannel('ch1', validForm({
+        access_token: '', channel_secret: '', greeting_card_id: 'card-from-other-campaign',
+      })),
+      'ไม่ใช่การ์ดของแคมเปญที่กำลังรันอยู่',
+    )
+    expect(state.writes).toEqual([])
+  })
+
+  it('เว้นช่องการ์ดทักทายไว้ → ข้ามการตรวจการ์ดไปเลย เขียนคอลัมน์เป็น NULL', async () => {
+    await expectSuccess(saveChannel('ch1', validForm({
+      access_token: '', channel_secret: '', greeting_card_id: '',
+    })))
+    expect(lastWrite().text).toContain('greeting_card_id')
   })
 })
 

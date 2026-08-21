@@ -238,4 +238,26 @@ describe('ผูกเมนูตัวเข้าให้ผู้เล่�
     expect(linkRichMenu).not.toHaveBeenCalled()
     expect(markRichMenuLinked).not.toHaveBeenCalled()
   })
+
+  /**
+   * ผลของ handleEvent สำหรับ follow ตอนปิดข้อความต้อนรับไว้ (greetingEnabled=false ใน
+   * campaignWithEntryMenu ด้านบน) คือผูกเมนูอย่างเดียว ไม่มี message/replyToken เลย —
+   * route ต้องไม่ยิง replyMessage ในเคสนี้ (เช็คด้วย "message" in handled) แต่ยังต้องผูก
+   * เมนูให้ตามปกติ เพราะการผูกเมนูตัวเข้าไม่ขึ้นกับว่าเปิดข้อความทักทายไว้หรือไม่
+   */
+  it('แอดเป็นเพื่อน ปิดการทักทายไว้ แต่มีเมนูตัวเข้า → ผูกเมนูให้โดยไม่ตอบข้อความอะไรเลย', async () => {
+    liveCampaign = campaignWithEntryMenu()
+    const followEvent = {
+      destination: KNOWN_DESTINATION,
+      events: [{
+        type: 'follow', replyToken: 'rt-1', source: { type: 'user', userId: 'U1' },
+      }],
+    }
+
+    await POST(signedRequest(followEvent))
+
+    expect(replyMessage).not.toHaveBeenCalled()
+    expect(linkRichMenu).toHaveBeenCalledWith('test-token', 'U1', 'line-rm-entry')
+    expect(markRichMenuLinked).toHaveBeenCalledWith('p-1')
+  })
 })

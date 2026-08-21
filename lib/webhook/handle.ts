@@ -29,6 +29,20 @@ export type Handled =
        */
       linkRichMenu?: { participantId: string; lineUid: string; richMenuId: string };
     }
+  | {
+      /**
+       * ผูกเมนูตัวเข้าอย่างเดียว ไม่มีข้อความให้ส่ง — เกิดตอนแอดเป็นเพื่อนแล้วปิดข้อความ
+       * ต้อนรับไว้ (greetingEnabled=false) แต่แคมเปญมีเมนูตัวเข้าและผู้เล่นคนนี้ยังไม่เคย
+       * ถูกผูกมาก่อน (ดู "แอดเป็นเพื่อน" ด้านล่าง) route.ts เช็ค truthiness ของ
+       * handled.message ก่อนจะยิง replyMessage (ดู comment ที่นั่น) — replyToken/message
+       * ประกาศเป็น optional undefined ตรงนี้ (ไม่ใช่หายไปเฉยๆ) เพื่อให้โค้ดที่อ่าน
+       * `handled?.message` ที่อื่นในไฟล์นี้และในเทสต์ยังคอมไพล์ผ่านโดยไม่ต้องแยกเช็คชนิด
+       * ทุกจุด แต่ตัว object จริงที่คืนไม่มีคีย์เหล่านี้เลย
+       */
+      replyToken?: undefined;
+      message?: undefined;
+      linkRichMenu: { participantId: string; lineUid: string; richMenuId: string };
+    }
   | null;
 
 type Reply = (
@@ -279,15 +293,24 @@ export async function handleEvent(
 
   // ── แอดเป็นเพื่อน ───────────────────────────────────────────────────
   if (event.type === "follow") {
-    if (!campaign.greetingEnabled) return null;
-
     // แอดเป็นเพื่อนคือจังหวะ "เข้ามา" จริงๆ ก่อนจะพิมพ์คำไหนเลยด้วยซ้ำ — ผูกเมนู
     // ตัวเข้าให้ตรงนี้เหมือนกับตอนพิมพ์คีย์เวิร์ดครั้งแรก (ดู "พิมพ์ข้อความ" ด้านบน)
-    // เพื่อให้คนที่เพิ่งแอดเห็นเมนูของแคมเปญทันทีโดยไม่ต้องพิมพ์อะไรก่อน
+    // เพื่อให้คนที่เพิ่งแอดเห็นเมนูของแคมเปญทันทีโดยไม่ต้องพิมพ์อะไรก่อน คำนวณก่อนเช็ค
+    // greetingEnabled เสมอ — ปุ่มบนแชทถาวรกับข้อความทักทายเป็นคนละเรื่องกัน ปิดข้อความ
+    // ต้อนรับไว้ไม่ควรทำให้เมนูตัวเข้าหายไปด้วย
     const linkRichMenu =
       campaign.entryRichMenuLineId && !(await ports.hasRichMenuLinked(participantId))
         ? { participantId, lineUid, richMenuId: campaign.entryRichMenuLineId }
         : undefined;
+
+    if (!campaign.greetingEnabled) {
+      // ปิดข้อความต้อนรับไว้ — ปล่อยให้ OA Manager ทักทายเอง ไม่มี replyToken/message
+      // ให้ route.ts ส่งในเคสนี้ (fabricate ข้อความขึ้นมาเองจะดูเหมือนบอทพังสำหรับคนที่
+      // เพิ่งแอดใหม่) แต่คำสั่งผูกเมนูที่คำนวณไว้ข้างบนยังต้องส่งต่อไปเสมอ ไม่งั้นคนที่
+      // เพิ่งแอดจะไม่เห็นเมนูของแคมเปญจนกว่าจะพิมพ์คำแรก
+      return linkRichMenu ? { linkRichMenu } : null;
+    }
+
     const withLink = (handled: Handled): Handled =>
       handled && linkRichMenu ? { ...handled, linkRichMenu } : handled;
 

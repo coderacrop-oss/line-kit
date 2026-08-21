@@ -14,7 +14,10 @@ const row = (patch: Partial<ChannelRow> = {}): ChannelRow => ({
   key_version: 1,
   last_used_at: null,
   existing_keywords: [],
+  greeting_enabled: false,
+  greeting_card_id: null,
   live_campaign_name: null,
+  live_campaign_id: null,
   published_version: null,
   ...patch,
 })
@@ -94,6 +97,23 @@ describe('summarizeChannel', () => {
   it('บัญชีที่กรอก userId ของบอทแล้ว ส่งค่านั้นออกมาตรงๆ', () => {
     expect(summarizeChannel(row({ line_bot_user_id: 'U1234567890abcdef' })).lineBotUserId)
       .toBe('U1234567890abcdef')
+  })
+
+  /**
+   * เปิดข้อความต้อนรับ + การ์ดที่เลือกไว้ ต้องส่งผ่านตรงๆ — จอตั้งค่าบัญชีอ่านสองค่านี้
+   * มาเติมค่าเริ่มต้นให้ toggle กับ <select> ของการ์ดทักทาย
+   */
+  it('เปิด/ปิดข้อความต้อนรับกับการ์ดที่เลือกไว้ ส่งผ่านตรงๆ', () => {
+    expect(summarizeChannel(row()).greetingEnabled).toBe(false)
+    const summary = summarizeChannel(row({ greeting_enabled: true, greeting_card_id: 'card-1' }))
+    expect(summary.greetingEnabled).toBe(true)
+    expect(summary.greetingCardId).toBe('card-1')
+  })
+
+  // scope ตัวเลือกการ์ดทักทายให้เหลือแค่การ์ดของแคมเปญที่กำลังรันอยู่บนบัญชีนี้ (BR-68)
+  it('บัญชีที่มีแคมเปญเปิดอยู่ ส่ง liveCampaignId ผ่านตรงๆ · ไม่มีก็เป็น null', () => {
+    expect(summarizeChannel(row({ live_campaign_id: 'camp-1' })).liveCampaignId).toBe('camp-1')
+    expect(summarizeChannel(row()).liveCampaignId).toBeNull()
   })
 })
 

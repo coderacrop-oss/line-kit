@@ -3,6 +3,7 @@ import type { CSSProperties } from 'react'
 import { Badge, Button, Field, Note, PageHead, Panel } from '@/components/ui'
 import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
+import { listCards } from '@/lib/db/cards'
 import {
   type ChannelSummary, type ChannelType, describePublished, loadChannel, maskedKey,
 } from '@/lib/db/channels'
@@ -85,6 +86,13 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
     if (!channel) notFound()
   }
 
+  // การ์ดทักทายต้อง scope อยู่แค่แคมเปญที่กำลังรันอยู่บนบัญชีนี้ (BR-68) — บัญชีใหม่หรือ
+  // บัญชีที่ยังไม่เคยส่งแคมเปญขึ้นเลยไม่มี liveCampaignId จึงไม่มีการ์ดให้เลือก (ช่องเลือก
+  // ถูกปิดไว้ด้านล่าง) listCards() ตัวเดียวกับที่จอการ์ดและจอ Rich Menu ใช้ ไม่ query เอง
+  const greetingCards = channel?.liveCampaignId
+    ? await listCards(db(), channel.liveCampaignId)
+    : []
+
   const canEdit = session.role === 'configurator'
   const locked = !canEdit
   // ชั้น preview ไม่มีกุญแจให้แก้ · action ปฏิเสธเองอีกชั้นหนึ่ง
@@ -159,13 +167,14 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
               />
             </Field>
 
-            <BotUserIdField
-              channelId={isNew ? null : id}
-              defaultValue={channel?.lineBotUserId ?? ''}
-              disabled={locked || isPreview}
-              action={fetchBotUserId}
-            />
-
+            {/*
+              โทเคน/ซีเคร็ตต้องมาก่อนช่อง Bot User ID — ปุ่ม "ดึง Bot User ID อัตโนมัติ"
+              ของ BotUserIdField อ่านโทเคนสดจากช่อง access_token ของฟอร์มนี้ตอนกด (ดู
+              comment ของ BotUserIdField.tsx) บัญชีใหม่ที่ยังไม่มี id ยังไม่มีโทเคนเก็บไว้
+              ในฐานข้อมูลให้ fallback เลย ถ้าปุ่มอยู่เหนือช่องโทเคน คนกรอกฟอร์มไล่จากบนลง
+              ล่างจะกดปุ่มก่อนพิมพ์โทเคน แล้วปุ่มก็ล้มเงียบๆ — สลับลำดับให้ตรงกับที่ปุ่ม
+              ต้องใช้จริง
+            */}
             <Field label="Channel access token">
               <input
                 name="access_token"
@@ -190,6 +199,13 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
               />
             </Field>
 
+            <BotUserIdField
+              channelId={isNew ? null : id}
+              defaultValue={channel?.lineBotUserId ?? ''}
+              disabled={locked || isPreview}
+              action={fetchBotUserId}
+            />
+
             <div style={{ height: 1, background: 'var(--rule)' }} />
 
             <Field
@@ -205,6 +221,47 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
                 style={{ fontFamily: 'var(--mono)', resize: 'vertical' }}
               />
             </Field>
+
+            <div style={{ height: 1, background: 'var(--rule)' }} />
+
+            {/*
+              เมนูตัวเข้า (BR-78) ผูกให้ผู้เล่นทุกคนที่แอดเป็นเพื่อนเสมอ ไม่ขึ้นกับสวิตช์นี้
+              เลย (ดู comment ของ Handled ใน lib/webhook/handle.ts) — ที่นี่คุมแค่ข้อความ
+              ทักทายที่ตอบกลับ ปิดไว้ได้โดยไม่กระทบเมนูตัวเข้า จึงเปิดสวิตช์ได้แม้บัญชียัง
+              ไม่มีแคมเปญที่กำลังรันอยู่เลยก็ตาม (ต่างจากช่องเลือกการ์ดด้านล่างที่ต้องรอ
+              แคมเปญก่อน)
+            */}
+            <fieldset style={{ border: 0, margin: 0, padding: 0, display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <legend style={{ ...labelStyle, padding: 0 }}>ข้อความต้อนรับตอนแอดเป็นเพื่อน</legend>
+
+              <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, width: 'fit-content', cursor: locked || isPreview ? 'default' : 'pointer' }}>
+                <input
+                  type="checkbox"
+                  name="greeting_enabled"
+                  defaultChecked={channel?.greetingEnabled ?? false}
+                  disabled={locked || isPreview}
+                />
+                เปิดข้อความต้อนรับตอนแอดเพื่อน
+              </label>
+
+              <Field
+                label="การ์ดทักทาย"
+                hint={channel?.liveCampaignId
+                  ? 'ตอบด้วยการ์ดของแคมเปญที่กำลังรันอยู่บนบัญชีนี้เท่านั้น — ไม่เลือกไว้ก็ยังทักทายได้ด้วยข้อความทั่วไป'
+                  : 'บัญชีนี้ยังไม่มีแคมเปญที่กำลังรันอยู่ — ส่งแคมเปญขึ้นบัญชีนี้ก่อน จึงจะเลือกการ์ดทักทายได้'}
+              >
+                <select
+                  name="greeting_card_id"
+                  defaultValue={channel?.greetingCardId ?? ''}
+                  disabled={locked || isPreview || !channel?.liveCampaignId}
+                >
+                  <option value="">— ไม่ใช้การ์ด (ตอบด้วยข้อความทั่วไป) —</option>
+                  {greetingCards.map((card) => (
+                    <option key={card.id} value={card.id}>{card.code}</option>
+                  ))}
+                </select>
+              </Field>
+            </fieldset>
 
             {canEdit && !isPreview && (
               <div style={{ display: 'flex', justifyContent: 'flex-end', paddingTop: 4 }}>
