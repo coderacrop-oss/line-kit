@@ -10,6 +10,7 @@ type Item = { label: string; href: string; adminOnly?: boolean }
 const ITEMS: Item[] = [
   { label: 'แคมเปญ', href: '/campaigns' },
   { label: 'บัญชี LINE', href: '/channels' },
+  { label: 'LIFF', href: '/liff-apps' },
   { label: 'ผู้ใช้ภายใน', href: '/users', adminOnly: true },
 ]
 
