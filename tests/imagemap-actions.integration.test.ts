@@ -128,15 +128,25 @@ describe('uploadBaseImage · ยิง SQL จริง', () => {
     expect(row).toEqual({ base_width: 1040, base_height: 520 })
   })
 
-  it('ภาพแคบกว่า 1040px ถูกปฏิเสธก่อนแม้แต่จะเขียนแถวใดๆ', async () => {
+  /**
+   * เดิมเทสต์นี้คาดว่าภาพแคบกว่า 1040px ถูกปฏิเสธ (Task 3 · การ์ดริชเมสเสจก่อนหน้านี้
+   * บล็อกภาพแคบทั้งหมด) — พฤติกรรมถูกเปลี่ยนโดยตั้งใจ: ตอนนี้รับภาพทุกขนาด แล้วให้
+   * ครอบตัดที่จอเอดิเตอร์ (ImagemapCropModal) แทน ตัวแปร 1040px จะถูกขยายจากต้นฉบับ
+   * ที่แคบกว่านั้นแทนที่จะถูกบล็อกไปเลย (ดู lib/imagemap/sizes.ts:
+   * validateImagemapUpload/generateImagemapVariants) เทสต์นี้จึงพลิกไปยืนยันด้านตรงข้าม
+   */
+  it('ภาพแคบกว่า 1040px ยังอัปโหลดผ่าน — baseWidth ที่บันทึกยังคงเป็น 1040 เสมอ (ตัวแปรใหญ่สุดจะถูกขยายตอนกด "ใช้")', async () => {
     const s = await scene()
     const bytes = await realJpeg(500, 500)
     const result = await uploadBaseImage(s.campaignId, s.cardId, uploadForm(bytes))
 
-    expect(result).toEqual({ ok: false, message: expect.stringContaining('เล็กเกินไป') })
+    if (!result.ok) throw new Error(`คาดว่าจะสำเร็จ แต่ได้: ${result.message}`)
+    expect(result.baseWidth).toBe(1040)
+    expect(result.baseHeight).toBe(1040) // ภาพจัตุรัส 500×500 → สัดส่วนเดิมที่ baseWidth=1040 คือ 1040 สูง
 
-    const rows = await sql`SELECT id FROM card_imagemap WHERE card_id = ${s.cardId}`
-    expect(rows).toEqual([])
+    const [row] = await sql<{ base_width: number; base_height: number }[]>`
+      SELECT base_width, base_height FROM card_imagemap WHERE card_id = ${s.cardId}`
+    expect(row).toEqual({ base_width: 1040, base_height: 1040 })
   })
 })
 

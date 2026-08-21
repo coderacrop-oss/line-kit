@@ -17,6 +17,7 @@ const state: {
   blocks: BlockRow[]
   statements: Array<{ text: string; values: unknown[] }>
   revalidated: string[]
+  storedAssets: Array<{ path: string; bytes: number }>
 } = {
   cookie: undefined,
   user: undefined,
@@ -24,6 +25,7 @@ const state: {
   blocks: [],
   statements: [],
   revalidated: [],
+  storedAssets: [],
 }
 
 const writes = () => state.statements.filter((s) => /INSERT|UPDATE|DELETE/i.test(s.text))
@@ -104,6 +106,10 @@ function makeSql(): FakeSql {
       return Promise.resolve([])
     }
 
+    // storeOne (../../assets/actions.ts) เรียกผ่าน uploadBlockImage — ใช้ sql ตัวเดียวกัน
+    // กับที่ requireCard ใช้ ต้องมีแถวให้อ่านกลับตาม RETURNING id
+    if (/INSERT INTO asset/.test(text)) return Promise.resolve([{ id: `asset-${state.statements.length}` }])
+
     return Promise.resolve([])
   }
 
@@ -123,10 +129,26 @@ vi.mock('next/headers', () => ({
   }),
 }))
 vi.mock('@/lib/db/client', () => ({ db: () => sql }))
+// storeOne (../../assets/actions.ts) เขียนไฟล์จริงผ่าน assetStore() — ปลอมไว้เหมือนที่
+// assets/actions.test.ts ทำ กันไม่ให้เทสต์นี้ไปเขียนไฟล์ลงดิสก์จริง
+vi.mock('@/lib/assets/store', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/assets/store')>()
+  return {
+    ...real,
+    assetStore: () => ({
+      describe: 'ที่เก็บของเทสต์',
+      put: async (path: string, data: Uint8Array) => {
+        state.storedAssets.push({ path, bytes: data.byteLength })
+        return { storagePath: path, publicUrl: `/${path}` }
+      },
+      get: async () => new Uint8Array(),
+    }),
+  }
+})
 
 const {
   saveBlockContent, addBlock, deleteBlock, reorderBlocks, moveBlock,
-  addShowWhenCondition, removeShowWhenCondition,
+  addShowWhenCondition, removeShowWhenCondition, uploadBlockImage,
 } = await import('./actions')
 
 const signedInAs = (role: string, isActive = true) => {
@@ -145,6 +167,29 @@ const titleBlock = (over: Partial<BlockRow> = {}): BlockRow => ({
   ...over,
 })
 
+/** PNG จริงขนาด 1024×678 · เหมือน pngFile ของ assets/actions.test.ts (ผ่าน validateUpload ทุกเพดาน) */
+const pngFile = (name: string, width = 1024, height = 678): File => {
+  const head = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+    (width >>> 24) & 255, (width >>> 16) & 255, (width >>> 8) & 255, width & 255,
+    (height >>> 24) & 255, (height >>> 16) & 255, (height >>> 8) & 255, height & 255,
+    8, 6, 0, 0, 0,
+  ]
+  const data = new Uint8Array(Math.max(40_000, head.length))
+  data.set(head)
+  return new File([data], name, { type: 'image/png' })
+}
+
+/** กว้างแค่ 400px — ตกด่าน validateUpload (ต้องกว้างอย่างน้อย 800px) โดยไม่ต้องปลอมชนิดไฟล์ */
+const narrowPngFile = (name: string): File => pngFile(name, 400, 678)
+
+const upload = (file: File | null) => {
+  const data = new FormData()
+  if (file) data.append('file', file)
+  return data
+}
+
 beforeEach(() => {
   sql = makeSql()
   state.cookie = undefined
@@ -153,6 +198,7 @@ beforeEach(() => {
   state.blocks = [titleBlock()]
   state.statements = []
   state.revalidated = []
+  state.storedAssets = []
 })
 
 describe('saveBlockContent · สิทธิ์', () => {
@@ -360,6 +406,55 @@ describe('addShowWhenCondition / removeShowWhenCondition', () => {
     ]
     await removeShowWhenCondition('c1', 'card-1', 'b1', 0)
     expect(state.blocks[0].show_when).toEqual([{ type: 'not_has_attribute', key: 'b' }])
+  })
+})
+
+describe('uploadBlockImage', () => {
+  it('อัปโหลดภาพที่ผ่านทุกด่าน → {ok:true, url} และมีแถวใหม่ใน asset จริง', async () => {
+    signedInAs('configurator')
+    const result = await uploadBlockImage('c1', 'card-1', upload(pngFile('a.png')))
+    expect(result).toEqual({ ok: true, url: expect.stringMatching(/^\/uploads\/c1\/.+\/a\.png$/) })
+    expect(state.statements.some((s) => /INSERT INTO asset/.test(s.text))).toBe(true)
+    expect(state.storedAssets).toHaveLength(1)
+  })
+
+  it('ผู้ดูแลเนื้อหาก็อัปโหลดได้ — ภาพเป็นชนิดที่บทบาทนี้แก้ได้ (Permission Matrix)', async () => {
+    signedInAs('content_editor')
+    const result = await uploadBlockImage('c1', 'card-1', upload(pngFile('a.png')))
+    expect(result.ok).toBe(true)
+  })
+
+  it('ผู้ดูรายงานอัปโหลดไม่ได้ → {ok:false, message} ไม่ throw', async () => {
+    signedInAs('reporter')
+    const result = await uploadBlockImage('c1', 'card-1', upload(pngFile('a.png')))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('ไม่มีสิทธิ์') })
+    expect(state.storedAssets).toEqual([])
+  })
+
+  it('ยังไม่ได้เลือกไฟล์ → {ok:false, message} บอกตรงๆ', async () => {
+    signedInAs('configurator')
+    const result = await uploadBlockImage('c1', 'card-1', upload(null))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('ยังไม่ได้เลือกไฟล์') })
+  })
+
+  it('ภาพแคบเกินไป (ตก validateUpload ≥800px) → {ok:false, message} พร้อมเหตุผลจริง ไม่ใช่ข้อความว่างหรือ crash', async () => {
+    signedInAs('configurator')
+    const result = await uploadBlockImage('c1', 'card-1', upload(narrowPngFile('narrow.png')))
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.message).toBeTruthy()
+      expect(result.message).toContain('800')
+    }
+    expect(state.storedAssets).toEqual([])
+    expect(state.statements.some((s) => /INSERT INTO asset/.test(s.text))).toBe(false)
+  })
+
+  it('การ์ดไม่ได้อยู่ในแคมเปญนี้ → {ok:false, message} ก่อนเขียนอะไร', async () => {
+    signedInAs('configurator')
+    state.cardExists = false
+    const result = await uploadBlockImage('c1', 'card-1', upload(pngFile('a.png')))
+    expect(result).toEqual({ ok: false, message: expect.stringContaining('ไม่พบการ์ดนี้') })
+    expect(state.storedAssets).toEqual([])
   })
 })
 

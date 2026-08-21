@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import type postgres from 'postgres'
 
 type UserRow = { id: string; email: string; role: string; is_active: boolean }
 
@@ -45,6 +46,9 @@ const sql = Object.assign(
     }
 
     state.writes.push({ text, values })
+    // storeOne (../actions.ts) เติม RETURNING id ให้ INSERT INTO asset — ผู้เรียกใช้
+    // id นี้ต่อ (uploadBlockImage ของการ์ดเอดิเตอร์บล็อกภาพ) จึงต้องมีแถวให้อ่านกลับ
+    if (/INSERT INTO asset/.test(text)) return Promise.resolve([{ id: `asset-${state.writes.length}` }])
     return Promise.resolve([])
   },
   { array: (value: unknown) => value, json: (value: unknown) => value },
@@ -79,7 +83,7 @@ vi.mock('@/lib/assets/store', async (importOriginal) => {
   }
 })
 
-const { deleteAsset, uploadAssets } = await import('./actions')
+const { deleteAsset, uploadAssets, storeOne } = await import('./actions')
 
 const signedInAs = (role: string, isActive = true) => {
   state.cookie = 'someone@example.com'
@@ -392,6 +396,41 @@ describe('uploadAssets · ที่เก็บเขียนไม่ได้
     // ไฟล์แรกลงไปแล้วจริง จึงมีแถวของมัน · แต่ไม่มีการรายงานว่าทั้งชุดสำเร็จ
     expect(inserts()).toHaveLength(1)
     expect(state.redirectedTo).toBeUndefined()
+  })
+})
+
+/**
+ * storeOne เอง — export ออกมาให้ uploadBlockImage ของการ์ดเอดิเตอร์บล็อกภาพ
+ * (../cards/[cardId]/actions.ts) เรียกใช้ท่อไปป์ไลน์เดียวกับคลังภาพตรงๆ · ผลลัพธ์
+ * เปลี่ยนจาก `Rejection | null` เป็น `{ok:true,id,url} | {ok:false,file,why}` เพื่อให้
+ * ผู้เรียกเอา url ของแถวที่เพิ่งสร้างไปเติมช่อง content ต่อได้ทันที — เทสต์นี้ล็อกชนิดผล
+ * ทั้งสองแบบไว้ ไม่ให้ refactor ครั้งหน้าเปลี่ยนกลับไปเป็นรูปแบบเดิมโดยไม่รู้ตัว
+ */
+describe('storeOne · ผลลัพธ์รูปแบบใหม่ (uploadAssets ยังทำงานเดิมทุกอย่างผ่านมันอยู่)', () => {
+  const store = { describe: 'ที่เก็บของเทสต์', put: async (path: string, data: Uint8Array) =>
+    ({ storagePath: path, publicUrl: `/${path}` }), get: async () => new Uint8Array() }
+
+  it('ไฟล์ผ่าน → {ok:true, id, url} พร้อม url ที่ใช้เติมช่อง content ต่อได้ทันที', async () => {
+    const result = await storeOne(sql as unknown as postgres.Sql, store, pngFile('a.png'), {
+      campaignId: 'camp-1', userId: 'u1', replacesId: null,
+    })
+    expect(result.ok).toBe(true)
+    if (result.ok) {
+      expect(result.id).toEqual(expect.any(String))
+      expect(result.url).toMatch(/^\/uploads\/camp-1\/.+\/a\.png$/)
+    }
+  })
+
+  it('ไฟล์ไม่ผ่าน → {ok:false, file, why} พร้อมเหตุผลจริง ไม่ใช่ทิ้งแถวเงียบๆ', async () => {
+    const result = await storeOne(sql as unknown as postgres.Sql, store, gifFile('lying.png'), {
+      campaignId: 'camp-1', userId: 'u1', replacesId: null,
+    })
+    expect(result.ok).toBe(false)
+    if (!result.ok) {
+      expect(result.file).toBe('lying.png')
+      expect(result.why).toBeTruthy()
+    }
+    expect(inserts()).toEqual([])
   })
 })
 

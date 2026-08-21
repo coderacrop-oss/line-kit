@@ -15,7 +15,9 @@ export const CARD_RENDER_NAME: Record<CardRenderType, string> = {
 }
 
 /** ชนิดของสิ่งที่ชี้มาหาการ์ดได้ · ชื่อกลุ่มของตัวกรอง ไม่ใช่ชื่อของแถวเดียว */
-export const CARD_REF_KINDS = ['activity', 'keyword', 'channel', 'carousel', 'stamp'] as const
+export const CARD_REF_KINDS = [
+  'activity', 'keyword', 'channel', 'carousel', 'stamp', 'richmenu',
+] as const
 export type CardRefKind = (typeof CARD_REF_KINDS)[number]
 
 export type CardRef = { kind: CardRefKind; label: string }
@@ -28,7 +30,7 @@ export type CardRef = { kind: CardRefKind; label: string }
  * screen's whole point is that one fact is written down once.
  */
 export const CARD_FILTERS = [
-  'ทั้งหมด', 'กิจกรรม', 'คีย์เวิร์ด', 'บัญชี LINE', 'ชุดปัด', 'บัตรแสตมป์', 'ยังไม่ถูกใช้',
+  'ทั้งหมด', 'กิจกรรม', 'คีย์เวิร์ด', 'บัญชี LINE', 'ชุดปัด', 'บัตรแสตมป์', 'ริชเมนู', 'ยังไม่ถูกใช้',
 ] as const
 export type CardFilter = (typeof CARD_FILTERS)[number]
 
@@ -40,6 +42,7 @@ const FILTER_KIND: Record<CardFilter, CardRefKind | null> = {
   'บัญชี LINE': 'channel',
   'ชุดปัด': 'carousel',
   'บัตรแสตมป์': 'stamp',
+  'ริชเมนู': 'richmenu',
   'ยังไม่ถูกใช้': null,
 }
 
@@ -120,11 +123,14 @@ export function filterCards(
 /**
  * ทุกทางที่การ์ดหนึ่งใบถูกส่งออกไปได้ ตามที่ schema เขียนไว้จริง
  *
- * Eight branches because there are eight, and leaving any of them out turns the
+ * Nine branches because there are nine, and leaving any of them out turns the
  * dashed "ไม่มีใครใช้" pill into an invitation to delete a card that a running
- * campaign still answers with. Three of them live inside JSONB the engine reads
- * — an outcome's cardId, an entry rule's cardId — with no foreign key behind
- * them, so nothing but this query knows about those references at all.
+ * campaign still answers with. Four of them live inside JSONB the engine reads
+ * — an outcome's cardId, an entry rule's cardId, a rich menu area's target —
+ * with no foreign key behind them, so nothing but this query knows about those
+ * references at all. (The richmenu branch was missing until a delete-card
+ * safety review found it: a card wired to a rich menu button showed as
+ * orphaned because nothing here read `rich_menu.areas`.)
  *
  * The two channel branches go through campaign_channel rather than reading
  * channel directly: a channel belongs to the account and can be shared, so the
@@ -188,6 +194,11 @@ function selectCards(sql: postgres.Sql, where: postgres.PendingQuery<CardRow[]>)
               FROM stamp_card s
               JOIN counter ct ON ct.id = s.counter_id
              WHERE s.campaign_id = c.campaign_id AND s.card_id = c.id
+             UNION
+            SELECT 'richmenu', 'ริชเมนู "' || rm.alias || '" · ปุ่มบนเมนู'
+              FROM rich_menu rm, jsonb_array_elements(rm.areas) area
+             WHERE rm.campaign_id = c.campaign_id
+               AND area->>'kind' = 'card' AND area->>'target' = c.id::text
           ) refs
       ) used
      ${where}

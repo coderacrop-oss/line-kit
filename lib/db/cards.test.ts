@@ -108,6 +108,7 @@ describe('ตัวกรองของ M3-S01', () => {
     view({ id: 'c', code: 'c', used_by: [ref('channel', 'บัญชี OA · การ์ดตั้งต้น')] }),
     view({ id: 'd', code: 'd', used_by: [ref('carousel', 'การ์ด parent · ใบในชุดปัด')] }),
     view({ id: 'e', code: 'e', used_by: [ref('stamp', 'บัตรแสตมป์ของค่าสะสม "เช็คอิน"')] }),
+    view({ id: 'g', code: 'g', used_by: [ref('richmenu', 'ริชเมนู "หลัก" · ปุ่มบนเมนู')] }),
     view({ id: 'f', code: 'f', used_by: [] }),
   ]
   const codesOf = (filter: Parameters<typeof filterCards>[1]) =>
@@ -125,7 +126,7 @@ describe('ตัวกรองของ M3-S01', () => {
   })
 
   it('ทั้งหมด คืนทุกใบตามลำดับเดิม', () => {
-    expect(codesOf('ทั้งหมด')).toEqual(['a', 'b', 'c', 'd', 'e', 'f'])
+    expect(codesOf('ทั้งหมด')).toEqual(['a', 'b', 'c', 'd', 'e', 'g', 'f'])
   })
 
   it('กรองตามชนิดของสิ่งที่ชี้มา ได้เฉพาะใบที่ชนิดนั้นชี้', () => {
@@ -134,6 +135,7 @@ describe('ตัวกรองของ M3-S01', () => {
     expect(codesOf('บัญชี LINE')).toEqual(['c'])
     expect(codesOf('ชุดปัด')).toEqual(['d'])
     expect(codesOf('บัตรแสตมป์')).toEqual(['e'])
+    expect(codesOf('ริชเมนู')).toEqual(['g'])
   })
 
   /**

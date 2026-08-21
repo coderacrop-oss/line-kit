@@ -21,9 +21,12 @@ const state: {
 
 // redirect() กับ notFound() ของจริงโยนเสมอ · ตัวปลอมก็ต้องโยน ไม่งั้นโค้ดหลังบรรทัดนั้น
 // จะเดินต่อในเทสต์ทั้งที่ของจริงไม่เดิน แล้วเทสต์จะรับรองพฤติกรรมที่ไม่มีอยู่จริง
+// useRouter() มาจาก ActionForm ของปุ่มลบ (M3-S01) — ไม่มีจอไหนในไฟล์นี้เรียก navigate เอง
+const refresh = vi.fn()
 vi.mock('next/navigation', () => ({
   redirect: (to: string) => { state.redirectedTo = to; throw new Error('NEXT_REDIRECT') },
   notFound: () => { state.notFoundCalled = true; throw new Error('NEXT_NOT_FOUND') },
+  useRouter: () => ({ refresh }),
 }))
 vi.mock('@/lib/auth/session', () => ({
   getSession: async () =>
@@ -35,7 +38,11 @@ vi.mock('@/lib/db/cards', async () => {
   const actual = await vi.importActual<Record<string, unknown>>('@/lib/db/cards')
   return { ...actual, listCards: async () => state.cards.map(actual.summarizeCard as never) }
 })
+// deleteCard ไม่ต้องมีพฤติกรรมจริงที่นี่ — เทสต์ของมันเองอยู่ที่ actions.test.ts แล้ว
+// ไฟล์นี้พิสูจน์แค่ว่าปุ่มโผล่/ไม่โผล่ถูกเงื่อนไข ไม่ใช่ว่ากดแล้วเกิดอะไรขึ้นต่อ
+vi.mock('./actions', () => ({ deleteCard: vi.fn(async () => ({ ok: true })) }))
 
+const { CardTile } = await import('./CardTile')
 const CardsPage = (await import('./page')).default
 
 const row = (patch: Partial<CardRow> = {}): CardRow => ({
@@ -180,6 +187,44 @@ describe('M3-S01 · แผ่นการ์ดหนึ่งใบ', () => {
     const tile = tiles(container)[0]!
     expect(within(tile).getByText('สุ่มรางวัล · การ์ดสำรอง')).toBeDefined()
     expect(within(tile).getByText('คีย์เวิร์ด "เล่น"')).toBeDefined()
+  })
+})
+
+/**
+ * ปุ่มลบต้องผ่านทั้งสองเงื่อนไขพร้อมกันถึงจะโผล่ — แก้ได้ *และ* ไม่มีใครใช้อยู่จริง
+ *
+ * ซ่อนปุ่มไปเลยเมื่อเงื่อนไขไม่ครบ (ไม่ใช่แค่ปิดใช้งาน) — deleteCard เองก็ปฏิเสธซ้ำอีก
+ * ชั้นอยู่แล้ว (actions.test.ts) แต่จอไม่ควรชวนกดสิ่งที่ทำไม่ได้ตั้งแต่แรก
+ */
+describe('M3-S01 · ปุ่มลบการ์ด', () => {
+  const view = (patch: Partial<CardRow> = {}) => summarizeCard(row(patch))
+
+  it('การ์ดที่ยังมีคนใช้อยู่ ไม่มีปุ่มลบให้เห็นเลย แม้บทบาทแก้ได้', () => {
+    render(<CardTile campaignId="c1" card={view({ used_by: [{ kind: 'keyword', label: 'คีย์เวิร์ด "เล่น"' }] })} canEdit />)
+    expect(screen.queryByRole('button', { name: 'ลบการ์ดนี้' })).toBeNull()
+  })
+
+  it('การ์ดที่ไม่มีใครใช้ และบทบาทแก้ได้ → มีปุ่มลบ', () => {
+    render(<CardTile campaignId="c1" card={view({ used_by: [] })} canEdit />)
+    expect(screen.getByRole('button', { name: 'ลบการ์ดนี้' })).toBeDefined()
+  })
+
+  it('การ์ดที่ไม่มีใครใช้ แต่บทบาทดูอย่างเดียว → ไม่มีปุ่มลบ', () => {
+    render(<CardTile campaignId="c1" card={view({ used_by: [] })} canEdit={false} />)
+    expect(screen.queryByRole('button', { name: 'ลบการ์ดนี้' })).toBeNull()
+  })
+
+  it('จอรายการทั้งใบ ส่ง canEdit ของ session ลงไปที่แผ่นจริง — ผู้ดูรายงานไม่เห็นปุ่มลบแม้การ์ดไม่มีใครใช้', async () => {
+    state.role = 'reporter'
+    state.cards = [row({ used_by: [] })]
+    const { container } = await show()
+    expect(within(tiles(container)[0]!).queryByRole('button', { name: 'ลบการ์ดนี้' })).toBeNull()
+  })
+
+  it('จอรายการทั้งใบ ผู้ตั้งค่าเห็นปุ่มลบบนการ์ดที่ไม่มีใครใช้', async () => {
+    state.cards = [row({ used_by: [] })]
+    const { container } = await show()
+    expect(within(tiles(container)[0]!).getByRole('button', { name: 'ลบการ์ดนี้' })).toBeDefined()
   })
 })
 
@@ -336,12 +381,15 @@ describe('M3-S01 · ทางเข้าจอสร้างการ์ด', 
     expect(createLink(container)).toBeNull()
   })
 
-  it('แผ่นการ์ดเป็นลิงก์ไปจอแก้บล็อกทีละใบของการ์ดนั้น', async () => {
+  it('แผ่นการ์ดพาไปจอแก้บล็อกทีละใบของการ์ดนั้น ผ่านลิงก์ที่อยู่ในแผ่น (ไม่ใช่ตัวแผ่นเอง)', async () => {
+    // แผ่นเองเป็น <div> ตั้งแต่ M3-S01 มีปุ่มลบ (<form>/<button> ซ้อนใน <a> ไม่ได้)
+    // — ลิงก์ไปจอแก้อยู่ข้างในแทน ดู CardTile ใน page.tsx
     state.cards = [row({ id: 'card-a', code: 'a' })]
     const { container } = await show()
     const [tile] = tiles(container)
-    expect(tile.tagName).toBe('A')
-    expect(tile.getAttribute('href')).toBe('/campaigns/c1/cards/card-a')
+    expect(tile.tagName).toBe('DIV')
+    const link = within(tile).getByRole('link')
+    expect(link.getAttribute('href')).toBe('/campaigns/c1/cards/card-a')
   })
 
   it('กลับมาจากการสร้างสำเร็จ จอบอกว่าใบไหนเพิ่งเกิด', async () => {
