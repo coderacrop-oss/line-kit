@@ -1,10 +1,31 @@
 // @vitest-environment jsdom
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
+import {
+  afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi,
+} from 'vitest'
 import { ImagemapEditor, type ImagemapDraftPayload, type ImagemapEditorInitial } from './ImagemapEditor'
 import type { TapArea } from '@/lib/imagemap/regions'
 
 afterEach(cleanup)
+
+// jsdom ไม่มี URL.createObjectURL/revokeObjectURL จริง — ImagemapCropModal เรียกทั้งคู่
+// ทันทีที่เปิด (useEffect) ตอนนี้ทุกช่องอัปโหลดภาพฐานเปิดโมดัลนี้ก่อนเสมอ (ไม่เรียก
+// uploadBaseImage ตรงๆ อีกต่อไป) จึงต้องปลอมไว้ที่นี่ เหมือนที่ CropModal.test.tsx/
+// ImagemapCropModal.test.tsx ทำอยู่แล้วกับ CropModal ตัวเดียวกัน
+let originalCreateObjectURL: typeof URL.createObjectURL
+let originalRevokeObjectURL: typeof URL.revokeObjectURL
+
+beforeAll(() => {
+  originalCreateObjectURL = URL.createObjectURL
+  originalRevokeObjectURL = URL.revokeObjectURL
+  URL.createObjectURL = vi.fn(() => 'blob:fake')
+  URL.revokeObjectURL = vi.fn()
+})
+
+afterAll(() => {
+  URL.createObjectURL = originalCreateObjectURL
+  URL.revokeObjectURL = originalRevokeObjectURL
+})
 
 const push = vi.fn()
 const refresh = vi.fn()
@@ -72,26 +93,49 @@ describe('ImagemapEditor · โครงเริ่มต้น', () => {
 })
 
 describe('ImagemapEditor · อัปโหลด/แทนที่ภาพฐาน', () => {
-  it('อัปโหลดภาพใหม่ — เรียก uploadBaseImage แล้วอัปเดตขนาดผืนทันทีที่สำเร็จ', async () => {
+  /**
+   * เลือกไฟล์ภาพฐานตอนนี้เปิด ImagemapCropModal ก่อนเสมอ (ไม่เรียก uploadBaseImage
+   * ทันทีอีกต่อไป) — เทสต์ในกลุ่มนี้จำลองเส้นทาง "ใช้ภาพนี้ทั้งภาพ" (ทางลัดข้ามการครอบ
+   * ที่ไม่ต้องรอ onLoad ของ <img> ในโมดัล เพราะปุ่มนี้ไม่ผูกกับ natural/selection เลย)
+   * เพื่อให้ยังยืนยันได้ว่าไฟล์ที่เลือกไปถึง uploadBaseImage จริงในที่สุด — พฤติกรรม
+   * การครอบเองมีเทสต์แยกที่ ImagemapCropModal.test.tsx แล้ว
+   */
+  function pickBaseImageAndSkipCrop(container: HTMLElement, file: File) {
+    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
+    fireEvent.change(fileInput, { target: { files: [file] } })
+    fireEvent.click(screen.getByRole('button', { name: 'ใช้ภาพนี้ทั้งภาพ' }))
+  }
+
+  it('เลือกไฟล์ภาพฐาน — เปิด ImagemapCropModal ก่อน ไม่เรียก uploadBaseImage ทันที', () => {
     const { container, uploadBaseImage } = draw({ initial: withImage({ baseImageUrl: null, baseWidth: null, baseHeight: null }) })
     const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File([new Uint8Array([1, 2, 3])], 'a.jpg', { type: 'image/jpeg' })
     fireEvent.change(fileInput, { target: { files: [file] } })
 
+    expect(screen.getByText('ครอบ/จัดกรอบภาพฐาน')).toBeDefined()
+    expect(uploadBaseImage).not.toHaveBeenCalled()
+  })
+
+  it('อัปโหลดภาพใหม่ (กด "ใช้ภาพนี้ทั้งภาพ" ข้ามการครอบ) — เรียก uploadBaseImage แล้วอัปเดตขนาดผืนทันทีที่สำเร็จ', async () => {
+    const { container, uploadBaseImage } = draw({ initial: withImage({ baseImageUrl: null, baseWidth: null, baseHeight: null }) })
+    const file = new File([new Uint8Array([1, 2, 3])], 'a.jpg', { type: 'image/jpeg' })
+    pickBaseImageAndSkipCrop(container, file)
+
     await waitFor(() => expect(uploadBaseImage).toHaveBeenCalled())
+    const form = uploadBaseImage.mock.calls[0][2] as FormData
+    expect(form.get('file')).toBe(file)
     await waitFor(() => {
       const stage = container.querySelector('[data-imagemap-stage]') as HTMLElement
       expect(Math.round(parseFloat(stage.style.height))).toBe(Math.round(820 * (700 / 1040)))
     })
   })
 
-  it('แทนที่ภาพฐานที่เคยพร้อมส่งแล้ว — สถานะกลับไปเป็นยังไม่พร้อมส่ง', async () => {
+  it('แทนที่ภาพฐานที่เคยพร้อมส่งแล้ว (ผ่านโมดัลครอบ) — สถานะกลับไปเป็นยังไม่พร้อมส่ง', async () => {
     const { container } = draw({ initial: withImage({ ready: true }) })
     expect(screen.getByText(/พร้อมส่งจริง/)).toBeDefined()
 
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File([new Uint8Array([1, 2, 3])], 'a.jpg', { type: 'image/jpeg' })
-    fireEvent.change(fileInput, { target: { files: [file] } })
+    pickBaseImageAndSkipCrop(container, file)
 
     await waitFor(() => expect(screen.getByText(/ยังไม่พร้อมส่ง/)).toBeDefined())
   })
@@ -99,9 +143,8 @@ describe('ImagemapEditor · อัปโหลด/แทนที่ภาพฐ
   it('uploadBaseImage คืน ok:false (เช่นไฟล์เล็กเกินไป) — แสดงเหตุผลจริง ไม่ใช่ error ที่ถูกเซ็นเซอร์', async () => {
     const uploadBaseImage = vi.fn(async () => ({ ok: false as const, message: 'ภาพเล็กเกินไป — ต้องกว้างอย่างน้อย 1040px' }))
     const { container } = draw({ uploadBaseImage, initial: withImage({ baseImageUrl: null, baseWidth: null, baseHeight: null }) })
-    const fileInput = container.querySelector('input[type="file"]') as HTMLInputElement
     const file = new File([new Uint8Array([1, 2, 3])], 'a.jpg', { type: 'image/jpeg' })
-    fireEvent.change(fileInput, { target: { files: [file] } })
+    pickBaseImageAndSkipCrop(container, file)
 
     await waitFor(() => expect(screen.getByText('ภาพเล็กเกินไป — ต้องกว้างอย่างน้อย 1040px')).toBeDefined())
     expect(screen.getByText(/ยังไม่มีภาพฐาน/)).toBeDefined()

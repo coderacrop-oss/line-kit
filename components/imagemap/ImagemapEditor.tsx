@@ -10,6 +10,7 @@ import {
 } from '@/lib/imagemap/regions'
 import type { Rect } from '@/lib/richmenu/gesture'
 import { AreaNode, areaSummary } from './AreaNode'
+import { ImagemapCropModal } from './ImagemapCropModal'
 import type { UploadAssetResult, UploadBaseImageResult } from '@/app/(admin)/campaigns/[id]/cards/[cardId]/imagemap/actions'
 
 /**
@@ -103,6 +104,9 @@ export function ImagemapEditor({
   const [applying, setApplying] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const fileInput = useRef<HTMLInputElement>(null)
+  // ไฟล์ภาพฐานที่เพิ่งเลือกแต่ยังไม่ยืนยัน — มีค่าอยู่แปลว่า ImagemapCropModal เปิดอยู่
+  // (ดู comment ของ onChange ช่องอัปโหลดภาพฐานด้านล่าง เหตุผลที่ต้องมีขั้นครอบก่อน)
+  const [pendingBaseImageFile, setPendingBaseImageFile] = useState<File | null>(null)
 
   const [videoUrl, setVideoUrl] = useState(initial.videoUrl ?? null)
   const [videoPreviewUrl, setVideoPreviewUrl] = useState(initial.videoPreviewUrl ?? null)
@@ -409,8 +413,11 @@ export function ImagemapEditor({
                 type="file" accept="image/png,image/jpeg" style={{ display: 'none' }}
                 disabled={uploading}
                 onChange={(event) => {
+                  // ไม่อัปโหลดไฟล์ดิบตรงๆ อีกต่อไป — เปิด ImagemapCropModal ให้เลือกกรอบ
+                  // ก่อนเสมอ (เหมือนแนวทาง ImagePicker.tsx ของ Rich Menu) onUploadImage
+                  // ถูกเรียกจริงจาก onConfirm/onSkip ของโมดัลแทน ไม่ใช่ตรงนี้
                   const file = event.target.files?.[0]
-                  if (file) void onUploadImage(file)
+                  if (file) setPendingBaseImageFile(file)
                   event.target.value = ''
                 }}
               />
@@ -555,6 +562,16 @@ export function ImagemapEditor({
           </div>
         )}
       </div>
+
+      {pendingBaseImageFile && (
+        <ImagemapCropModal
+          open
+          file={pendingBaseImageFile}
+          onConfirm={(croppedFile) => { setPendingBaseImageFile(null); void onUploadImage(croppedFile) }}
+          onSkip={() => { void onUploadImage(pendingBaseImageFile); setPendingBaseImageFile(null) }}
+          onCancel={() => setPendingBaseImageFile(null)}
+        />
+      )}
     </div>
   )
 }

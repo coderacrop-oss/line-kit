@@ -3,6 +3,7 @@
 import { revalidatePath } from 'next/cache'
 import type postgres from 'postgres'
 import { requireRole } from '@/lib/auth/require'
+import { assetStore } from '@/lib/assets/store'
 import {
   SHOW_WHEN_FIELDS, asShowWhenType, buildCondition, canAddBlock, canRoleEditBlock,
   isDrawableBlockType, parseBlockSave, reorder as reorderPure, UNDRAWABLE_REASON,
@@ -11,8 +12,13 @@ import {
 import { db } from '@/lib/db/client'
 import type { BlockType, CardBlock } from '@/lib/render/groups'
 import type { Condition } from '@/lib/state'
+import { storeOne } from '../../assets/actions'
 
 const trimmed = (formData: FormData, key: string) => String(formData.get(key) ?? '').trim()
+
+/** error ที่ไม่คาดคิดจริงๆ (ไม่ใช่ Error instance) ยังต้องมีข้อความให้คนอ่านได้อยู่ดี — เหตุผลเดียวกับ resultMessage ของ ../richmenu/actions.ts */
+const resultMessage = (err: unknown, fallback: string): string =>
+  err instanceof Error ? err.message : fallback
 
 async function requireCard(sql: postgres.Sql, campaignId: string, cardId: string): Promise<void> {
   const [row] = await sql<{ id: string }[]>`
@@ -90,6 +96,47 @@ export async function saveBlockContent(
   })
 
   revalidatePath(path(campaignId, cardId))
+}
+
+export type UploadBlockImageResult = { ok: true; url: string } | { ok: false; message: string }
+
+/**
+ * อัปโหลดภาพของบล็อกภาพตรงจากเอดิเตอร์การ์ด — ไม่ต้องออกไปคลังภาพ (คลังภาพของแคมเปญ)
+ * ก่อนแล้วก็อป URL กลับมาวางเหมือนเดิม ใช้ท่อไปป์ไลน์เดียวกับคลังภาพเป๊ะๆ ผ่าน storeOne
+ * ที่ export มาจาก ../../assets/actions (วัดขนาดจริง → ตรวจ validateUpload (เพดาน
+ * ≥800px กว้างของคลังภาพทั่วไป ไม่ใช่กติกาพิเศษของ imagemap/Rich Menu) → เขียนไฟล์ →
+ * แถวใหม่ใน asset) ภาพที่อัปโหลดทางนี้จึงโผล่ในคลังภาพของแคมเปญเหมือนกับที่อัปโหลด
+ * จากจอคลังภาพตรงๆ ไม่ใช่ไฟล์ที่ลอยอยู่นอกคลัง
+ *
+ * คืน `UploadBlockImageResult` แทนการ throw — เหตุผลเดียวกับ uploadBaseImage ของ
+ * ../imagemap/actions.ts (ดู comment เต็มที่นั่น): Next.js เซ็นเซอร์ข้อความ error ที่
+ * throw ออกจาก Server Action ทิ้งเสมอในโปรดักชัน ฟอร์มฝั่ง client
+ * (ImageBlockField.tsx) เรียก action นี้ตรงๆ ไม่ผ่าน `<form action=...>` เพื่ออ่านค่าที่
+ * คืนมาได้ — ไม่กระทบ saveBlockContent เดิมเลย เพราะช่อง `content` ยังเป็นช่องกรอกจริง
+ * ในฟอร์มเดิม แค่ auto-fill ค่าให้หลังอัปโหลดสำเร็จ ผู้ใช้ยังต้องกด "บันทึกบล็อกนี้" เอง
+ */
+export async function uploadBlockImage(
+  campaignId: string, cardId: string, formData: FormData,
+): Promise<UploadBlockImageResult> {
+  try {
+    const session = await requireRole('configurator', 'content_editor')
+    const sql = db()
+    await requireCard(sql, campaignId, cardId)
+
+    const file = formData.get('file')
+    if (!(file instanceof File) || file.size === 0) throw new Error('ยังไม่ได้เลือกไฟล์')
+
+    const result = await storeOne(sql, assetStore(), file, {
+      campaignId, userId: session.userId, replacesId: null,
+    })
+    if (!result.ok) throw new Error(result.why)
+
+    revalidatePath(path(campaignId, cardId))
+    revalidatePath(`/campaigns/${campaignId}/assets`)
+    return { ok: true, url: result.url }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'อัปโหลดภาพไม่สำเร็จ — ลองใหม่') }
+  }
 }
 
 /**

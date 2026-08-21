@@ -1,8 +1,8 @@
 import { createCanvas, loadImage } from '@napi-rs/canvas'
 import { describe, expect, it } from 'vitest'
 import {
-  generateImagemapVariants, IMAGEMAP_WIDTHS, isImagemapWidth, MIN_SOURCE_WIDTH, OUTPUT_MAX_BYTES,
-  SOURCE_MAX_BYTES, validateImagemapUpload,
+  generateImagemapVariants, IMAGEMAP_WIDTHS, imagemapUpscaleWarning, isImagemapWidth, MIN_SOURCE_WIDTH,
+  OUTPUT_MAX_BYTES, SOURCE_MAX_BYTES, validateImagemapUpload,
 } from './sizes'
 
 /** ภาพจริงสีเดียวขนาดที่กำหนด เข้ารหัส JPEG จริง — ไม่ใช่ของปลอมที่แค่มีนามสกุลถูก */
@@ -51,11 +51,8 @@ describe('validateImagemapUpload', () => {
     expect(validateImagemapUpload({ ...okFile, bytes: SOURCE_MAX_BYTES + 1 }).ok).toBe(false)
   })
 
-  it(`แคบกว่า ${MIN_SOURCE_WIDTH}px ปฏิเสธ — ไม่ใช้เพดาน 800px ของคลังภาพทั่วไป`, () => {
-    const result = validateImagemapUpload({ ...okFile, width: MIN_SOURCE_WIDTH - 1 })
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.reason).toContain('เล็กเกินไป')
+  it(`แคบกว่า ${MIN_SOURCE_WIDTH}px ผ่านได้แล้ว (เคยปฏิเสธ) — ตอนนี้แค่เตือนไม่บล็อกที่ชั้น UI แทน`, () => {
+    expect(validateImagemapUpload({ ...okFile, width: MIN_SOURCE_WIDTH - 1 })).toEqual({ ok: true })
   })
 
   it(`กว้างพอดี ${MIN_SOURCE_WIDTH}px เป๊ะ ผ่านได้ — ไม่ใช่ถูกปัดตกที่ขอบพอดี`, () => {
@@ -112,12 +109,22 @@ describe('generateImagemapVariants', () => {
     }
   })
 
-  it(`ภาพแคบกว่า ${MIN_SOURCE_WIDTH}px ถูกปฏิเสธ — ต้องขยายเกินตัวเพื่อให้ได้ตัวแปรกว้าง 1040`, async () => {
-    const source = await solidJpeg(MIN_SOURCE_WIDTH - 1, 700)
+  it(`ภาพแคบกว่า ${MIN_SOURCE_WIDTH}px ผ่านได้แล้ว (เคยปฏิเสธ) — ตัวแปรกว้าง 1040 ถูกขยายจากต้นฉบับ ไม่ล้ม`, async () => {
+    const narrowWidth = MIN_SOURCE_WIDTH - 1
+    const source = await solidJpeg(narrowWidth, 700)
     const result = await generateImagemapVariants(source)
-    expect(result.ok).toBe(false)
-    if (result.ok) return
-    expect(result.reason).toContain('เล็กเกินไป')
+    expect(result.ok).toBe(true)
+    if (!result.ok) return
+
+    // ตัวแปร 1040px ต้องถูกขยายขึ้นจากต้นฉบับที่แคบกว่า (พิสูจน์ว่าเส้นทางขยายทำงานจริง ไม่ใช่แค่ไม่ throw)
+    const variant1040 = result.variants[1040]
+    expect(variant1040.width).toBe(1040)
+    expect(variant1040.width).toBeGreaterThan(narrowWidth)
+
+    for (const width of IMAGEMAP_WIDTHS) {
+      expect(result.variants[width].width).toBe(width)
+      expect(result.variants[width].data.byteLength).toBeGreaterThan(0)
+    }
   })
 
   it(`ภาพกว้างพอดี ${MIN_SOURCE_WIDTH}px เป๊ะ ยังผ่านได้ — ไม่ใช่ถูกปัดตกที่ขอบพอดี`, async () => {
@@ -132,5 +139,18 @@ describe('generateImagemapVariants', () => {
     expect(result.ok).toBe(false)
     if (result.ok) return
     expect(result.reason).toContain('ใหญ่เกินไป')
+  })
+})
+
+describe('imagemapUpscaleWarning', () => {
+  it(`กว้างพอดีหรือมากกว่า ${MIN_SOURCE_WIDTH}px — ไม่เตือน (null)`, () => {
+    expect(imagemapUpscaleWarning(MIN_SOURCE_WIDTH)).toBeNull()
+    expect(imagemapUpscaleWarning(MIN_SOURCE_WIDTH + 500)).toBeNull()
+  })
+
+  it(`แคบกว่า ${MIN_SOURCE_WIDTH}px — เตือนด้วยข้อความไม่ว่าง`, () => {
+    const warning = imagemapUpscaleWarning(MIN_SOURCE_WIDTH - 1)
+    expect(warning).not.toBeNull()
+    expect(warning?.length).toBeGreaterThan(0)
   })
 })

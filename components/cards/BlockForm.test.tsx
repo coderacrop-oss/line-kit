@@ -10,6 +10,7 @@ vi.mock('@/app/(admin)/campaigns/[id]/cards/[cardId]/actions', () => ({
   saveBlockContent: vi.fn(),
   addShowWhenCondition: vi.fn(),
   removeShowWhenCondition: vi.fn(),
+  uploadBlockImage: vi.fn(),
 }))
 
 let n = 0

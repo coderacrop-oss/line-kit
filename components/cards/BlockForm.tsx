@@ -8,8 +8,9 @@ import type { CardSelectorOption } from '@/lib/db/cardEditor'
 import type { BlockType, CardBlock } from '@/lib/render/groups'
 import type { Condition } from '@/lib/state'
 import {
-  addShowWhenCondition, removeShowWhenCondition, saveBlockContent,
+  addShowWhenCondition, removeShowWhenCondition, saveBlockContent, uploadBlockImage,
 } from '@/app/(admin)/campaigns/[id]/cards/[cardId]/actions'
+import { ImageBlockField } from './ImageBlockField'
 
 const labelStyle: CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 10, letterSpacing: '.06em',
@@ -85,7 +86,12 @@ function ContentSourceNote({ selectorCount }: { selectorCount: number }) {
   )
 }
 
-function OwnValueFields({ block, canEdit }: { block: CardBlock; canEdit: boolean }) {
+function OwnValueFields({ campaignId, cardId, block, canEdit }: {
+  campaignId: string
+  cardId: string
+  block: CardBlock
+  canEdit: boolean
+}) {
   if (block.blockType === 'divider' || block.blockType === 'spacer') {
     return (
       <span style={noteStyle}>
@@ -98,9 +104,10 @@ function OwnValueFields({ block, canEdit }: { block: CardBlock; canEdit: boolean
     const fullTop = block.options?.placement === 'full_top'
     return (
       <>
-        <Field label="URL ภาพ (บังคับ)" hint="ก็อป URL จากคลังภาพของแคมเปญนี้มาวาง">
-          <input name="content" defaultValue={block.content ?? ''} disabled={!canEdit} />
-        </Field>
+        <ImageBlockField
+          campaignId={campaignId} cardId={cardId} blockId={block.id}
+          defaultValue={block.content ?? ''} disabled={!canEdit} uploadAction={uploadBlockImage}
+        />
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12 }}>
           <input type="checkbox" name="full_top" defaultChecked={fullTop} disabled={!canEdit} />
           ใช้เป็นภาพหัวการ์ดแบบเต็มความกว้าง (มีผลเมื่อเป็นบล็อกแรกสุดของการ์ดเท่านั้น)
@@ -307,7 +314,7 @@ export function BlockForm({ campaignId, cardId, block, canEdit, selectorCount, s
         action={saveBlockContent.bind(null, campaignId, cardId, block.id)}
         style={{ display: 'flex', flexDirection: 'column', gap: 12 }}
       >
-        <OwnValueFields block={block} canEdit={canEdit} />
+        <OwnValueFields campaignId={campaignId} cardId={cardId} block={block} canEdit={canEdit} />
         {canEdit && <Button type="submit" variant="ghost" style={{ alignSelf: 'flex-start' }}>บันทึกบล็อกนี้</Button>}
       </form>
 

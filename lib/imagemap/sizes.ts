@@ -20,7 +20,10 @@ export type ImagemapWidth = (typeof IMAGEMAP_WIDTHS)[number]
 export const isImagemapWidth = (value: number): value is ImagemapWidth =>
   (IMAGEMAP_WIDTHS as readonly number[]).includes(value)
 
-/** เล็กกว่านี้ต้องขยายเกินตัวเพื่อให้ได้ตัวแปรกว้าง 1040 — เห็นเบลอชัดเจน */
+/**
+ * เกณฑ์ "เตือน" ไม่ใช่เกณฑ์ "ปฏิเสธ" — เล็กกว่านี้ยังอัปโหลด/ปั้นภาพได้ปกติ แค่ตัวแปร
+ * กว้าง 1040 ต้องถูกขยายเกินตัวจากต้นฉบับ (เห็นเบลอได้) ดู imagemapUpscaleWarning
+ */
 export const MIN_SOURCE_WIDTH = IMAGEMAP_WIDTHS[IMAGEMAP_WIDTHS.length - 1]
 export const SOURCE_MAX_BYTES = 8 * 1024 * 1024
 export const OUTPUT_MAX_BYTES = 1024 * 1024
@@ -36,6 +39,11 @@ export type ImagemapUploadVerdict = { ok: true } | { ok: false; reason: string }
  * validateUpload บังคับกว้างอย่างน้อย 800px เพราะออกแบบมาสำหรับภาพที่ขยายเต็มความ
  * กว้างแชท — ริชเมสเสจมีพื้นอ้างอิงของตัวเอง (1040px กว้าง เป๊ะเสมอ) เพดานขั้นต่ำจึง
  * ผูกกับตัวเลขนั้นแทน ไม่ใช่ 800px ที่ยืมมาจากบริบทอื่น
+ *
+ * ไม่ปฏิเสธภาพที่แคบกว่า MIN_SOURCE_WIDTH อีกต่อไป (เคยปฏิเสธ) — ตัดสินใจแล้วว่ายอมรับ
+ * ภาพทุกขนาด ให้คนเลือกเองว่าจะครอบ/จัดกรอบยังไงตอนอัปโหลด (ดู ImagemapCropModal.tsx)
+ * แล้วปล่อยให้ตัวแปรกว้าง 1040 ถูกขยายจากต้นฉบับถ้าจำเป็น — imagemapUpscaleWarning
+ * ด้านล่างเป็นคนเตือนแบบไม่บล็อกแทน
  */
 export function validateImagemapUpload(
   file: { mime: string; bytes: number; width: number; height: number },
@@ -53,14 +61,19 @@ export function validateImagemapUpload(
       reason: `ไฟล์ ${describeBytes(file.bytes)} เกินเพดาน ${describeBytes(SOURCE_MAX_BYTES)} — บีบอัดก่อนแล้วลองใหม่`,
     }
   }
-  if (file.width < MIN_SOURCE_WIDTH) {
-    return {
-      ok: false,
-      reason: `ภาพกว้าง ${file.width}px — เล็กเกินไปสำหรับริชเมสเสจ ต้องกว้างอย่างน้อย ${MIN_SOURCE_WIDTH}px `
-        + `(ขนาดใหญ่สุดที่ LINE ขอ) ใช้ภาพความละเอียดสูงกว่านี้`,
-    }
-  }
   return { ok: true }
+}
+
+/**
+ * ข้อความเตือนแบบไม่บล็อก (mild) ตอนภาพ/ส่วนที่เลือกไว้แคบกว่า MIN_SOURCE_WIDTH —
+ * คู่กับ menuImageSizeWarning ของ lib/richmenu/image.ts แต่คนละความหมาย: ที่นั่นขนาด
+ * ต้องตรงเป๊ะหนึ่งในสองแบบ (ปฏิเสธถ้าไม่ตรง) ส่วนที่นี่ยอมรับทุกขนาดอยู่แล้ว ข้อความนี้
+ * แค่บอกไว้ก่อนว่าตัวแปร 1040px จะถูกขยายจากต้นฉบับ ไม่ใช่เหตุผลที่ทำให้ตกอะไร
+ */
+export function imagemapUpscaleWarning(width: number): string | null {
+  if (width >= MIN_SOURCE_WIDTH) return null
+  return `ส่วนที่เลือกไว้กว้าง ${width}px — แคบกว่า ${MIN_SOURCE_WIDTH}px (ขนาดใหญ่สุดที่ LINE ขอ) `
+    + `ตัวแปรขนาดนั้นจะถูกขยายจากต้นฉบับ อาจเห็นเบลอเล็กน้อย`
 }
 
 export type ImagemapVariant = { data: Uint8Array; mime: 'image/jpeg'; width: number; height: number }
@@ -84,10 +97,10 @@ async function encodeWithQualityFallback(
 /**
  * ย่อภาพต้นฉบับให้ได้ทั้งห้าขนาดของ LINE พร้อมกัน — คงสัดส่วนเดิมทุกขนาด
  *
- * ปฏิเสธภาพที่แคบกว่า 1040px (MIN_SOURCE_WIDTH) เพราะขนาดใหญ่สุดที่ LINE ขอคือ
- * 1040px กว้าง — แคบกว่านี้ต้องขยายเกินตัวเสมอ ต่างจาก validateUpload ทั่วไปของคลัง
- * ภาพ (lib/assets/validate.ts) ที่ตั้งพื้นขั้นต่ำไว้ที่ 800px สำหรับภาพเต็มความกว้าง
- * แชท — ริชเมสเสจมีพื้นของตัวเอง ไม่ใช้ค่าเดียวกัน
+ * ยอมรับภาพทุกขนาดกว้าง (เคยปฏิเสธภาพที่แคบกว่า 1040px/MIN_SOURCE_WIDTH — ไม่ทำแล้ว)
+ * ภาพที่แคบกว่าตัวแปรกว้าง 1040 แค่ถูกขยายเกินตัว (`ctx.drawImage` scale ขึ้นตรงๆ
+ * คณิตศาสตร์เดียวกับตอนย่อลง ไม่ต้องมีเส้นทางแยก) — มีแค่คำเตือนไม่บล็อกที่ชั้น UI
+ * (imagemapUpscaleWarning ด้านบน) ไม่ใช่การปฏิเสธที่นี่อีกต่อไป
  */
 export async function generateImagemapVariants(data: Uint8Array): Promise<ImagemapVariantsResult> {
   if (data.byteLength > SOURCE_MAX_BYTES) {
@@ -98,13 +111,6 @@ export async function generateImagemapVariants(data: Uint8Array): Promise<Imagem
   }
 
   const image = await loadImage(data)
-  if (image.width < MIN_SOURCE_WIDTH) {
-    return {
-      ok: false,
-      reason: `ภาพกว้าง ${image.width}px — เล็กเกินไปสำหรับริชเมสเสจ ต้องกว้างอย่างน้อย ${MIN_SOURCE_WIDTH}px `
-        + `(ขนาดใหญ่สุดที่ LINE ขอ) ใช้ภาพความละเอียดสูงกว่านี้`,
-    }
-  }
 
   const baseWidth = IMAGEMAP_WIDTHS[IMAGEMAP_WIDTHS.length - 1]
   const baseHeight = Math.round(image.height * (baseWidth / image.width))

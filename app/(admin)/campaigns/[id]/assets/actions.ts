@@ -28,6 +28,17 @@ async function requireCampaign(sql: ReturnType<typeof db>, campaignId: string): 
 }
 
 /**
+ * ผลของ storeOne หนึ่งไฟล์ — ปฏิเสธพร้อมเหตุผล หรือสำเร็จพร้อมแถวที่เพิ่งสร้าง
+ *
+ * id/url ของแถวใหม่ต้องคืนออกไปด้วย เพราะตั้งแต่ uploadBlockImage (การ์ดเอดิเตอร์บล็อก
+ * ภาพ, ../cards/[cardId]/actions.ts) เข้ามาเรียกฟังก์ชันนี้ ผู้เรียกต้องเอา URL ไป
+ * เติมช่อง content ของบล็อกทันทีโดยไม่ต้องวนไปอ่านคลังภาพซ้ำ
+ */
+export type StoreOneResult =
+  | { ok: true; id: string; url: string }
+  | { ok: false; file: string; why: string }
+
+/**
  * ไฟล์หนึ่งไฟล์ · วัดจริง ตรวจจริง เขียนจริง แล้วค่อยบันทึกแถว
  *
  * The order is the whole point. Dimensions are measured from the bytes rather
@@ -36,16 +47,16 @@ async function requireCampaign(sql: ReturnType<typeof db>, campaignId: string): 
  * first would leave the library listing an image that was never stored, and the
  * first anyone would hear of it is a card rendering a broken picture in a chat.
  */
-async function storeOne(
+export async function storeOne(
   sql: ReturnType<typeof db>,
   store: AssetStore,
   file: File,
   context: { campaignId: string; userId: string; replacesId: string | null },
-): Promise<Rejection | null> {
+): Promise<StoreOneResult> {
   const data = new Uint8Array(await file.arrayBuffer())
 
   const probed = probeImage(data)
-  if (!probed.ok) return { file: file.name, why: probed.reason }
+  if (!probed.ok) return { ok: false, file: file.name, why: probed.reason }
 
   // ขนาดมาจากไบต์จริง ไม่ใช่จาก file.type ที่เบราว์เซอร์เดาจากนามสกุล
   const verdict = validateUpload({
@@ -54,19 +65,20 @@ async function storeOne(
     width: probed.meta.width,
     height: probed.meta.height,
   })
-  if (!verdict.ok) return { file: file.name, why: verdict.reason }
+  if (!verdict.ok) return { ok: false, file: file.name, why: verdict.reason }
 
   const path = storagePathFor(context.campaignId, file.name)
   const stored = await store.put(path, data, probed.meta.mime)
 
-  await sql`
+  const [row] = await sql<{ id: string }[]>`
     INSERT INTO asset (campaign_id, storage_path, public_url, media_type, mime_type,
                        bytes, width, height, replaces_asset_id, uploaded_by)
     VALUES (${context.campaignId}, ${stored.storagePath}, ${stored.publicUrl}, 'image',
             ${probed.meta.mime}, ${data.byteLength}, ${probed.meta.width}, ${probed.meta.height},
-            ${context.replacesId}, ${context.userId})`
+            ${context.replacesId}, ${context.userId})
+    RETURNING id`
 
-  return null
+  return { ok: true, id: row.id, url: stored.publicUrl }
 }
 
 /**
@@ -122,11 +134,11 @@ export async function uploadAssets(campaignId: string, formData: FormData): Prom
   let uploaded = 0
 
   for (const file of chosen) {
-    const rejection = await storeOne(sql, store, file, {
+    const result = await storeOne(sql, store, file, {
       campaignId, userId: session.userId, replacesId,
     })
-    if (rejection) rejected.push(rejection)
-    else uploaded += 1
+    if (result.ok) uploaded += 1
+    else rejected.push({ file: result.file, why: result.why })
   }
 
   revalidatePath(`/campaigns/${campaignId}/assets`)

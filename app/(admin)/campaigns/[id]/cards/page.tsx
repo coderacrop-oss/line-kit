@@ -1,10 +1,11 @@
 import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
-import { Badge, Empty, Note, PageHead, STATUS_TONES } from '@/components/ui'
+import { Badge, Empty, Note, PageHead } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
-import { asCardFilter, CARD_FILTERS, type CardView, filterCards, listCards } from '@/lib/db/cards'
+import { asCardFilter, CARD_FILTERS, filterCards, listCards } from '@/lib/db/cards'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
+import { CardTile } from './CardTile'
 
 /** ลิงก์ไปจอสร้างการ์ด · ปุ่มหลักของหน้านี้ตามที่ต้นแบบวางไว้มุมขวาบน */
 const createLinkStyle: CSSProperties = {
@@ -19,96 +20,6 @@ const segmentStyle = (on: boolean): CSSProperties => ({
   background: on ? 'var(--ink)' : 'var(--panel)',
   color: on ? 'var(--panel)' : 'var(--ink)',
 })
-
-/** พื้นลายทางของต้นแบบ · บอกว่าตรงนี้มีภาพหัวการ์ด โดยไม่ต้องโหลดภาพจริงมาวาด */
-const headerImageStyle: CSSProperties = {
-  height: 74,
-  background:
-    'repeating-linear-gradient(45deg,var(--ground),var(--ground) 8px,var(--panel-2) 8px,var(--panel-2) 16px)',
-  display: 'flex', alignItems: 'center', justifyContent: 'center',
-  borderBottom: '1px solid var(--rule)',
-}
-
-const headerImageLabelStyle: CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.08em',
-  textTransform: 'uppercase', color: 'var(--ink-3)',
-}
-
-const orphanPillStyle: CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.05em', textTransform: 'uppercase',
-  color: STATUS_TONES.danger.border, borderWidth: 1, borderStyle: 'dashed',
-  borderColor: STATUS_TONES.danger.border, borderRadius: 'var(--r-pill)',
-  padding: '3px 9px', width: 'fit-content',
-}
-
-const usedByChipStyle: CSSProperties = {
-  fontFamily: 'var(--mono)', fontSize: 9, letterSpacing: '.03em', color: 'var(--ink-3)',
-  border: '1px solid var(--rule)', borderRadius: 'var(--r-pill)', padding: '3px 9px',
-}
-
-/** ตัดที่สองบรรทัดเหมือนต้นแบบ · การ์ดที่ข้อความยาวไม่ควรดันแผ่นอื่นในตารางให้เตี้ยลง */
-const previewStyle: CSSProperties = {
-  fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.5, overflow: 'hidden',
-  display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical',
-}
-
-/**
- * แผ่นการ์ดหนึ่งใบ · ลิงก์ไปจอแก้บล็อกทีละใบ
- *
- * จอ M3-S02 ตอนนี้มีไฟล์รองรับครบทั้งสองขั้นแล้ว — ขั้นสร้าง (ชนิด × เทมเพลต) อยู่ที่
- * `cards/new` และปุ่ม "+ สร้างการ์ด" บนหัวจอพาไปที่นั่น ส่วนแผ่นการ์ดแต่ละใบพาไปจอแก้
- * บล็อกทีละใบ (`cards/[cardId]`) ซึ่งเป็น Task 13 และเขียนเสร็จแล้ว
- *
- * The dashed edge and the pill say the same thing twice on purpose. Colour alone
- * is not a message, and this is the one state on the screen that means "nothing
- * can ever send this card" — the reason the screen is worth opening at all.
- */
-function CardTile({ campaignId, card }: { campaignId: string; card: CardView }) {
-  return (
-    <a
-      href={`/campaigns/${campaignId}/cards/${card.id}`}
-      data-card-tile={card.code}
-      style={{
-        borderRadius: 'var(--r-lg)', background: 'var(--panel)', overflow: 'hidden',
-        display: 'flex', flexDirection: 'column',
-        borderWidth: 1,
-        borderStyle: card.isOrphan ? 'dashed' : 'solid',
-        borderColor: card.isOrphan ? STATUS_TONES.danger.border : 'var(--rule)',
-        textDecoration: 'none', color: 'inherit',
-      }}
-    >
-      {card.hasImage && (
-        <div style={headerImageStyle}>
-          <span style={headerImageLabelStyle}>header image</span>
-        </div>
-      )}
-
-      <div style={{
-        padding: '13px 15px', flex: 1, display: 'flex', flexDirection: 'column', gap: 6,
-      }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
-          <span style={{ fontSize: 13, fontWeight: 600 }}>{card.code}</span>
-          <Badge tone="mute">{card.renderName}</Badge>
-        </div>
-
-        {card.previewText === null ? (
-          <div style={{ ...previewStyle, fontStyle: 'italic' }}>ยังไม่มีข้อความบนการ์ดใบนี้</div>
-        ) : (
-          <div style={previewStyle}>{card.previewText}</div>
-        )}
-
-        <div style={{
-          marginTop: 'auto', display: 'flex', flexWrap: 'wrap', gap: 5, paddingTop: 6,
-        }}>
-          {card.isOrphan && <span style={orphanPillStyle}>ไม่มีใครใช้</span>}
-          {card.usedBy.map((ref) => (
-            <span key={ref.label} style={usedByChipStyle}>{ref.label}</span>
-          ))}
-        </div>
-      </div>
-    </a>
-  )
-}
 
 export default async function CardsPage({ params, searchParams }: {
   params: Promise<{ id: string }>
@@ -202,7 +113,9 @@ export default async function CardsPage({ params, searchParams }: {
               gridTemplateColumns: 'repeat(auto-fill,minmax(230px,1fr))',
               gap: 14,
             }}>
-              {shown.map((card) => <CardTile key={card.id} campaignId={campaign.id} card={card} />)}
+              {shown.map((card) => (
+                <CardTile key={card.id} campaignId={campaign.id} card={card} canEdit={canEdit} />
+              ))}
             </div>
           )}
         </>
