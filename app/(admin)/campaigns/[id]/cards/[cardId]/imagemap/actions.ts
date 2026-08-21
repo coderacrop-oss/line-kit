@@ -10,7 +10,8 @@ import {
   setImagemapVideoAsset, setImagemapVideoPreview,
 } from '@/lib/db/card-imagemap'
 import { db } from '@/lib/db/client'
-import { generateImagemapVariants, IMAGEMAP_WIDTHS, validateImagemapUpload, type ImagemapWidth } from '@/lib/imagemap/sizes'
+import { generateImagemapVariants } from '@/lib/imagemap/generate'
+import { IMAGEMAP_WIDTHS, validateImagemapUpload, type ImagemapWidth } from '@/lib/imagemap/sizes'
 import {
   validateAltText, validateAltTextDraft, validateTapAreas, validateTapAreasDraft,
   validateVideoArea, validateVideoExternalLink, type TapArea,
