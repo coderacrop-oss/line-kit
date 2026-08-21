@@ -69,21 +69,25 @@ export function ImagemapCropModal({ open, file, onConfirm, onSkip, onCancel }: I
   const [natural, setNatural] = useState<{ width: number; height: number } | null>(null)
   const [selection, setSelection] = useState<Rect | null>(null)
   const [busy, setBusy] = useState(false)
+  const [url, setUrl] = useState<string | null>(null)
   const imgRef = useRef<HTMLImageElement>(null)
-  const url = useRef<string | null>(null)
   const drag = useRef<DragState | null>(null)
 
   // ไฟล์ใหม่ (หรือ modal เปิดใหม่) — สร้าง object URL ใหม่ รีเซ็ตกรอบเลือกกลับค่า
   // เริ่มต้นเสมอ (เหมือน CropModal.tsx ของ Rich Menu) ไม่ค้างกรอบของภาพก่อนหน้าข้ามภาพ
+  //
+  // ต้องเป็น useState ไม่ใช่ useRef — เคยเป็น ref มาก่อนแล้วพัง: การแก้ .current ไม่ทำให้
+  // React re-render เลย <img src={url.current}> เลยค้างที่ค่าตอน mount ครั้งแรก (undefined
+  // เสมอ เพราะ effect ที่ตั้งค่าจริงรันหลัง render แรกไปแล้ว) ภาพเลยไม่โหลด ไม่มีวันยิง
+  // onLoad ปุ่มยืนยันเลยปิดค้างตลอด — ของจริงบนเว็บพังแบบนี้เป๊ะๆ ก่อนแก้เป็น state
   useEffect(() => {
     if (!open) return
     const nextUrl = URL.createObjectURL(file)
-    url.current = nextUrl
+    setUrl(nextUrl)
     setNatural(null)
     setSelection(null)
     return () => {
       URL.revokeObjectURL(nextUrl)
-      url.current = null
     }
   }, [open, file])
 
@@ -178,7 +182,7 @@ export function ImagemapCropModal({ open, file, onConfirm, onSkip, onCancel }: I
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           ref={imgRef}
-          src={url.current ?? undefined}
+          src={url ?? undefined}
           alt=""
           draggable={false}
           onLoad={onImgLoad}
