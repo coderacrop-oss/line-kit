@@ -6,6 +6,7 @@ import { listChannels } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { listLiffApps } from '@/lib/db/liffApps'
 import { createLiffAppAction } from './actions'
+import { LiffAppForm } from './LiffAppForm'
 
 export default async function LiffAppsPage() {
   const session = await getSession()
@@ -34,13 +35,7 @@ export default async function LiffAppsPage() {
       {canEdit && (
         <Panel style={{ marginBottom: 16 }}>
           <Panel.Row>
-            <form
-              action={async (formData: FormData) => {
-                'use server'
-                await createLiffAppAction(formData)
-              }}
-              style={{ display: 'flex', flexDirection: 'column', gap: 14 }}
-            >
+            <LiffAppForm action={createLiffAppAction}>
               <Field label="ชื่อ LIFF (ตั้งเองให้ทีมเข้าใจ)">
                 <input name="name" required placeholder="เช่น DewLIFF v2" />
               </Field>
@@ -62,7 +57,7 @@ export default async function LiffAppsPage() {
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <Button type="submit">+ ลงทะเบียน LIFF</Button>
               </div>
-            </form>
+            </LiffAppForm>
           </Panel.Row>
         </Panel>
       )}
