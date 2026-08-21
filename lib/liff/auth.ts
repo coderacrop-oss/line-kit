@@ -35,20 +35,29 @@ export async function resolveLiffParticipant(
   const keyMatches = await verifyLiffApiKey(sql, liffApp.id, token)
 
   /**
-   * body.lineUserId มาได้จากทาง server-to-server เท่านั้น (ไม่มี browser context ให้
-   * เดา sub) ดังนั้นแค่มีค่านี้ก็เพียงพอจะฟันธงว่าผู้เรียกตั้งใจใช้ทาง API key —
-   * ถ้ากุญแจไม่ตรงต้องตอบ 401 ของทาง API key ตรงๆ ไม่ใช่ตกไปลอง verify เป็น
-   * id_token ต่อ (bearer ตัวนี้ไม่มีทางเป็น id_token ที่ถูกต้องอยู่แล้วในเคสนี้)
+   * lineUserId ของทาง API key อ่านจาก header X-Line-User-Id เป็นหลัก ไม่ใช่ body —
+   * เพราะ GET request ส่ง body ไม่ได้จริงในทางปฏิบัติ (fetch ของเบราว์เซอร์และ undici
+   * ของ Node ปฏิเสธการแนบ body คู่กับ method GET ตรงๆ) จึงต้องมีช่องทางเดียวที่ใช้ได้
+   * เหมือนกันทั้ง GET และ PUT — พารามิเตอร์ body ยังรับไว้เป็น fallback เผื่อผู้เรียกเดิม
+   * ที่ยิง PUT พร้อม body อยู่แล้ว (ทางนั้นยังทำงานเหมือนเดิมโดยไม่ต้องแก้อะไร)
    */
-  if (keyMatches || body?.lineUserId !== undefined) {
+  const lineUserId = request.headers.get('X-Line-User-Id') ?? body?.lineUserId
+
+  /**
+   * มี lineUserId (จาก header หรือ body) มาได้จากทาง server-to-server เท่านั้น (ไม่มี
+   * browser context ให้เดา sub) ดังนั้นแค่มีค่านี้ก็เพียงพอจะฟันธงว่าผู้เรียกตั้งใจใช้
+   * ทาง API key — ถ้ากุญแจไม่ตรงต้องตอบ 401 ของทาง API key ตรงๆ ไม่ใช่ตกไปลอง verify
+   * เป็น id_token ต่อ (bearer ตัวนี้ไม่มีทางเป็น id_token ที่ถูกต้องอยู่แล้วในเคสนี้)
+   */
+  if (keyMatches || lineUserId !== undefined) {
     if (!keyMatches) return { ok: false, status: 401, reason: 'API key ไม่ถูกต้อง' }
-    if (!body?.lineUserId) {
+    if (!lineUserId) {
       return {
         ok: false, status: 401,
-        reason: 'เรียกด้วย API key ต้องระบุ lineUserId มาใน body ด้วย — ไม่มีบริบทเบราว์เซอร์ให้เดาตัวตนได้',
+        reason: 'เรียกด้วย API key ต้องระบุ lineUserId มาใน header X-Line-User-Id (หรือ body) ด้วย — ไม่มีบริบทเบราว์เซอร์ให้เดาตัวตนได้',
       }
     }
-    const participantId = await ensureParticipantByChannelId(sql, liffApp.channelId, body.lineUserId)
+    const participantId = await ensureParticipantByChannelId(sql, liffApp.channelId, lineUserId)
     return { ok: true, participantId, liffApp }
   }
 

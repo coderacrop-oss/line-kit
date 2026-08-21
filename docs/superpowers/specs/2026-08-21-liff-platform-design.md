@@ -138,7 +138,10 @@ token ไม่ถูกต้อง/หมดอายุ/audience ไม่ต
 
 ```
 1. backend ของ LIFF เรียก LineKit ด้วย Authorization: Bearer <api key ของ liff_app นั้น>
-2. body ต้องระบุ lineUserId ตรงๆ (ไม่มีบริบทเบราว์เซอร์ให้ derive ตัวตนจากไหนเลย)
+2. ต้องระบุ lineUserId ตรงๆ ผ่าน header `X-Line-User-Id` (ไม่มีบริบทเบราว์เซอร์ให้ derive ตัวตนจากไหนเลย —
+   และใช้ header แทน body เพราะ GET ส่ง body ไม่ได้จริงในทางปฏิบัติ ทั้ง fetch ของเบราว์เซอร์และ undici
+   ของ Node ปฏิเสธการแนบ body คู่กับ method GET; PUT ที่ส่ง `lineUserId` มาทาง body อยู่แล้วยังใช้ได้เป็น
+   fallback)
 3. LineKit ถอดรหัส encrypted_api_key เทียบกับค่าที่ได้รับ (constant-time compare)
 4. ตรงกัน → เรียก ensureParticipant(liff_app.channel_id, lineUserId) → ได้ participant_id
 ```

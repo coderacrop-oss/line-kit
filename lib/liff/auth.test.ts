@@ -83,8 +83,36 @@ describe('resolveLiffParticipant · API key path', () => {
 
     expect(result).toEqual({
       ok: false, status: 401,
-      reason: 'เรียกด้วย API key ต้องระบุ lineUserId มาใน body ด้วย — ไม่มีบริบทเบราว์เซอร์ให้เดาตัวตนได้',
+      reason: 'เรียกด้วย API key ต้องระบุ lineUserId มาใน header X-Line-User-Id (หรือ body) ด้วย — ไม่มีบริบทเบราว์เซอร์ให้เดาตัวตนได้',
     })
+  })
+
+  it('reads lineUserId from the X-Line-User-Id header with no body argument at all — the GET path', async () => {
+    vi.mocked(loadLiffAppByLiffId).mockResolvedValue(liffApp)
+    vi.mocked(verifyLiffApiKey).mockResolvedValue(true)
+    vi.mocked(ensureParticipantByChannelId).mockResolvedValue('participant-4')
+
+    const request = new Request('https://example.com', {
+      headers: { Authorization: 'Bearer api-key-xyz', 'X-Line-User-Id': 'U-from-header' },
+    })
+    const result = await resolveLiffParticipant(sql, 'liff-1', request)
+
+    expect(result).toEqual({ ok: true, participantId: 'participant-4', liffApp })
+    expect(ensureParticipantByChannelId).toHaveBeenCalledWith(sql, 'channel-1', 'U-from-header')
+  })
+
+  it('prefers the header over the body when both are present', async () => {
+    vi.mocked(loadLiffAppByLiffId).mockResolvedValue(liffApp)
+    vi.mocked(verifyLiffApiKey).mockResolvedValue(true)
+    vi.mocked(ensureParticipantByChannelId).mockResolvedValue('participant-5')
+
+    const request = new Request('https://example.com', {
+      headers: { Authorization: 'Bearer api-key-xyz', 'X-Line-User-Id': 'U-from-header' },
+    })
+    const result = await resolveLiffParticipant(sql, 'liff-1', request, { lineUserId: 'U-from-body' })
+
+    expect(result).toEqual({ ok: true, participantId: 'participant-5', liffApp })
+    expect(ensureParticipantByChannelId).toHaveBeenCalledWith(sql, 'channel-1', 'U-from-header')
   })
 
   it('picks the API key path over id_token when the key matches — a token verify is never attempted', async () => {
