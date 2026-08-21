@@ -104,7 +104,16 @@ export async function POST(request: Request): Promise<Response> {
   for (const event of events) {
     try {
       const handled = await handleEvent(event, channelId, ports, now, Math.random)
-      if (handled) await replyMessage(accessToken, handled.replyToken, handled.message)
+      // แอดเป็นเพื่อนตอนปิดข้อความต้อนรับไว้คือ event ที่ตั้งใจไม่ตอบอะไรเลย (ดู comment
+      // ของ Handled ใน lib/webhook/handle.ts) — handled ตอนนั้นมี linkRichMenu แต่ไม่มี
+      // message ให้ส่ง เช็ค truthiness ของ handled.message แทน `"message" in handled`:
+      // ตัวแปรสองตัวนี้ (replyToken/message) ประกาศเป็น optional undefined คู่กันในทั้ง
+      // สอง union member ของ Handled (ไม่ใช่หายไปเฉยๆ) เพื่อให้ที่อื่นในโค้ดเบสอ่าน
+      // `handled?.message` ตรงๆ ได้โดยไม่ต้องแยกเช็คชนิดทุกจุด — ผลคือ `"message" in
+      // handled` ไม่ช่วยแคบชนิดให้ TypeScript แคบ replyToken ตามไปด้วย (optional
+      // property ยังนับว่า "อยู่ในชนิด" สำหรับ in) แต่ truthy check แคบได้ถูกต้องเพราะ
+      // message ของ member ที่ไม่มีข้อความเป็น literal undefined เสมอ
+      if (handled && handled.message) await replyMessage(accessToken, handled.replyToken, handled.message)
 
       // ผูกเมนูตัวเข้าให้ผู้เล่นแยกจากการตอบ — คนละความเสี่ยง (BR-01 ต้องได้คำตอบ
       // เสมอ ไม่ว่าเรื่องนี้จะสำเร็จหรือไม่) mark ว่าผูกแล้วเฉพาะตอนยิงสำเร็จจริง

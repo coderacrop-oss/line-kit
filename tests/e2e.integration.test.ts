@@ -260,6 +260,24 @@ describe('ผูกเมนูตัวเข้าให้ผู้เล่�
     expect(out?.linkRichMenu?.richMenuId).toBe(richMenuLineId)
     expect(out?.linkRichMenu?.lineUid).toBe('U-e2e')
   })
+
+  /**
+   * ปิดข้อความต้อนรับไว้ (greeting_enabled=false ของ channel จริงในฐานข้อมูล) ต้องไม่
+   * ทำให้เมนูตัวเข้าหายไปด้วย — สองเรื่องนี้แยกอิสระจากกัน (ดู comment ของ Handled ใน
+   * lib/webhook/handle.ts) พิสูจน์ด้วย query จริงต่อคอลัมน์ greeting_enabled ไม่ใช่แค่ mock
+   */
+  it('แอดเป็นเพื่อน ปิดข้อความต้อนรับไว้จริงในฐานข้อมูล → ยังติดคำสั่งผูกเมนู แต่ไม่มีข้อความให้ส่ง', async () => {
+    const s = await seedLive(sql, { greetingEnabled: false })
+    const richMenuLineId = await seedEntryRichMenu(s.campaignId)
+    const ports = makePorts(sql, s.lineChannelId)
+
+    const out = await handleEvent(
+      { type: 'follow', replyToken: 'rt', source: { type: 'user', userId: 'U-e2e' } },
+      s.lineChannelId, ports, NOW, seededRng(1))
+
+    expect(out?.linkRichMenu?.richMenuId).toBe(richMenuLineId)
+    expect(out && 'message' in out).toBe(false)
+  })
 })
 
 /**

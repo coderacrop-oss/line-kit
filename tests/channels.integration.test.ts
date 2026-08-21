@@ -383,12 +383,15 @@ describe('สิ่งที่หน้าจอได้รับ', () => {
     const channel = await loadChannel(sql, s.channelId)
     expect(channel?.liveCampaignName).toBe('Seed')
     expect(channel?.publishedVersion).toBe(1)
+    // ใช้ join/เงื่อนไขเดียวกับ liveCampaignName — ต้องตอบตรงกับแคมเปญเดียวกันเสมอ
+    expect(channel?.liveCampaignId).toBe(s.campaignId)
   })
 
   it('บัญชีที่ยังไม่มีแคมเปญไหนเปิดอยู่ คืน null', async () => {
     const { id } = await bound()
     const channel = await loadChannel(sql, id)
     expect(channel?.liveCampaignName).toBeNull()
+    expect(channel?.liveCampaignId).toBeNull()
   })
 })
 

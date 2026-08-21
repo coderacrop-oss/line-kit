@@ -18,7 +18,7 @@ const uid = () => `${Date.now().toString(36)}${(unique++).toString(36)}`
  */
 export async function seedLive(
   sql: postgres.Sql,
-  opts: { oncePerDay?: boolean } = {},
+  opts: { oncePerDay?: boolean; greetingEnabled?: boolean } = {},
 ): Promise<SeededLive> {
   const tag = uid()
   const code = `live_${tag}`
@@ -86,7 +86,7 @@ export async function seedLive(
       token_last4, default_card_id, greeting_card_id, greeting_enabled, created_by)
     VALUES (
       'Live test OA', 'test', ${lineChannelId}, 'enc-token', 'enc-secret',
-      '1234', ${cardIds.fallbackText}, ${cardIds.greeting}, true, ${user.id})
+      '1234', ${cardIds.fallbackText}, ${cardIds.greeting}, ${opts.greetingEnabled ?? true}, ${user.id})
     RETURNING id`
 
   await sql`

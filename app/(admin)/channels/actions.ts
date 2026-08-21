@@ -125,6 +125,28 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
     const keywords = asKeywordList(String(formData.get('existing_keywords') ?? ''))
     const lineChannelId = trimmedOrNull(formData, 'line_channel_id')
     const lineBotUserId = trimmedOrNull(formData, 'line_bot_user_id')
+    // checkbox ธรรมดา — มีอยู่ใน FormData แปลว่าติ๊กไว้ ไม่มีเลยแปลว่าไม่ติ๊ก (เหมือน
+    // require_consecutive ของ counters และ full_top ของ cards)
+    const greetingEnabled = formData.get('greeting_enabled') !== null
+    const greetingCardId = trimmedOrNull(formData, 'greeting_card_id')
+
+    if (greetingCardId) {
+      // การ์ดทักทายต้องเป็นการ์ดของแคมเปญที่กำลังรันอยู่บนบัญชีนี้เท่านั้น (BR-68) — เช็ค
+      // ฝั่งเซิร์ฟเวอร์เสมอ ไม่เชื่อค่าจาก <select> ตรงๆ เพราะจอที่ค้างเปิดไว้อาจส่งการ์ด
+      // ของแคมเปญอื่นมาได้ (สลับแคมเปญที่รันอยู่บนบัญชีนี้ไปแล้วระหว่างจอยังเปิดค้าง) ·
+      // บัญชีที่ยังไม่มี id (กำลังสร้างใหม่) ไม่มีทางมีแคมเปญรันอยู่ได้เลย จึงปฏิเสธตรงๆ
+      // โดยไม่ต้อง query
+      if (!id) {
+        throw new Error('เลือกการ์ดทักทายได้หลังบันทึกบัญชีนี้ไว้ก่อนเท่านั้น — บันทึกก่อน แล้วค่อยกลับมาเลือกการ์ด')
+      }
+      const [validCard] = await sql<{ id: string }[]>`
+        SELECT c.id FROM card c
+          JOIN campaign_channel cc ON cc.campaign_id = c.campaign_id
+         WHERE cc.channel_id = ${id} AND cc.is_published AND c.id = ${greetingCardId}`
+      if (!validCard) {
+        throw new Error('การ์ดทักทายที่เลือกไม่ใช่การ์ดของแคมเปญที่กำลังรันอยู่บนบัญชีนี้ — เลือกใหม่')
+      }
+    }
 
     if (!token && !secret) {
       // แก้ของเดิมโดยไม่แตะกุญแจ · บัญชีใหม่ต้องมีกุญแจ เพราะ CHECK ของตารางบังคับ
@@ -136,7 +158,8 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
              SET name = ${name}, channel_type = ${channelType},
                  existing_keywords = ${sql.array(keywords)},
                  line_channel_id = ${lineChannelId},
-                 line_bot_user_id = ${lineBotUserId}
+                 line_bot_user_id = ${lineBotUserId},
+                 greeting_enabled = ${greetingEnabled}, greeting_card_id = ${greetingCardId}
            WHERE id = ${id}`
       } catch (error) {
         throw uniqueViolationMessage(error)
@@ -161,6 +184,7 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
                  existing_keywords = ${sql.array(keywords)},
                  line_channel_id = ${lineChannelId},
                  line_bot_user_id = ${lineBotUserId},
+                 greeting_enabled = ${greetingEnabled}, greeting_card_id = ${greetingCardId},
                  encrypted_token = ${encryptedToken.cipher},
                  encrypted_secret = ${encryptedSecret.cipher},
                  token_last4 = ${last4(token)},
@@ -170,8 +194,10 @@ export async function saveChannel(id: string | null, formData: FormData): Promis
         await sql`
           INSERT INTO channel
                  (name, channel_type, existing_keywords, line_channel_id, line_bot_user_id,
+                  greeting_enabled, greeting_card_id,
                   encrypted_token, encrypted_secret, token_last4, key_version, created_by)
           VALUES (${name}, ${channelType}, ${sql.array(keywords)}, ${lineChannelId}, ${lineBotUserId},
+                  ${greetingEnabled}, ${greetingCardId},
                   ${encryptedToken.cipher}, ${encryptedSecret.cipher},
                   ${last4(token)}, ${encryptedToken.keyVersion}, ${session.userId})`
       }

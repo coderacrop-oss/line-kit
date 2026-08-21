@@ -33,7 +33,10 @@ export type ChannelRow = {
   key_version: number | null
   last_used_at: Date | null
   existing_keywords: string[]
+  greeting_enabled: boolean
+  greeting_card_id: string | null
   live_campaign_name: string | null
+  live_campaign_id: string | null
   published_version: number | null
 }
 
@@ -57,7 +60,13 @@ export type ChannelSummary = {
   keyVersion: number | null
   lastUsedAt: Date | null
   existingKeywords: string[]
+  /** เปิดข้อความต้อนรับตอนแอดเป็นเพื่อนหรือไม่ — คนละเรื่องกับการผูกเมนูตัวเข้า (BR-78) ซึ่งเกิดเสมอไม่ว่าค่านี้จะเป็นอะไร (ดู lib/webhook/handle.ts) */
+  greetingEnabled: boolean
+  /** การ์ดที่ใช้ตอบตอนแอดเป็นเพื่อน — ต้องเป็นการ์ดของแคมเปญที่กำลังรันอยู่บนบัญชีนี้ (liveCampaignId) เท่านั้น */
+  greetingCardId: string | null
   liveCampaignName: string | null
+  /** id ของแคมเปญที่กำลังรันอยู่บนบัญชีนี้ (BR-68) — null เมื่อยังไม่เคยส่งขึ้นเลย ใช้ scope ตัวเลือกการ์ดทักทายให้เหลือแค่การ์ดของแคมเปญนี้เท่านั้น */
+  liveCampaignId: string | null
   publishedVersion: number | null
   isEditable: boolean
 }
@@ -73,7 +82,10 @@ export function summarizeChannel(row: ChannelRow): ChannelSummary {
     keyVersion: row.key_version,
     lastUsedAt: row.last_used_at,
     existingKeywords: row.existing_keywords ?? [],
+    greetingEnabled: row.greeting_enabled,
+    greetingCardId: row.greeting_card_id,
     liveCampaignName: row.live_campaign_name,
+    liveCampaignId: row.live_campaign_id,
     publishedVersion: row.published_version,
     // ชั้น preview ไม่มีกุญแจให้แก้ และ CHECK ของตารางห้ามใส่ไว้อยู่แล้ว
     isEditable: row.channel_type !== 'preview',
@@ -168,9 +180,15 @@ function selectChannels(sql: postgres.Sql, where: postgres.PendingQuery<ChannelR
   return sql<ChannelRow[]>`
     SELECT ch.id, ch.name, ch.channel_type, ch.line_channel_id, ch.line_bot_user_id,
            ch.token_last4, ch.key_version, ch.last_used_at, ch.existing_keywords,
+           ch.greeting_enabled, ch.greeting_card_id,
            (SELECT ca.name FROM campaign_channel cc
               JOIN campaign ca ON ca.id = cc.campaign_id
              WHERE cc.channel_id = ch.id AND cc.is_published LIMIT 1) AS live_campaign_name,
+           -- คู่กับ live_campaign_name ข้างบน: join/เงื่อนไขเดียวกันทุกตัวอักษร ต่างกัน
+           -- แค่คอลัมน์ที่ดึง — partial unique index ของ campaign_channel (BR-68) ค้ำอยู่
+           -- แล้วว่ามีได้แถวเดียว จึงไม่มีทางที่สอง subquery นี้จะตอบไม่ตรงกันเอง
+           (SELECT cc.campaign_id FROM campaign_channel cc
+             WHERE cc.channel_id = ch.id AND cc.is_published LIMIT 1) AS live_campaign_id,
            (SELECT max(cv.version_no) FROM config_version cv
              WHERE cv.channel_id = ch.id) AS published_version
       FROM channel ch
