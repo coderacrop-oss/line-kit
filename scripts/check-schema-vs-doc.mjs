@@ -68,6 +68,13 @@ const LOCAL_TABLES = {
   // v0.18/BR-47) ตารางนี้เก็บแค่ส่วนที่เอกสารยังไม่มีคอลัมน์ให้ (ดูหมายเหตุเต็มที่หัว
   // ไฟล์ supabase/migrations/0009_card_imagemap.sql และ 0011_card_imagemap_video.sql)
   card_imagemap: 'Rich Message/Rich Video (imagemap/imagemap_video) base image variants + video preview/area',
+  // LIFF Platform · ลงทะเบียนแอป LIFF (liff_id, api key ที่เข้ารหัสแล้ว, LINE Login channel)
+  // schema จริงอยู่ที่ docs/superpowers/specs/2026-08-21-liff-platform-design.md §4 (เอกสารรูปแบบ
+  // ร้อยแก้ว ไม่ใช่ตารางแบบ §5.2 ที่ checker นี้ parse ได้)
+  liff_app: 'LIFF Platform — app registration (liff_id, encrypted api key, LINE Login channel)',
+  // LIFF Platform · เก็บ session/state ต่อ participant (+ external_key ที่ query ข้าม participant ได้)
+  // schema จริงอยู่ที่ docs/superpowers/specs/2026-08-21-liff-platform-design.md §4
+  liff_session: 'LIFF Platform — per-participant session/state storage, keyed by external_key',
 }
 
 async function readLiveSchema(sql) {
