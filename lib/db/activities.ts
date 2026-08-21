@@ -264,7 +264,7 @@ export function activityProblems(row: ActivityRow): string[] {
   })
 
   if (row.input_type === 'pick_one' && asArray(row.input_config?.slots).length === 0) {
-    problems.push('อินพุตแบบเลือกหนึ่งช่องยังไม่มีช่องให้เลือกสักช่อง')
+    problems.push('อินพุตแบบให้เลือกจากตารางยังไม่มีช่องให้เลือกสักช่อง')
   }
 
   if (row.input_type === 'quiz' && asArray(row.input_config?.questions).length === 0) {

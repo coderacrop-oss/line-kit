@@ -30,17 +30,17 @@ export const RESOLVE_METHODS = ['fixed', 'weighted', 'quota', 'score'] as const
 export type ResolveMethod = (typeof RESOLVE_METHODS)[number]
 
 const INPUT_TYPE_NAME: Record<InputType, string> = {
-  none: 'ไม่รับอินพุต',
-  pick_one: 'เลือกหนึ่งช่อง',
+  none: 'กดปุ่มเดียวจบ',
+  pick_one: 'ให้เลือกจากตาราง',
   quiz: 'ตอบคำถาม',
   text: 'พิมพ์ข้อความ',
 }
 
 const RESOLVE_METHOD_NAME: Record<ResolveMethod, string> = {
-  fixed: 'ตายตัวตามที่เลือก',
-  weighted: 'สุ่มตามน้ำหนัก',
-  quota: 'สุ่มตามน้ำหนักและของที่เหลือ',
-  score: 'ตัดสินตามคะแนน',
+  fixed: 'ได้ตามที่กด',
+  weighted: 'สุ่มตามโอกาสที่ตั้งไว้',
+  quota: 'สุ่มจนกว่าของจะหมด',
+  score: 'ตัดสินจากคะแนนที่ตอบถูก',
 }
 
 export const inputTypeName = (type: InputType): string => INPUT_TYPE_NAME[type]
@@ -254,11 +254,11 @@ export const inputConfigFields = (input: InputType, resolve: ResolveMethod): Wiz
  */
 export function comboProblem(input: InputType, resolve: ResolveMethod): string | null {
   if (resolve === 'fixed' && input !== 'pick_one') {
-    return 'ตายตัวตามที่เลือกต้องมีช่องให้เลือก — ใช้ได้กับอินพุตแบบ "เลือกหนึ่งช่อง" เท่านั้น'
+    return 'ได้ตามที่กดต้องมีช่องให้เลือก — ใช้ได้กับอินพุตแบบ "ให้เลือกจากตาราง" เท่านั้น'
       + ' ไม่งั้นไม่มีสิ่งที่ผู้เล่นเลือกให้จับคู่กับผลลัพธ์ และผู้เล่นจะไม่ได้การ์ดเลย'
   }
   if (resolve === 'score' && input !== 'quiz') {
-    return 'ตัดสินตามคะแนนต้องมีคะแนนมาจากไหนสักที่ — ใช้ได้กับอินพุตแบบ "ตอบคำถาม" เท่านั้น'
+    return 'ตัดสินจากคะแนนที่ตอบถูก ต้องมีคะแนนมาจากไหนสักที่ — ใช้ได้กับอินพุตแบบ "ตอบคำถาม" เท่านั้น'
       + ' อินพุตแบบอื่นไม่ได้ให้คะแนนไว้เทียบกับช่วง ผลลัพธ์จึงไม่มีทางเข้าช่วงไหนได้'
   }
   return null
