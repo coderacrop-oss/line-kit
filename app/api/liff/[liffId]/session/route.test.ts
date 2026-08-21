@@ -55,6 +55,20 @@ describe('GET /api/liff/[liffId]/session', () => {
     expect(response.status).toBe(401)
     expect(listLiffSessionsForParticipant).not.toHaveBeenCalled()
   })
+
+  it('an empty ?key= is treated the same as no key at all — returns the list, not a 404', async () => {
+    vi.mocked(resolveLiffParticipant).mockResolvedValue(okAuth)
+    vi.mocked(listLiffSessionsForParticipant).mockResolvedValue([])
+    const request = new Request('https://example.com/api/liff/liff-1/session?key=', {
+      headers: { Authorization: 'Bearer x' },
+    })
+    const response = await GET(request, { params: Promise.resolve({ liffId: 'liff-1' }) })
+    expect(response.status).toBe(200)
+    const body = await response.json() as { sessions: unknown[] }
+    expect(body.sessions).toEqual([])
+    expect(findLiffSessionByKey).not.toHaveBeenCalled()
+    expect(listLiffSessionsForParticipant).toHaveBeenCalledWith({}, 'app-1', 'participant-1')
+  })
 })
 
 describe('PUT /api/liff/[liffId]/session', () => {
@@ -85,6 +99,37 @@ describe('PUT /api/liff/[liffId]/session', () => {
     })
     const response = await PUT(request, { params: Promise.resolve({ liffId: 'liff-1' }) })
     expect(response.status).toBe(400)
+    expect(upsertLiffSession).not.toHaveBeenCalled()
+  })
+
+  it('externalKey: "" is treated as absent — creates a normal unkeyed row, does not crash', async () => {
+    vi.mocked(resolveLiffParticipant).mockResolvedValue(okAuth)
+    vi.mocked(upsertLiffSession).mockResolvedValue({
+      id: 's1', liffAppId: 'app-1', participantId: 'participant-1', externalKey: null,
+      data: { score: 5 }, createdAt: new Date(), updatedAt: new Date(),
+    })
+    const request = new Request('https://example.com/api/liff/liff-1/session', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer x', 'Content-Type': 'application/json' },
+      body: JSON.stringify({ externalKey: '', data: { score: 5 } }),
+    })
+    const response = await PUT(request, { params: Promise.resolve({ liffId: 'liff-1' }) })
+    expect(response.status).toBe(200)
+    expect(upsertLiffSession).toHaveBeenCalledWith({}, {
+      liffAppId: 'app-1', participantId: 'participant-1', externalKey: null, data: { score: 5 },
+    })
+  })
+
+  it('a malformed JSON body returns 400 with CORS headers, not an unhandled 500', async () => {
+    const request = new Request('https://example.com/api/liff/liff-1/session', {
+      method: 'PUT',
+      headers: { Authorization: 'Bearer x', 'Content-Type': 'application/json' },
+      body: 'not json',
+    })
+    const response = await PUT(request, { params: Promise.resolve({ liffId: 'liff-1' }) })
+    expect(response.status).toBe(400)
+    expect(response.headers.get('Access-Control-Allow-Origin')).toBe('*')
+    expect(resolveLiffParticipant).not.toHaveBeenCalled()
     expect(upsertLiffSession).not.toHaveBeenCalled()
   })
 })
