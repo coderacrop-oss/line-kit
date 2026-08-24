@@ -1,6 +1,7 @@
 import { asAreaKind, countEmpty as countEmptyAreas } from '../richmenu/areas'
 import { danglingSwitchTargets } from '../richmenu/alias'
 import { countEntries } from '../richmenu/entry'
+import { QuizConfig } from '../quiz/schema'
 
 /**
  * ด่านตรวจก่อนส่งขึ้น LINE · ขั้นที่ 1 และ 2 ของ §4.4
@@ -85,6 +86,8 @@ export type PublishActivity = {
   reachedBy?: readonly string[]
   /** รหัสค่าสะสมที่กิจกรรมนี้บวกให้เมื่อเล่นจบ */
   counterCodes?: readonly string[]
+  /** input_config ของกิจกรรม · ใช้เฉพาะตรวจ personality_quiz ด้วย QuizConfig.safeParse() */
+  inputConfig?: unknown
 }
 
 export type PublishKeywordRule = {
@@ -284,38 +287,79 @@ export function checkPublish(config: PublishConfig): Check[] {
   for (const activity of activities) {
     const at = WHERE.activity(activity.id)
     const named = activity.name ? `${activity.name} (${activity.code})` : activity.code
-    const outcomes = activity.outcomes ?? []
     const entryRules = activity.entryRules ?? []
 
-    if (outcomes.length === 0) {
-      checks.push({
-        code: ERR.incomplete,
-        label: `"${named}" ยังไม่มีผลลัพธ์สักอัน`,
-        detail: 'กิจกรรมที่ไม่ตอบอะไรเลยคือปุ่มที่กดแล้วเงียบ',
-        tone: 'blocked',
-        where: at,
-      })
-    }
-
-    outcomes.forEach((outcome, index) => {
-      if (!outcome.cardId) {
+    /**
+     * personality_quiz ไม่มี resolve_config.outcomes เลย — เนื้อหาทั้งชุด (แกน/
+     * คำถาม/ผลลัพธ์) อยู่ใน input_config แทน (lib/quiz/schema.ts) ก่อนแก้ตรงนี้
+     * ด่าน "ยังไม่มีผลลัพธ์สักอัน"/BR-31 ข้างล่างติดกับกิจกรรมชนิดนี้เสมอเพราะ
+     * outcomes ว่างเป็นค่าเริ่มต้นที่ไม่มีวันถูกเติม — แคมเปญที่มีควิซจึง publish
+     * ไม่ได้เลยสักครั้ง (Finding 1 ของรีวิวรอบสุดท้าย)
+     */
+    if (activity.inputType === 'personality_quiz') {
+      if (!QuizConfig.safeParse(activity.inputConfig ?? {}).success) {
         checks.push({
           code: ERR.incomplete,
-          label: `"${named}" · ผลลัพธ์ที่ ${index + 1} ยังไม่ได้เลือกการ์ดที่ตอบ`,
-          detail: 'ผู้เล่นที่ได้ผลลัพธ์นี้จะกดแล้วเงียบ',
-          tone: 'blocked',
-          where: at,
-        })
-      } else if (!cardIds.has(outcome.cardId)) {
-        checks.push({
-          code: ERR.missing,
-          label: `"${named}" · ผลลัพธ์ที่ ${index + 1} ชี้ไปการ์ดที่ไม่มีอยู่แล้ว`,
-          detail: 'การ์ดถูกลบไปหลังจากตั้งผลลัพธ์นี้ไว้ — เลือกใบใหม่ก่อนส่งขึ้น',
+          label: `"${named}" ควิซยังตั้งค่าไม่ครบ`,
+          detail: 'ไปตั้งแกน/คำถาม/ผลลัพธ์ให้ครบที่จอตั้งค่าควิซก่อนส่งขึ้น',
           tone: 'blocked',
           where: at,
         })
       }
-    })
+    } else {
+      const outcomes = activity.outcomes ?? []
+
+      if (outcomes.length === 0) {
+        checks.push({
+          code: ERR.incomplete,
+          label: `"${named}" ยังไม่มีผลลัพธ์สักอัน`,
+          detail: 'กิจกรรมที่ไม่ตอบอะไรเลยคือปุ่มที่กดแล้วเงียบ',
+          tone: 'blocked',
+          where: at,
+        })
+      }
+
+      outcomes.forEach((outcome, index) => {
+        if (!outcome.cardId) {
+          checks.push({
+            code: ERR.incomplete,
+            label: `"${named}" · ผลลัพธ์ที่ ${index + 1} ยังไม่ได้เลือกการ์ดที่ตอบ`,
+            detail: 'ผู้เล่นที่ได้ผลลัพธ์นี้จะกดแล้วเงียบ',
+            tone: 'blocked',
+            where: at,
+          })
+        } else if (!cardIds.has(outcome.cardId)) {
+          checks.push({
+            code: ERR.missing,
+            label: `"${named}" · ผลลัพธ์ที่ ${index + 1} ชี้ไปการ์ดที่ไม่มีอยู่แล้ว`,
+            detail: 'การ์ดถูกลบไปหลังจากตั้งผลลัพธ์นี้ไว้ — เลือกใบใหม่ก่อนส่งขึ้น',
+            tone: 'blocked',
+            where: at,
+          })
+        }
+      })
+
+      // BR-31 · โควตาหมดแล้วยังมีคนกดเล่น คนนั้นต้องได้อะไรสักอย่าง
+      if (activity.resolveMethod === 'quota' && !activity.fallbackCardId) {
+        checks.push({
+          code: ERR.incomplete,
+          label: `"${named}" ตัดสินผลแบบโควตา แต่ยังไม่มีการ์ดสำรองเมื่อของหมด (BR-31)`,
+          detail: 'ของหมดแล้วยังมีคนกดเล่น คนนั้นจะไม่ได้รับอะไรเลย',
+          tone: 'blocked',
+          where: at,
+        })
+      }
+
+      if (activity.fallbackCardId && !cardIds.has(activity.fallbackCardId)) {
+        checks.push({
+          code: ERR.missing,
+          label: `"${named}" · การ์ดสำรองชี้ไปการ์ดที่ไม่มีอยู่แล้ว`,
+          detail: 'การ์ดสำรองถูกลบไปแล้ว — เลือกใบใหม่ก่อนส่งขึ้น',
+          tone: 'blocked',
+          where: at,
+        })
+      }
+    }
 
     // BR-26 · ทุกเงื่อนไขต้องมีการ์ดตอบเมื่อไม่ผ่าน
     entryRules.forEach((rule, index) => {
@@ -337,27 +381,6 @@ export function checkPublish(config: PublishConfig): Check[] {
         })
       }
     })
-
-    // BR-31 · โควตาหมดแล้วยังมีคนกดเล่น คนนั้นต้องได้อะไรสักอย่าง
-    if (activity.resolveMethod === 'quota' && !activity.fallbackCardId) {
-      checks.push({
-        code: ERR.incomplete,
-        label: `"${named}" ตัดสินผลแบบโควตา แต่ยังไม่มีการ์ดสำรองเมื่อของหมด (BR-31)`,
-        detail: 'ของหมดแล้วยังมีคนกดเล่น คนนั้นจะไม่ได้รับอะไรเลย',
-        tone: 'blocked',
-        where: at,
-      })
-    }
-
-    if (activity.fallbackCardId && !cardIds.has(activity.fallbackCardId)) {
-      checks.push({
-        code: ERR.missing,
-        label: `"${named}" · การ์ดสำรองชี้ไปการ์ดที่ไม่มีอยู่แล้ว`,
-        detail: 'การ์ดสำรองถูกลบไปแล้ว — เลือกใบใหม่ก่อนส่งขึ้น',
-        tone: 'blocked',
-        where: at,
-      })
-    }
 
     /*
      * ไม่บล็อก · กิจกรรมที่ไม่มีทางเข้าถึงยังส่งขึ้นได้ แค่จะไม่มีใครได้เล่น

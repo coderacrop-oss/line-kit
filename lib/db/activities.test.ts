@@ -346,6 +346,66 @@ describe('fieldsForActivity ไม่ระเบิดกับ personality_qui
   })
 })
 
+/**
+ * Finding 1 ของรีวิวรอบสุดท้าย — ก่อนแก้ personality_quiz ติดด่าน "ยังไม่มีผลลัพธ์
+ * สักอัน" เสมอ เพราะ resolve_config.outcomes ว่างเป็นค่าเริ่มต้นที่ไม่มีวันถูกเติม
+ * (เนื้อหาของควิซอยู่ใน input_config แทน) แคมเปญที่มีกิจกรรมควิซจึงส่งขึ้นไม่ได้เลย
+ * สักครั้ง (activity ทุกตัว default is_enabled=true) เช็คด้วย QuizConfig.safeParse()
+ * แทนตั้งแต่แก้
+ */
+describe('activityProblems กับ personality_quiz (Finding 1)', () => {
+  const validQuizConfig = {
+    mode: 'solo',
+    axes: [
+      { id: 'ei', label: 'E/I', poles: ['E', 'I'] },
+      { id: 'sn', label: 'S/N', poles: ['S', 'N'] },
+    ],
+    questions: [
+      { id: 'q1', text: 'ข้อ 1', options: [
+        { id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } },
+      ] },
+      { id: 'q2', text: 'ข้อ 2', options: [
+        { id: 'a', label: 'A', scores: { sn: 1 } }, { id: 'b', label: 'B', scores: { sn: -1 } },
+      ] },
+      { id: 'q3', text: 'ข้อ 3', options: [
+        { id: 'a', label: 'A', scores: {} }, { id: 'b', label: 'B', scores: {} },
+      ] },
+    ],
+    results: [{ code: 'ES', title: 't', body: 'b' }, { code: 'IN', title: 't', body: 'b' }],
+    fallbackResultCode: 'ES',
+  }
+
+  it('ควิซที่ตั้งค่าครบแล้ว ไม่ติดด่าน "ยังไม่มีผลลัพธ์สักอัน" ที่เป็นของกิจกรรมชนิดอื่น', () => {
+    const problems = activityProblems(row({
+      input_type: 'personality_quiz',
+      resolve_method: null as unknown as ActivityRow['resolve_method'],
+      resolve_config: {},
+      input_config: validQuizConfig,
+    }))
+    expect(problems).toEqual([])
+  })
+
+  it('ควิซที่ยังไม่ได้ตั้งค่า (input_config ว่างเปล่า) บล็อกด้วยข้อความเฉพาะของควิซ', () => {
+    const problems = activityProblems(row({
+      input_type: 'personality_quiz',
+      resolve_method: null as unknown as ActivityRow['resolve_method'],
+      resolve_config: {},
+      input_config: {},
+    }))
+    expect(problems.join()).toContain('ควิซยังตั้งค่าไม่ครบ')
+  })
+
+  it('ควิซที่ยังไม่ตั้งค่า ไม่ถูกบ่นว่า "ยังไม่มีผลลัพธ์สักอัน" (ข้อความนั้นเป็นของกิจกรรมชนิดอื่น)', () => {
+    const problems = activityProblems(row({
+      input_type: 'personality_quiz',
+      resolve_method: null as unknown as ActivityRow['resolve_method'],
+      resolve_config: {},
+      input_config: {},
+    }))
+    expect(problems.join()).not.toContain('ยังไม่มีผลลัพธ์สักอัน')
+  })
+})
+
 describe('ชื่อคู่แกนบนหัวจอ', () => {
   it('อ่านเป็น "อินพุต × วิธีตัดสิน"', () => {
     expect(comboName('pick_one', 'weighted')).toBe('ให้เลือกจากตาราง × สุ่มตามโอกาสที่ตั้งไว้')
