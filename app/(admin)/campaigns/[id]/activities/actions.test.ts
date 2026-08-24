@@ -500,6 +500,25 @@ describe('saveActivity · ตัวตนและสองแกน', () => {
       .rejects.toThrow('ควิซบุคลิกภาพ')
     expect(state.writes).toEqual([])
   })
+
+  /**
+   * รีวิวรอบสอง (ต่อจาก Finding 2) · ด่านข้างบนเช็คแค่ input_type ที่ "ส่งมา" —
+   * ไม่ได้กันกรณีกลับกัน คือกิจกรรมที่เป็นควิซอยู่แล้วถูกแก้จากจอนี้ (URL ตรงมาเอง
+   * ไม่ผ่าน ActivityRow.tsx) ช่อง input_type ในฟอร์มไม่มี personality_quiz เป็น
+   * ตัวเลือกอีกต่อไป defaultValue ที่ไม่ตรงกับ option ไหนเลยจะให้เบราว์เซอร์เลือก
+   * ตัวแรกในลิสต์ ('none') แทนอย่างเงียบๆ กดบันทึกแล้วจะเขียนทับ input_type เป็น
+   * 'none' พร้อม resolve_method จริง ตัดขาด input_config (แกน/คำถาม/ผลลัพธ์) ของ
+   * ควิซออกจากกิจกรรมอย่างเงียบๆ ไม่มีจอไหนแสดง/แก้มันได้อีกเลย — แย่กว่า CHECK
+   * constraint เดิมที่อย่างน้อยยัง error ดังๆ ให้เห็น เช็คจากชนิดเดิมของแถวกัน
+   */
+  it('กิจกรรมที่เป็นควิซบุคลิกภาพอยู่แล้ว แก้จากจอนี้ไม่ได้ไม่ว่าฟอร์มจะส่งชนิดอะไรมา', async () => {
+    state.activities = [activity({
+      id: 'act-1', input_type: 'personality_quiz', resolve_method: null as unknown as string,
+    })]
+    await expect(saveActivity('camp-1', 'act-1', saveForm({ input_type: 'none' })))
+      .rejects.toThrow('ควิซบุคลิกภาพ')
+    expect(state.writes).toEqual([])
+  })
 })
 
 /**
