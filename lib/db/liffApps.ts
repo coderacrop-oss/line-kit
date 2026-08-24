@@ -45,6 +45,12 @@ export async function listLiffApps(sql: Queryable): Promise<LiffApp[]> {
   return rows.map(toLiffApp)
 }
 
+export async function loadLiffApp(sql: Queryable, id: string): Promise<LiffApp | null> {
+  const [row] = await sql<LiffAppRow[]>`
+    SELECT ${sql.unsafe(SELECT_COLUMNS)} FROM liff_app WHERE id = ${id}`
+  return row ? toLiffApp(row) : null
+}
+
 /**
  * บันทึกกุญแจแบบเดียวกับที่ channel ทำ (DD-03) — เข้ารหัสก่อนเก็บเสมอ ไม่มีทาง
  * อ่านค่าเต็มกลับได้อีกหลัง insert แม้แต่จากในไฟล์นี้เอง
@@ -68,6 +74,47 @@ export async function createLiffApp(
             ${Buffer.from(encrypted.cipher, 'base64')}, ${last4(input.apiKey)}, ${encrypted.keyVersion}, ${input.createdBy})
     RETURNING ${sql.unsafe(SELECT_COLUMNS)}`
   return toLiffApp(row)
+}
+
+/**
+ * แก้ข้อมูล LIFF app ที่ลงทะเบียนไว้แล้ว — `apiKey: null` แปลว่าเว้นช่องไว้ตอนแก้ฟอร์ม
+ * (ใช้กุญแจเดิมต่อ) เหตุผลเดียวกับ saveChannel ของ ../../app/(admin)/channels/actions.ts:
+ * จอนี้ไม่มีทางโชว์กุญแจเต็มให้เห็นซ้ำได้เลย (BR-16 เดียวกัน) เว้นว่างไว้จึงต้องแปลว่า
+ * "ไม่เปลี่ยน" ไม่ใช่ "ล้างค่า" ไม่งั้นแก้แค่ชื่อจะเผลอตัดการเชื่อมต่อของ LIFF ตัวจริงไปเงียบๆ
+ */
+export async function updateLiffApp(
+  sql: Queryable,
+  id: string,
+  input: {
+    name: string; liffId: string; lineLoginChannelId: string; channelId: string
+    apiKey: string | null
+  },
+): Promise<LiffApp> {
+  if (input.apiKey) {
+    const encrypted = encryptSecret(input.apiKey)
+    const [row] = await sql<LiffAppRow[]>`
+      UPDATE liff_app
+         SET name = ${input.name}, liff_id = ${input.liffId},
+             line_login_channel_id = ${input.lineLoginChannelId}, channel_id = ${input.channelId},
+             encrypted_api_key = ${Buffer.from(encrypted.cipher, 'base64')},
+             api_key_last4 = ${last4(input.apiKey)}, key_version = ${encrypted.keyVersion}
+       WHERE id = ${id}
+       RETURNING ${sql.unsafe(SELECT_COLUMNS)}`
+    return toLiffApp(row)
+  }
+
+  const [row] = await sql<LiffAppRow[]>`
+    UPDATE liff_app
+       SET name = ${input.name}, liff_id = ${input.liffId},
+           line_login_channel_id = ${input.lineLoginChannelId}, channel_id = ${input.channelId}
+     WHERE id = ${id}
+     RETURNING ${sql.unsafe(SELECT_COLUMNS)}`
+  return toLiffApp(row)
+}
+
+/** ลบ cascade เอา liff_session ของ LIFF app นี้ไปด้วยทั้งหมด (migration 0013) — เตือนผู้ใช้ก่อนเรียกเสมอ */
+export async function deleteLiffApp(sql: Queryable, id: string): Promise<void> {
+  await sql`DELETE FROM liff_app WHERE id = ${id}`
 }
 
 /**
