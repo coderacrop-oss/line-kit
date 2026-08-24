@@ -6,6 +6,7 @@ import { listChannels } from '@/lib/db/channels'
 import { db } from '@/lib/db/client'
 import { listLiffApps } from '@/lib/db/liffApps'
 import { createLiffAppAction } from './actions'
+import { ApiKeyField } from './ApiKeyField'
 import { LiffAppForm } from './LiffAppForm'
 
 export default async function LiffAppsPage() {
@@ -51,8 +52,8 @@ export default async function LiffAppsPage() {
                   {channels.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                 </select>
               </Field>
-              <Field label="API key" hint="ให้ backend ของ LIFF ใช้เรียกกลับมา — ไม่มีทางดูค่าเต็มได้อีกหลังบันทึก">
-                <input name="api_key" type="password" required style={{ fontFamily: 'var(--mono)' }} />
+              <Field label="API key" hint="ให้ backend ของ LIFF ใช้เรียกกลับมา — ไม่มีทางดูค่าเต็มได้อีกหลังบันทึก กด “สุ่ม” แล้วก็อปไปเก็บไว้ก่อนบันทึก">
+                <ApiKeyField />
               </Field>
               <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
                 <Button type="submit">+ ลงทะเบียน LIFF</Button>
