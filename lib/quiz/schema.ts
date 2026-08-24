@@ -42,7 +42,27 @@ export const QuizConfig = z.object({
     ctx.addIssue({ code: 'custom', path: ['axes'], message: 'axis id ซ้ำ' })
   }
 
+  const questionIds = new Set(cfg.questions.map((q) => q.id))
+  if (questionIds.size !== cfg.questions.length) {
+    ctx.addIssue({ code: 'custom', path: ['questions'], message: 'question id ซ้ำ' })
+  }
+
+  /**
+   * option id ต้องไม่ซ้ำกันภายในคำถามข้อเดียวกัน
+   *
+   * lib/quiz/engine.ts จับคู่คำตอบด้วย `options.find(o => o.id === answer.optionId)`
+   * ซึ่งคืนตัวแรกที่ id ตรงกันเท่านั้น — option id ซ้ำที่หลุดผ่าน validation มาได้จะทำให้
+   * คำตอบของผู้เล่นถูกนับคะแนนเป็นตัวเลือกอื่นที่ id ชนกันแทน โดยไม่มี error ที่ไหนฟ้อง
+   * เลย ด่านนี้จึงกันไว้ตั้งแต่ตอนบันทึก ไม่ปล่อยให้ไปพังตอนเล่นจริง — เป็นด่านที่สองรอง
+   * จากตัวสร้าง id ฝั่งจอ (QuizConfigForm.tsx) ที่กันไม่ให้ id ชนกันตั้งแต่ต้น เผื่อ config
+   * มาจากทางอื่นที่ไม่ใช่จอนั้น (เช่น import/แก้ JSON มือ) ในอนาคต
+   */
   for (const [qi, q] of cfg.questions.entries()) {
+    const optionIds = new Set(q.options.map((o) => o.id))
+    if (optionIds.size !== q.options.length) {
+      ctx.addIssue({ code: 'custom', path: ['questions', qi, 'options'], message: 'option id ซ้ำภายในคำถามข้อนี้' })
+    }
+
     for (const [oi, opt] of q.options.entries()) {
       for (const scoredAxis of Object.keys(opt.scores)) {
         if (!axisIds.has(scoredAxis)) {

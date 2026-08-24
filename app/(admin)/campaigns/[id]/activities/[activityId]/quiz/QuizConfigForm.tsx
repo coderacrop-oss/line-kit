@@ -74,6 +74,33 @@ function omitKey<T extends Record<string, number>>(obj: T, key: string): T {
   return next
 }
 
+/**
+ * รหัส/id ใหม่ที่ไม่ชนกับของที่มีอยู่จริงตอนนี้ · ไม่ใช้ `array.length + 1`
+ *
+ * เดิมใช้ `array.length + 1` ตรงๆ ซึ่งพังทันทีที่มีการลบแทรกมาก่อน: ตัวเลือกเหลือ
+ * [o1, o2] → ลบ o1 → เหลือ [o2] (length 1) → กด "เพิ่มตัวเลือก" → คำนวณ id เป็น
+ * o2 (length-1 + 1 = 2) → ชนกับตัวเลือกที่เหลืออยู่ทันที schema เดิมไม่ได้ตรวจ
+ * ความซ้ำของ option id ภายในคำถาม/question id ข้ามคำถาม (ตรวจแค่ axis id กับ
+ * result code) จึงผ่าน validation เงียบๆ แล้วไปพังตอนตอบจริง — lib/quiz/engine.ts
+ * ใช้ `options.find(o => o.id === answer.optionId)` ซึ่งคืนตัวแรกที่ id ตรงกัน
+ * เท่านั้น คำตอบของผู้เล่นที่เลือกตัวเลือกซ้ำ id จะถูกนับคะแนนเป็นอีกตัวเลือกหนึ่งไป
+ * โดยไม่มี error ที่ไหนเลย
+ *
+ * แก้ด้วยการเช็คกับเซตของ id ที่มีอยู่จริง ณ ตอนนั้นเสมอ แทนการเดาจากความยาว
+ * อาเรย์ — ปลอดภัยไม่ว่าประวัติการเพิ่ม/ลบจะเป็นอย่างไร เพราะไม่ได้พึ่งตัวนับที่
+ * อาจไม่ตรงกับสถานะจริงหลังลบแทรก
+ */
+function uniqueId(existing: Iterable<string>, prefix: string): string {
+  const taken = new Set(existing)
+  let n = taken.size + 1
+  let id = `${prefix}${n}`
+  while (taken.has(id)) {
+    n += 1
+    id = `${prefix}${n}`
+  }
+  return id
+}
+
 /** แถวหนึ่งแกน · id ใช้เป็นคีย์อ้างอิงจากทั้งคะแนนของตัวเลือกและ pair ของผลลัพธ์โหมดคู่ */
 function AxisRow({ axis, index, canEdit, onChange, onRemove }: {
   axis: QuizAxis
@@ -189,8 +216,8 @@ function QuestionRow({ question, index, axes, canEdit, onChange, onRemove }: {
   onRemove: () => void
 }) {
   const addOption = () => {
-    const n = question.options.length + 1
-    onChange({ options: [...question.options, { id: `o${n}`, label: '', scores: {} }] })
+    const id = uniqueId(question.options.map((o) => o.id), 'o')
+    onChange({ options: [...question.options, { id, label: '', scores: {} }] })
   }
   const updateOption = (oi: number, patch: Partial<QuizOption>) => {
     onChange({ options: replaceAt(question.options, oi, patch) })
@@ -254,9 +281,21 @@ function ResultRow({ result, index, axes, isDuo, canEdit, onChange, onRemove }: 
 }) {
   const pair = result.pair ?? ['', '']
 
+  /**
+   * เขียน tuple ดิบกลับเสมอ ไม่ตัดสินใจ "ครบหรือยัง" ที่นี่
+   *
+   * เดิมยุบเป็น undefined ทันทีที่ฝั่งใดฝั่งหนึ่งยังว่าง — พังจริง: `pair` ที่อ่านมาคือ
+   * ค่าที่ *ถูกยืนยันแล้ว* (result.pair) ไม่ใช่ค่าที่เพิ่งเลือกไปหมาดๆ ฉะนั้นเลือกฝั่งแรก
+   * แล้ว onChange จะยุบเป็น undefined ทันที (เพราะอีกฝั่งยังว่าง) แล้วพอมาเลือกฝั่งที่
+   * สอง โค้ดก็อ่าน pair จาก result.pair ที่เพิ่งถูกยุบเป็น undefined ไปแล้ว จึงเห็นอีก
+   * ฝั่งเป็นค่าว่างอีกรอบ วนแบบนี้ทำให้ตั้ง pair ผ่านฟอร์มไม่ได้เลยสักครั้ง (จับได้จาก
+   * เทสต์ QuizConfigForm.test.tsx ตอนรีวิว Task 11) แก้โดยเก็บ tuple ดิบ (มีช่องว่างได้)
+   * ไว้ตรงๆ แล้วให้ sanitizeForSubmit() ที่ระดับบนสุดเป็นคนตัดสินตอนจะส่งจริงว่าฝั่งไหน
+   * ว่างให้ถือว่ายังไม่ระบุทั้งคู่
+   */
   const setPair = (pos: 0 | 1, value: string) => {
     const next: [string, string] = pos === 0 ? [value, pair[1]] : [pair[0], value]
-    onChange({ pair: next[0] && next[1] ? next : undefined })
+    onChange({ pair: next })
   }
 
   return (
@@ -319,6 +358,26 @@ function ResultRow({ result, index, axes, isDuo, canEdit, onChange, onRemove }: 
   )
 }
 
+/**
+ * ก้อนที่จะ validate/ส่งจริง · ตัด pair ที่เลือกยังไม่ครบสองฝั่งทิ้งเป็น undefined
+ *
+ * ResultRow เก็บ tuple ดิบของสองช่อง select ไว้ตรงๆ (อาจมีฝั่งว่างระหว่างที่ผู้ใช้ยัง
+ * เลือกไม่ครบ) เพราะ state ที่ยุบครึ่งๆ กลางคันทำให้ตั้ง pair ไม่ได้เลยสักครั้ง (ดูคอมเมนต์
+ * ของ setPair) — ขอบเขตนี้เป็นจุดเดียวที่ตัดสินว่า "ครบหรือยัง" ก่อนเอาไปเทียบกับ schema
+ * และก่อนเขียนลงช่อง hidden input จริง ใช้ทั้งสองที่ (validation พรีวิวกับตัวที่ส่งจริง)
+ * เพื่อให้สิ่งที่พรีวิวตรงกับสิ่งที่บันทึกเป๊ะๆ
+ */
+function sanitizeForSubmit(draft: QuizConfig): QuizConfig {
+  return {
+    ...draft,
+    results: draft.results.map((r) => {
+      if (!r.pair) return r
+      const [a, b] = r.pair
+      return a && b ? r : { ...r, pair: undefined }
+    }),
+  }
+}
+
 export type QuizConfigFormProps = {
   activityId: string
   initial: QuizConfig
@@ -332,7 +391,8 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
   const [busy, setBusy] = useState(false)
   const [savedTick, setSavedTick] = useState(0)
 
-  const validation = QuizConfig.safeParse(draft)
+  const submitted = sanitizeForSubmit(draft)
+  const validation = QuizConfig.safeParse(submitted)
 
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
@@ -355,10 +415,15 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
     }
   }
 
+  // ทุก add* คำนวณ id/code ใหม่จาก `d` ของ updater function เอง ไม่ใช่จาก `draft`
+  // ตัวแปรนอก — กันพลาดกรณีมีการอัปเดตซ้อนกันในติ๊กเดียวกัน (React อาจ batch หลาย
+  // setState) ให้ยึดสถานะล่าสุดจริงเสมอ ไม่ใช่ค่าที่ค้างมาจากตอน render ครั้งก่อน
   const addAxis = () => {
-    if (draft.axes.length >= 6) return
-    const n = draft.axes.length + 1
-    setDraft((d) => ({ ...d, axes: [...d.axes, { id: `axis${n}`, label: '', poles: ['', ''] }] }))
+    setDraft((d) => {
+      if (d.axes.length >= 6) return d
+      const id = uniqueId(d.axes.map((a) => a.id), 'axis')
+      return { ...d, axes: [...d.axes, { id, label: '', poles: ['', ''] }] }
+    })
   }
   const updateAxis = (index: number, patch: Partial<QuizAxis>) => {
     setDraft((d) => ({ ...d, axes: replaceAt(d.axes, index, patch) }))
@@ -368,15 +433,19 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
   }
 
   const addQuestion = () => {
-    if (draft.questions.length >= 10) return
-    const n = draft.questions.length + 1
-    setDraft((d) => ({
-      ...d,
-      questions: [...d.questions, {
-        id: `q${n}`, text: '',
-        options: [{ id: 'o1', label: '', scores: {} }, { id: 'o2', label: '', scores: {} }],
-      }],
-    }))
+    setDraft((d) => {
+      if (d.questions.length >= 10) return d
+      const id = uniqueId(d.questions.map((q) => q.id), 'q')
+      const o1 = uniqueId([], 'o')
+      const o2 = uniqueId([o1], 'o')
+      return {
+        ...d,
+        questions: [...d.questions, {
+          id, text: '',
+          options: [{ id: o1, label: '', scores: {} }, { id: o2, label: '', scores: {} }],
+        }],
+      }
+    })
   }
   const updateQuestion = (index: number, patch: Partial<QuizQuestion>) => {
     setDraft((d) => ({ ...d, questions: replaceAt(d.questions, index, patch) }))
@@ -386,8 +455,10 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
   }
 
   const addResult = () => {
-    const n = draft.results.length + 1
-    setDraft((d) => ({ ...d, results: [...d.results, { code: `R${n}`, title: '', body: '' }] }))
+    setDraft((d) => {
+      const code = uniqueId(d.results.map((r) => r.code), 'R')
+      return { ...d, results: [...d.results, { code, title: '', body: '' }] }
+    })
   }
   const updateResult = (index: number, patch: Partial<QuizResultRule>) => {
     setDraft((d) => ({ ...d, results: replaceAt(d.results, index, patch) }))
@@ -408,7 +479,7 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
       <form onSubmit={(event) => void handleSubmit(event)} style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
         {/* ช่องเดียวที่ฟอร์มนี้ส่งจริง — JSON ของ QuizConfig ทั้งก้อน อ่านคอมเมนต์บนสุด
             ของไฟล์นี้ว่าทำไมถึงไม่ใช่ flat field แบบฟอร์มอื่นในระบบ */}
-        <input type="hidden" name="config" value={JSON.stringify(draft)} readOnly />
+        <input type="hidden" name="config" value={JSON.stringify(submitted)} readOnly />
 
         <fieldset disabled={!canEdit || busy} style={fieldsetStyle}>
           <Panel style={{ padding: 18 }}>

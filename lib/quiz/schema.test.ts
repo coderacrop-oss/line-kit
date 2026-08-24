@@ -73,6 +73,54 @@ describe('QuizConfig', () => {
     expect(QuizConfig.safeParse(cfg).success).toBe(false)
   })
 
+  /**
+   * ด่านที่สองกัน id ชนกันแบบเงียบๆ — ตัวสร้าง id ฝั่งจอ (QuizConfigForm.tsx) กันไว้
+   * ชั้นหนึ่งแล้ว แต่ config ที่มาจากทางอื่น (เช่น import/แก้ JSON มือในอนาคต) ต้องถูก
+   * กันที่นี่ด้วย — คำถาม/ตัวเลือกที่ id ซ้ำกันจะทำให้ lib/quiz/engine.ts จับคู่คำตอบผิด
+   * ตัวแบบเงียบๆ (options.find คืนตัวแรกที่ id ตรงเท่านั้น)
+   */
+  it('rejects duplicate question ids', () => {
+    const cfg = {
+      ...validConfig,
+      questions: [validConfig.questions[0], validConfig.questions[0], validConfig.questions[2]],
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects duplicate option ids within the same question', () => {
+    const cfg = {
+      ...validConfig,
+      questions: [
+        {
+          id: 'q1', text: 'x',
+          options: [
+            { id: 'dup', label: 'A', scores: { ei: 1 } },
+            { id: 'dup', label: 'B', scores: { ei: -1 } },
+          ],
+        },
+        validConfig.questions[1],
+        validConfig.questions[2],
+      ],
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('accepts option ids that repeat across different questions (uniqueness is per-question only)', () => {
+    // 'a'/'b' ซ้ำกันได้ระหว่างคำถามคนละข้อ — engine หาคำตอบด้วย (questionId, optionId)
+    // คู่กัน ไม่ใช่ optionId เดี่ยวๆ ข้ามคำถาม
+    const cfg = {
+      ...validConfig,
+      questions: validConfig.questions.map((q, i) => ({
+        ...q,
+        options: [
+          { id: 'a', label: `Q${i} A`, scores: { ei: 1 } },
+          { id: 'b', label: `Q${i} B`, scores: { ei: -1 } },
+        ],
+      })),
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
   it('duo mode: rejects a non-catch-all result rule whose pair references an axis id that does not exist', () => {
     const cfg = {
       ...validConfig, mode: 'duo' as const,
