@@ -139,6 +139,29 @@ const touch = (campaignId: string, activityId?: string) => {
 }
 
 /**
+ * รหัสกิจกรรมจากชื่อ · ผู้ตั้งค่าไม่ต้องรู้จักกฎ a-z 0-9 ขีดล่างอีกต่อไป
+ *
+ * The form used to ask for this directly, with the exact CODE_PATTERN spelled
+ * out as a hint. That was a second identity for something that already has a
+ * name, and asking a person typing "สุ่มรางวัลประจำวัน" to also invent
+ * "daily_draw" was asking them to do the computer's job. Truncated to 14
+ * characters rather than the full 20 CODE_PATTERN allows, so a collision retry
+ * still has room to append `_` and four digits without exceeding it.
+ *
+ * async even though the computation itself is not — this file is `'use server'`,
+ * and every export from it has to be a Server Action, which Next.js only
+ * accepts as an async function.
+ */
+export async function slugifyActivityName(name: string): Promise<string> {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 14)
+  return base || 'activity'
+}
+
+/**
  * สร้างกิจกรรมใหม่ · ถามแค่ตัวตนกับสองแกน
  *
  * The two axes are asked here rather than left to a default because they decide
@@ -149,11 +172,6 @@ export async function createActivity(campaignId: string, formData: FormData): Pr
   await requireRole('configurator')
   const sql = db()
   await requireDraftCampaign(sql, campaignId)
-
-  const code = trimmed(formData, 'code')
-  if (!CODE_PATTERN.test(code)) {
-    throw new Error('รหัสกิจกรรมใช้ได้แค่ a-z 0-9 และขีดล่าง ยาว 1–20 ตัว')
-  }
 
   const name = trimmed(formData, 'name')
   if (!name) throw new Error('ต้องมีชื่อกิจกรรม')
@@ -168,20 +186,37 @@ export async function createActivity(campaignId: string, formData: FormData): Pr
   const combo = comboProblem(inputType, resolveMethod)
   if (combo) throw new Error(combo)
 
-  let created: string
-  try {
+  const code = await slugifyActivityName(name)
+  if (!CODE_PATTERN.test(code)) {
+    // ป้องกันตัวเอง — slugifyActivityName() คำนวณให้ตรงรูปแบบนี้เสมอ ฟอร์มไม่มีช่อง
+    // ให้กรอกรหัสเองอีกต่อไป ถ้าไม่ตรงคือมันมีบั๊ก ไม่ใช่ผู้ใช้กรอกผิด
+    throw new Error('สร้างรหัสกิจกรรมจากชื่อไม่สำเร็จ — ลองตั้งชื่ออื่นดู')
+  }
+
+  const insertActivity = async (attemptCode: string) => {
     const [row] = await sql<{ id: string }[]>`
       INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, sort_order)
-      VALUES (${campaignId}, ${code}, ${name}, ${inputType}, ${resolveMethod},
+      VALUES (${campaignId}, ${attemptCode}, ${name}, ${inputType}, ${resolveMethod},
               coalesce((SELECT max(sort_order) + 1 FROM activity
                          WHERE campaign_id = ${campaignId}), 0))
       RETURNING id`
-    created = row.id
+    return row.id
+  }
+
+  let created: string
+  try {
+    created = await insertActivity(code)
   } catch (error) {
-    if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
+    if ((error as { code?: string }).code !== UNIQUE_VIOLATION) throw error
+    // รหัสที่สร้างจากชื่อชนกับกิจกรรมอื่นในแคมเปญเดียวกัน — คนตั้งชื่อซ้ำกันไม่ควร
+    // ต้องรู้จัก slug หรือมาแก้เอง ต่อเลขสุ่มสี่หลักแล้วลองอีกครั้งเดียวก็พอ
+    const retryCode = `${code}_${Math.floor(Math.random() * 9000 + 1000)}`
+    try {
+      created = await insertActivity(retryCode)
+    } catch (retryError) {
+      if ((retryError as { code?: string }).code !== UNIQUE_VIOLATION) throw retryError
       throw new Error(`แคมเปญนี้มีกิจกรรมรหัส "${code}" อยู่แล้ว — ไปแก้ตัวเดิมแทน`)
     }
-    throw error
   }
 
   touch(campaignId)

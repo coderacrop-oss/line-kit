@@ -56,25 +56,9 @@ export default async function ActivitiesPage({ params }: { params: Promise<{ id:
                 action={createActivity.bind(null, campaign.id)}
                 style={{ display: 'flex', flexDirection: 'column', gap: 16 }}
               >
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <Field label="ชื่อกิจกรรม (บังคับ)">
-                    <input name="name" required maxLength={100} placeholder="เช่น สุ่มรางวัลประจำวัน" />
-                  </Field>
-
-                  <Field
-                    label="รหัสกิจกรรม (บังคับ)"
-                    hint="แนบไปกับปุ่มที่ส่งออกไปแล้ว — แก้ไม่ได้หลังสร้าง"
-                  >
-                    <input
-                      name="code"
-                      required
-                      maxLength={20}
-                      pattern="[a-z0-9_]{1,20}"
-                      placeholder="เช่น daily_draw"
-                      style={{ fontFamily: 'var(--mono)' }}
-                    />
-                  </Field>
-                </div>
+                <Field label="ชื่อกิจกรรม (บังคับ)">
+                  <input name="name" required maxLength={100} placeholder="เช่น สุ่มรางวัลประจำวัน" />
+                </Field>
 
                 <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
                   <Field label="แกน 1 · รับอินพุตยังไง">

@@ -43,6 +43,8 @@ const state: {
   playedCount: number
   writes: Array<{ text: string; values: unknown[] }>
   failNextWriteWith: string | undefined
+  /** จำนวนครั้งที่ยังต้องล้มเหลวติดกันด้วยรหัสเดียวกัน ก่อนจะให้ผ่าน · ค่าเริ่มต้นคือ 1 ครั้ง */
+  failWriteTimes: number | undefined
   redirectedTo: string | undefined
 } = {
   cookie: undefined,
@@ -56,6 +58,7 @@ const state: {
   playedCount: 0,
   writes: [],
   failNextWriteWith: undefined,
+  failWriteTimes: undefined,
   redirectedTo: undefined,
 }
 
@@ -115,7 +118,12 @@ const sql = Object.assign(
 
     if (state.failNextWriteWith) {
       const code = state.failNextWriteWith
-      state.failNextWriteWith = undefined
+      if (state.failWriteTimes && state.failWriteTimes > 1) {
+        state.failWriteTimes -= 1
+      } else {
+        state.failNextWriteWith = undefined
+        state.failWriteTimes = undefined
+      }
       return Promise.reject(Object.assign(new Error('duplicate key value'), { code }))
     }
 
@@ -140,6 +148,7 @@ vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 const {
   createActivity, deleteActivity, removeEntryRule, removeOutcome, saveActivity,
   saveEffects, saveEntryRule, saveInputConfig, saveOutcome, setActivityEnabled,
+  slugifyActivityName,
 } = await import('./actions')
 
 const signedInAs = (role: string, isActive = true) => {
@@ -156,7 +165,7 @@ const form = (fields: Record<string, string | string[]>) => {
 }
 
 const createForm = (patch: Record<string, string> = {}) =>
-  form({ code: 'draw2', name: 'สุ่มอีกรอบ', input_type: 'none', resolve_method: 'weighted', ...patch })
+  form({ name: 'สุ่มอีกรอบ', input_type: 'none', resolve_method: 'weighted', ...patch })
 
 const saveForm = (patch: Record<string, string> = {}) =>
   form({ name: 'สุ่มรางวัล', input_type: 'none', resolve_method: 'weighted', ...patch })
@@ -178,6 +187,7 @@ beforeEach(() => {
   state.playedCount = 0
   state.writes = []
   state.failNextWriteWith = undefined
+  state.failWriteTimes = undefined
   state.redirectedTo = undefined
 })
 
@@ -275,16 +285,40 @@ describe('แคมเปญที่ส่งขึ้นแล้ว', () => {
   })
 })
 
+/**
+ * ตัวช่วยแปลงชื่อเป็นรหัส — เอาไว้ในไฟล์เดียวกับ createActivity() ที่ใช้มัน
+ *
+ * The form used to ask for a code directly, spelling out CODE_PATTERN as a
+ * hint. Task 9 removed that field: the code now comes from the name the
+ * person already typed, so it never has to be invented twice.
+ */
+describe('slugifyActivityName', () => {
+  // async เพราะไฟล์นี้เป็น 'use server' — export ทุกตัวต้องเป็น Server Action
+  // ซึ่ง Next.js รับเฉพาะฟังก์ชัน async เท่านั้น แม้ตัวการคำนวณจะไม่ได้ await อะไรเลย
+  it('ตัวพิมพ์เล็กและแทนช่องว่าง/เครื่องหมายด้วยขีดล่าง', async () => {
+    await expect(slugifyActivityName('สุ่มรางวัลประจำวัน')).resolves.toMatch(/^[a-z0-9_]{1,20}$/)
+    await expect(slugifyActivityName('Daily Draw!')).resolves.toBe('daily_draw')
+  })
+
+  it('ชื่อยาว ได้รหัสที่ยังตรงรูปแบบ CODE_PATTERN (1–20 ตัว)', async () => {
+    const slug = await slugifyActivityName('a'.repeat(50))
+    expect(slug.length).toBeLessThanOrEqual(20)
+    expect(slug).toMatch(/^[a-z0-9_]{1,20}$/)
+  })
+
+  it('ชื่อที่ไม่เหลือตัวอักษร a-z0-9 เลย ได้ค่าสำรอง ไม่ใช่สตริงว่าง', async () => {
+    await expect(slugifyActivityName('！！！')).resolves.toBe('activity')
+    await expect(slugifyActivityName('')).resolves.toBe('activity')
+  })
+
+  it('เว้นที่ให้ต่อขีดล่างกับเลขสุ่มสี่หลักได้โดยไม่เกิน 20 ตัว', async () => {
+    const slug = await slugifyActivityName('x'.repeat(50))
+    expect(`${slug}_9999`.length).toBeLessThanOrEqual(20)
+  })
+})
+
 describe('createActivity', () => {
   beforeEach(() => signedInAs('configurator'))
-
-  it('รหัสที่ไม่ใช่ a-z 0-9 ขีดล่าง ถูกปฏิเสธ', async () => {
-    for (const code of ['', 'Draw', 'draw-2', 'สุ่ม', 'x'.repeat(21), 'a b']) {
-      await expect(createActivity('camp-1', createForm({ code })), code)
-        .rejects.toThrow('รหัสกิจกรรม')
-    }
-    expect(state.writes).toEqual([])
-  })
 
   it('ไม่มีชื่อ ถูกปฏิเสธ', async () => {
     await expect(createActivity('camp-1', createForm({ name: '  ' })))
@@ -313,15 +347,40 @@ describe('createActivity', () => {
     expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new')
   })
 
-  it('รหัสซ้ำในแคมเปญเดียวกัน ได้ประโยคที่บอกทางออก ไม่ใช่ชื่อ constraint', async () => {
-    state.failNextWriteWith = '23505'
-    await expect(createActivity('camp-1', createForm({ code: 'draw' })))
-      .rejects.toThrow('มีกิจกรรมรหัส "draw" อยู่แล้ว')
+  it('รหัสถูกสร้างจากชื่อเอง ไม่มีช่องกรอกรหัสในฟอร์มอีกต่อไป', async () => {
+    await createActivity('camp-1', createForm({ name: 'Daily Draw!' }))
+    const [insert] = writesTo(/INSERT INTO activity/)
+    expect(insert.values[1]).toBe('daily_draw')
   })
 
-  it('ข้อผิดพลาดอื่นของฐานข้อมูล ไม่ถูกแปลงเป็นเรื่องรหัสซ้ำ', async () => {
+  /**
+   * รหัสที่สร้างจากชื่อชนกับกิจกรรมอื่นในแคมเปญเดียวกัน
+   *
+   * A person naming two activities the same thing should not have to learn
+   * what a slug collision is — the action retries once with a random suffix
+   * instead of surfacing the clash as an error.
+   */
+  it('รหัสที่สร้างจากชื่อชนกัน ลองอีกครั้งด้วยเลขต่อท้าย โดยไม่ถามผู้ใช้', async () => {
+    state.failNextWriteWith = '23505'
+    await createActivity('camp-1', createForm({ name: 'Daily Draw!' }))
+    const inserts = writesTo(/INSERT INTO activity/)
+    expect(inserts).toHaveLength(1)
+    expect(String(inserts[0].values[1])).toMatch(/^daily_draw_\d{4}$/)
+    expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new')
+  })
+
+  it('ชนกันสองรอบติด (รอบต่อท้ายก็ชน) ได้ประโยคทางออก ไม่ใช่ error ดิบจากฐานข้อมูล', async () => {
+    state.failNextWriteWith = '23505'
+    state.failWriteTimes = 2
+    await expect(createActivity('camp-1', createForm({ name: 'Daily Draw!' })))
+      .rejects.toThrow('มีกิจกรรมรหัส "daily_draw" อยู่แล้ว')
+    expect(state.writes).toEqual([])
+  })
+
+  it('ข้อผิดพลาดอื่นของฐานข้อมูล ไม่ถูกแปลงเป็นเรื่องรหัสซ้ำ และไม่ลองซ้ำ', async () => {
     state.failNextWriteWith = '23503'
     await expect(createActivity('camp-1', createForm())).rejects.toThrow('duplicate key value')
+    expect(state.writes).toEqual([])
   })
 })
 
