@@ -734,11 +734,11 @@
       "origin": "local",
       "originNote": "ต้นแบบไม่มีจอนี้เลย — personality_quiz เป็นชนิดกิจกรรมใหม่ที่เพิ่มเข้ามาทั้งชุด (0014_quiz_engine.sql, Task 1-11) ไม่ได้อยู่ใน 22 จอเดิมของต้นแบบสักจอ M7-S02 ปฏิเสธชนิดนี้โดยตั้งใจ (resolve_method เป็น NULL เสมอ ไม่มีคู่แกนให้ fieldsFor() ประกอบฟอร์มให้) จอนี้จึงแยกออกมาต่างหาก ยึดธรรมเนียมหัวจอ/ลิงก์กลับ/ป้ายดูอย่างเดียวของ M7-S02 เอง",
       "landmarks": [
-        "code=\"Task 11 · Quiz content\"",
+        "code=\"M7-S05 · Quiz content\"",
         "← กิจกรรมทั้งหมด",
         "row.input_type !== 'personality_quiz'",
         "ไม่มีการบันทึกอัตโนมัติ",
-        "<QuizConfigForm activityId={row.id} initial={draft} canEdit={canEdit} />"
+        "<QuizConfigForm campaignId={campaign.id} activityId={row.id} initial={draft} canEdit={canEdit} />"
       ],
       "rejected": {}
     },

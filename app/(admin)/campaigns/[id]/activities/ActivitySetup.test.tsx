@@ -63,8 +63,17 @@ const draw = (patch: Partial<ActivityRow> = {}, holder: Holder = null, canEdit =
 
 const holder = { id: 'act-hello', code: 'hello', name: 'ทักทายตอนแอด' }
 
+/**
+ * personality_quiz ไม่มี resolve_method เลย (0014_quiz_engine.sql บังคับ NULL เท่านั้น)
+ * comboProblem()/isComboAllowed() ไม่รู้จักชนิดนี้เป็นพิเศษ (ตั้งใจ — ดูคอมเมนต์ของ
+ * lib/activities/wizard.ts) จึงคืนค่า "ผสมได้" ให้ personality_quiz × weighted|quota
+ * อย่างผิดๆ ทั้งที่ฐานข้อมูลห้ามคู่นี้เด็ดขาด (activity_resolve_method_check) —
+ * กันออกด้วยมือที่นี่เหมือนที่ lib/activities/wizard.test.ts กันด้วย RESOLVABLE_INPUT_TYPES
+ */
+const RESOLVABLE_INPUT_TYPES = INPUT_TYPES.filter((type) => type !== 'personality_quiz')
+
 /** คู่แกนที่บันทึกได้จริง · เดินให้ครบทุกคู่ จะได้ไม่มีคู่ไหนหลุดจากการวัด */
-const usablePairs = INPUT_TYPES.flatMap((input) =>
+const usablePairs = RESOLVABLE_INPUT_TYPES.flatMap((input) =>
   RESOLVE_METHODS.filter((resolve) => isComboAllowed(input, resolve))
     .map((resolve) => [input, resolve] as const))
 

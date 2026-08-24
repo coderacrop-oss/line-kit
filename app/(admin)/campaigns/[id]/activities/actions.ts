@@ -39,7 +39,14 @@ type CampaignRow = { id: string; status: 'draft' | 'published' | 'closed' }
  * refuse edits for the same reason: the config and the record of what happened
  * under it have to keep saying the same thing.
  */
-async function requireDraftCampaign(
+/**
+ * export ไว้ให้ app/.../[activityId]/quiz/actions.ts เรียกใช้ตัวเดียวกัน — ก่อนแก้
+ * saveQuizConfigAction เป็นตัวเดียวในบรรดา action ที่เขียน input_config ของกิจกรรม
+ * ที่ข้ามด่าน BR-05 นี้ไปเฉยๆ (Finding 3 ของรีวิวรอบสุดท้าย) แก้แคมเปญที่ publish
+ * แล้วได้อย่างเดียวในระบบทั้งหมด แม้จะมีคน duo เล่นค้างอยู่จริงตามที่ design spec เอง
+ * กังวลไว้ (§2)
+ */
+export async function requireDraftCampaign(
   sql: ReturnType<typeof db>, campaignId: string,
 ): Promise<CampaignRow> {
   const [row] = await sql<CampaignRow[]>`
@@ -286,6 +293,21 @@ export async function saveActivity(
 
   const inputType = asInputType(trimmed(formData, 'input_type'))
   if (!inputType) throw new Error('ต้องเลือกวิธีรับอินพุต')
+
+  /**
+   * จอนี้ (M7-S02) ไม่มีทางเขียน personality_quiz ให้ถูกกติกาได้เลย — ควิซบุคลิกภาพ
+   * บังคับ resolve_method เป็น NULL เท่านั้น (0014_quiz_engine.sql) แต่ฟอร์มนี้ยังไง
+   * ก็ส่ง resolve_method ที่เป็นค่าจริงมาด้วยเสมอ (ช่องนั้นเป็น select ที่ไม่มีค่าว่าง)
+   * เขียนแล้วจะชน activity_resolve_method_check ที่ฐานข้อมูลแทน ซึ่ง error ที่ได้ไม่ใช่
+   * unique-violation จึงถูก rethrow ออกไปเป็น error ดิบที่ถูกเซ็นเซอร์แบบทั่วไปให้ผู้ใช้
+   * เห็น (Finding 2 ของรีวิวรอบสุดท้าย) — กันไว้ตั้งแต่ก่อนแตะฐานข้อมูล พร้อมชี้ทางที่ถูก
+   */
+  if (inputType === 'personality_quiz') {
+    throw new Error(
+      'ตั้งค่าควิซบุคลิกภาพจากจอนี้ไม่ได้ — ควิซไม่มี "วิธีตัดสินผล" ให้เลือกแบบกิจกรรมอื่น'
+      + ' สร้างกิจกรรมชนิดควิซบุคลิกภาพขึ้นใหม่แทน แล้วไปตั้งค่าที่จอควิซของกิจกรรมนั้น',
+    )
+  }
 
   const resolveMethod = asResolveMethod(trimmed(formData, 'resolve_method'))
   if (!resolveMethod) throw new Error('ต้องเลือกวิธีตัดสินผล')

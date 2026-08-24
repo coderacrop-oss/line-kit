@@ -487,6 +487,19 @@ describe('saveActivity · ตัวตนและสองแกน', () => {
       .rejects.toThrow('การ์ดของแคมเปญนี้')
     expect(state.writes).toEqual([])
   })
+
+  /**
+   * Finding 2 ของรีวิวรอบสุดท้าย · จอนี้ไม่มีทางเขียน personality_quiz ให้ถูกกติกา
+   * ได้เลย (resolve_method ต้องเป็น NULL เท่านั้นตาม 0014_quiz_engine.sql แต่ฟอร์ม
+   * นี้ส่ง resolve_method ที่เป็นค่าจริงมาเสมอ) — ก่อนแก้ ค่านี้จะหลุดผ่าน
+   * comboProblem() ไปเขียนทับจนชน CHECK ของฐานข้อมูลแทน ซึ่งกลายเป็น error ดิบที่
+   * ถูกเซ็นเซอร์แบบทั่วไปให้ผู้ใช้เห็น ไม่ใช่ข้อความที่บอกทางแก้
+   */
+  it('เลือกชนิดอินพุตเป็นควิซบุคลิกภาพจากจอนี้ ถูกปฏิเสธด้วยข้อความที่บอกทางแก้', async () => {
+    await expect(saveActivity('camp-1', 'act-1', saveForm({ input_type: 'personality_quiz' })))
+      .rejects.toThrow('ควิซบุคลิกภาพ')
+    expect(state.writes).toEqual([])
+  })
 })
 
 /**

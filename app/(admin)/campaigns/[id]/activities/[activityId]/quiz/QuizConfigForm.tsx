@@ -379,12 +379,13 @@ function sanitizeForSubmit(draft: QuizConfig): QuizConfig {
 }
 
 export type QuizConfigFormProps = {
+  campaignId: string
   activityId: string
   initial: QuizConfig
   canEdit: boolean
 }
 
-export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormProps) {
+export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: QuizConfigFormProps) {
   const router = useRouter()
   const [draft, setDraft] = useState<QuizConfig>(initial)
   const [error, setError] = useState<string | null>(null)
@@ -400,7 +401,7 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
     setError(null)
     setBusy(true)
     try {
-      const result = await saveQuizConfigAction(activityId, formData)
+      const result = await saveQuizConfigAction(campaignId, activityId, formData)
       if (result.ok) {
         setSavedTick((n) => n + 1)
         router.refresh()
@@ -543,18 +544,35 @@ export function QuizConfigForm({ activityId, initial, canEdit }: QuizConfigFormP
           <Panel style={{ marginTop: 14 }}>
             <BlockHead title="ผลลัพธ์ (Results)" note={`ต้องมีอย่างน้อย 2 แบบ · ตอนนี้มี ${draft.results.length}`} />
             <Block>
-              {draft.results.map((result, index) => (
-                <ResultRow
-                  key={index}
-                  result={result}
-                  index={index}
-                  axes={draft.axes}
-                  isDuo={draft.mode === 'duo'}
-                  canEdit={canEdit}
-                  onChange={(patch) => updateResult(index, patch)}
-                  onRemove={() => removeResult(index)}
-                />
-              ))}
+              {draft.results.map((result, index) => {
+                // catch-all (ไม่มี .pair) ที่ไม่ใช่แถวสุดท้าย ทำให้ทุกแถวหลังจากนี้ไม่มีวัน
+                // ถูกใช้เลย — matchPair() (lib/quiz/engine.ts) เช็คเรียงจากบนลงล่างแล้วคืน
+                // ทันทีที่เจอแถวไม่มี .pair โดยไม่มีอะไรบอกตอนบันทึกว่าแถวหลังจากนั้นตายแล้ว
+                const submittedResult = submitted.results[index]
+                const isDeadCatchAll = draft.mode === 'duo' && !submittedResult?.pair
+                  && index < draft.results.length - 1
+
+                return (
+                  <div key={index} style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    <ResultRow
+                      result={result}
+                      index={index}
+                      axes={draft.axes}
+                      isDuo={draft.mode === 'duo'}
+                      canEdit={canEdit}
+                      onChange={(patch) => updateResult(index, patch)}
+                      onRemove={() => removeResult(index)}
+                    />
+                    {isDeadCatchAll && (
+                      <Note tone="warn">
+                        ผลลัพธ์นี้ไม่ได้ระบุคู่แกน (catch-all) แต่ไม่ใช่แถวสุดท้าย — เอนจิ้นจับคู่
+                        แบบเจอก่อนใช้ก่อน ผลลัพธ์ที่อยู่ถัดจากนี้ลงไปจะไม่มีวันถูกใช้เลย
+                        ย้ายแถวนี้ไปไว้ล่างสุดของรายการ
+                      </Note>
+                    )}
+                  </div>
+                )
+              })}
               {canEdit && (
                 <div>
                   <Button type="button" variant="ghost" onClick={addResult}>＋ เพิ่มผลลัพธ์</Button>

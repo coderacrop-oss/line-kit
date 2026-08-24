@@ -63,7 +63,7 @@ export default async function QuizConfigPage({ params }: {
       </a>
 
       <PageHead
-        code="Task 11 · Quiz content"
+        code="M7-S05 · Quiz content"
         title={`ควิซบุคลิกภาพ: ${row.name}`}
         actions={
           <>
@@ -73,7 +73,7 @@ export default async function QuizConfigPage({ params }: {
         }
       />
 
-      <QuizConfigForm activityId={row.id} initial={draft} canEdit={canEdit} />
+      <QuizConfigForm campaignId={campaign.id} activityId={row.id} initial={draft} canEdit={canEdit} />
 
       <div style={{ marginTop: 18 }}>
         <span style={{ fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }}>

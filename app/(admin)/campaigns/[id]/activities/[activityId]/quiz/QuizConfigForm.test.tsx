@@ -9,14 +9,17 @@ afterEach(cleanup)
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
-const saveQuizConfigAction = vi.fn(async (_activityId: string, _formData: FormData) => ({ ok: true as const }))
+const saveQuizConfigAction = vi.fn(
+  async (_campaignId: string, _activityId: string, _formData: FormData) => ({ ok: true as const }),
+)
 // อ้าง saveQuizConfigAction ผ่านฟังก์ชันซ้อน ไม่ใช่ property shorthand ตรงๆ — vi.mock
 // factory ถูก hoist ขึ้นไปบนสุดของไฟล์ อ้าง const ข้างนอกตรงๆ จะชน TDZ ("Cannot access
 // before initialization") ห่อด้วยฟังก์ชันจึงเลื่อนการอ้างจริงไปจนกว่าจะถูกเรียกใช้ตอน
 // component ทำงาน ซึ่ง const ข้างนอกถูก initialize ไปแล้วแน่นอน (เหมือน `refresh` ด้านบน
 // ที่ปลอดภัยเพราะซ่อนอยู่หลัง `() => ({ refresh })` เหมือนกัน)
 vi.mock('./actions', () => ({
-  saveQuizConfigAction: (activityId: string, formData: FormData) => saveQuizConfigAction(activityId, formData),
+  saveQuizConfigAction: (campaignId: string, activityId: string, formData: FormData) =>
+    saveQuizConfigAction(campaignId, activityId, formData),
 }))
 
 /** ก้อนที่ page.tsx ส่งมาให้กิจกรรมที่เพิ่งสร้าง — ยังไม่มี axes/questions/results เลย */
@@ -25,7 +28,7 @@ const emptyDraft: QuizConfig = {
 }
 
 const draw = (initial: QuizConfig = emptyDraft, canEdit = true) =>
-  render(<QuizConfigForm activityId="act-1" initial={initial} canEdit={canEdit} />)
+  render(<QuizConfigForm campaignId="camp-1" activityId="act-1" initial={initial} canEdit={canEdit} />)
 
 /** อ่านสถานะปัจจุบันของฟอร์มจากช่องเดียวที่มันส่งจริง — ไม่เดาจากสิ่งที่วาดบนจอ */
 function readConfig(container: HTMLElement): QuizConfig {
