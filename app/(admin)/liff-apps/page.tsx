@@ -66,14 +66,22 @@ export default async function LiffAppsPage() {
       <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
         {apps.map((app) => (
           <Panel key={app.id}>
-            <Panel.Row style={{ display: 'flex', justifyContent: 'space-between' }}>
-              <div>
-                <b>{app.name}</b>
-                <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)' }}>{app.liffId}</div>
-              </div>
-              <div style={{ fontSize: 11, color: 'var(--ink-3)' }}>
-                กุญแจ: •••{app.apiKeyLast4}
-              </div>
+            <Panel.Row>
+              <a
+                href={`/liff-apps/${app.id}`}
+                style={{
+                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                  textDecoration: 'none', color: 'inherit', gap: 12,
+                }}
+              >
+                <div>
+                  <b>{app.name}</b>
+                  <div style={{ fontSize: 11, color: 'var(--ink-3)', fontFamily: 'var(--mono)' }}>{app.liffId}</div>
+                </div>
+                <div style={{ fontSize: 11, color: 'var(--ink-3)', flexShrink: 0 }}>
+                  กุญแจ: •••{app.apiKeyLast4}
+                </div>
+              </a>
             </Panel.Row>
           </Panel>
         ))}
