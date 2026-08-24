@@ -23,11 +23,11 @@ const cfg: QuizConfig = {
     ] },
   ],
   results: [
+    { code: 'ES-IN', title: 'pair', body: 'b', pair: ['ES', 'IN'] },
     { code: 'ES', title: 'ES', body: 'b' },
     { code: 'EN', title: 'EN', body: 'b' },
     { code: 'IS', title: 'IS', body: 'b' },
     { code: 'IN', title: 'IN', body: 'b' },
-    { code: 'ES-IN', title: 'pair', body: 'b', pair: ['ei', 'sn'] },
   ],
   fallbackResultCode: 'ES',
 }
@@ -114,5 +114,58 @@ describe('resolvePair', () => {
     expect(out.axisB).toBe('IN')
     expect(out.resultCode).toBe('ES-IN')
     expect(out.combined).toEqual({ ei: 0, sn: 0 })
+  })
+
+  it('matches pair rules via tuple comparison, not code string pattern', () => {
+    // Rule with code that doesn't follow axisA-axisB naming convention
+    const cfgCustomName: QuizConfig = {
+      ...cfg,
+      results: [
+        { code: 'balanced_pair', title: 'pair', body: 'b', pair: ['ES', 'IN'] },
+        { code: 'ES', title: 'ES', body: 'b' },
+        { code: 'EN', title: 'EN', body: 'b' },
+        { code: 'IS', title: 'IS', body: 'b' },
+        { code: 'IN', title: 'IN', body: 'b' },
+      ],
+    }
+    const answersA = [
+      { questionId: 'q1', optionId: 'q1_a' },
+      { questionId: 'q2', optionId: 'q2_b' },
+      { questionId: 'q3', optionId: 'q3_a' },
+    ]
+    const answersB = [
+      { questionId: 'q1', optionId: 'q1_b' },
+      { questionId: 'q2', optionId: 'q2_a' },
+      { questionId: 'q3', optionId: 'q3_b' },
+    ]
+    const out = resolvePair(cfgCustomName, answersA, answersB)
+    expect(out.resultCode).toBe('balanced_pair')
+    expect(out.usedFallback).toBe(false)
+  })
+
+  it('catch-all rules (no pair field) match unconditionally, first one wins', () => {
+    // Catch-all rule listed first should win immediately, even if pair-specific rules exist after
+    const cfgCatchall: QuizConfig = {
+      ...cfg,
+      results: [
+        { code: 'CATCHALL', title: 'catch', body: 'b' }, // No pair field: catch-all
+        { code: 'ES', title: 'ES', body: 'b' },
+        { code: 'specific_pair', title: 'pair', body: 'b', pair: ['ES', 'IN'] },
+      ],
+    }
+    const answersA = [
+      { questionId: 'q1', optionId: 'q1_a' },
+      { questionId: 'q2', optionId: 'q2_b' },
+      { questionId: 'q3', optionId: 'q3_a' },
+    ]
+    const answersB = [
+      { questionId: 'q1', optionId: 'q1_b' },
+      { questionId: 'q2', optionId: 'q2_a' },
+      { questionId: 'q3', optionId: 'q3_b' },
+    ]
+    const out = resolvePair(cfgCatchall, answersA, answersB)
+    // Catch-all should win, not the pair-specific rule
+    expect(out.resultCode).toBe('CATCHALL')
+    expect(out.usedFallback).toBe(false)
   })
 })

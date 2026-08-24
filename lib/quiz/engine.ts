@@ -59,9 +59,14 @@ function matchPair(
   cfg: QuizConfig, axisA: string, axisB: string,
 ): { resultCode: string; usedFallback: boolean } {
   for (const rule of cfg.results) {
-    if (!rule.pair) continue // skip non-pair rules, they're for solo mode
-    // Match when the result code matches the pattern "AXISA-AXISB" (order-independent)
-    const matches = rule.code === `${axisA}-${axisB}` || rule.code === `${axisB}-${axisA}`
+    if (!rule.pair) {
+      // Catch-all: no pair field means matches unconditionally, first one wins
+      return { resultCode: rule.code, usedFallback: false }
+    }
+    // Compare rule.pair (type-code pair) against [axisA, axisB] case-insensitively, unordered
+    const [x, y] = rule.pair
+    const matches = (x.toUpperCase() === axisA.toUpperCase() && y.toUpperCase() === axisB.toUpperCase()) ||
+                   (x.toUpperCase() === axisB.toUpperCase() && y.toUpperCase() === axisA.toUpperCase())
     if (matches) return { resultCode: rule.code, usedFallback: false }
   }
   return { resultCode: cfg.fallbackResultCode, usedFallback: true }
