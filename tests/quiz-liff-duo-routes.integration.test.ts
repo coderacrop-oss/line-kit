@@ -164,7 +164,12 @@ describe('duo flow end to end', () => {
     expect(body.axisBuddy).toBe('ei')
   })
 
-  it('A can see the completed pair via GET my-pairs', async () => {
+  /**
+   * Finding 7 ของรีวิวรอบสุดท้าย · ก่อนแก้ my-pairs คืนแค่ resultCode/title/asA/
+   * createdAt (ตามข้อความ plan Task 8 ตรงตัว) — A ไม่มีทางเห็น body/imageUrl/axis
+   * เหมือนที่ B เห็นจาก POST .../duo/match เลย ทั้งที่เป็นผลลัพธ์คู่เดียวกัน
+   */
+  it('A can see the completed pair via GET my-pairs, with the same body/imageUrl/axis B already saw', async () => {
     const request = new Request('https://example.com', { headers: authHeaders(lineUidA) })
     const response = await getMyPairs(request, { params: Promise.resolve({ liffId, activityCode }) })
     expect(response.status).toBe(200)
@@ -172,7 +177,13 @@ describe('duo flow end to end', () => {
     expect(body.pairs).toHaveLength(1)
     expect(body.pairs[0].resultCode).toBe('DUO')
     expect(body.pairs[0].title).toBe('คู่หูควิซ')
+    expect(body.pairs[0].body).toBe('บอดี้คู่ DUO')
+    expect(body.pairs[0].imageUrl).toBe('https://example.com/duo.png')
     expect(body.pairs[0].asA).toBe(true)
+    // A's own strongest axis is 'ei' (answersA) · B's is 'sn' (answersB) — ทิศทาง
+    // ตรงข้ามกับ axisMe/axisBuddy ที่ B เห็นจาก /duo/match ('sn'/'ei') เพราะฉัน = A แล้ว
+    expect(body.pairs[0].axisMe).toBe('ei')
+    expect(body.pairs[0].axisBuddy).toBe('sn')
     expect(typeof body.pairs[0].createdAt).toBe('string')
   })
 

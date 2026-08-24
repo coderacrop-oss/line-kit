@@ -3,7 +3,11 @@ import { z } from 'zod'
 export const QuizAxis = z.object({
   id: z.string().min(1).max(30),
   label: z.string().min(1).max(24),
-  poles: z.tuple([z.string().max(24), z.string().max(24)]),
+  // ทั้งสองขั้วต้องไม่ว่าง (deviation จากข้อความ plan เดิมที่ไม่ได้ระบุ .min ไว้) —
+  // solo type-code (lib/quiz/engine.ts dominantAxis) เอาตัวอักษรตัวแรกของขั้วที่เลือก
+  // มาต่อกันเป็นรหัส ขั้วว่างจะได้ตัวอักษรว่าง/ผิดรูปที่แทบไม่มีวันตรงกับ results[].code
+  // ไหนเลย ผู้เล่นจะได้ fallbackResultCode เงียบๆ ทุกครั้งโดยไม่มี error ที่ไหนฟ้อง
+  poles: z.tuple([z.string().min(1).max(24), z.string().min(1).max(24)]),
 })
 export type QuizAxis = z.infer<typeof QuizAxis>
 

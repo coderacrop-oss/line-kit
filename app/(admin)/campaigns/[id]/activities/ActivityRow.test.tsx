@@ -60,6 +60,21 @@ describe('แถวหนึ่งของกิจกรรม · โครง
     expect(setup?.getAttribute('href')).toBe('/campaigns/c1/activities/act-1/quiz')
   })
 
+  /**
+   * resolveMethodName(null) ไม่ใช่ key จริงของ RESOLVE_METHOD_NAME จึงคืน undefined —
+   * ก่อนแก้ แถวควิซทุกแถวขึ้นป้ายที่สองเป็น <span></span> ว่างเปล่าถัดจากป้าย
+   * "ควิซบุคลิกภาพ" (Minor finding ของรีวิวรอบสุดท้าย)
+   */
+  it('กิจกรรมควิซไม่ติดป้ายวิธีตัดสินผลที่ว่างเปล่า', () => {
+    const { container } = draw({
+      input_type: 'personality_quiz',
+      resolve_method: null as unknown as Row['resolve_method'],
+    })
+    const emptyBadges = Array.from(container.querySelectorAll('span'))
+      .filter((el) => el.textContent === '' && el.children.length === 0)
+    expect(emptyBadges).toHaveLength(0)
+  })
+
   it('แสดงรหัสกิจกรรมไว้ข้างชื่อ · เป็นสิ่งที่ปุ่มบนการ์ดอ้างถึง', () => {
     draw()
     expect(screen.getByText('draw')).toBeDefined()

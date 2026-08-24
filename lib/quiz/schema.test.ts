@@ -136,4 +136,26 @@ describe('QuizConfig', () => {
     const cfg = { ...validConfig, mode: 'duo' as const }
     expect(QuizConfig.safeParse(cfg).success).toBe(true)
   })
+
+  /**
+   * ขั้วว่างผ่าน validation เดิมได้ (schema เก่าไม่มี .min บนสมาชิกของ tuple) แล้วไป
+   * พังเงียบๆ ตอนเล่นจริง — dominantAxis เอาตัวอักษรตัวแรกของขั้วที่เลือกมาต่อกัน
+   * ขั้วว่างจึงทำให้ type code ผิดรูป แทบไม่มีวันตรงกับ results[].code ไหนเลย
+   * ผู้เล่นได้ fallbackResultCode ทุกครั้งโดยไม่มี error ที่ไหนบอก
+   */
+  it('rejects an axis whose pole label is blank', () => {
+    const cfg = {
+      ...validConfig,
+      axes: [{ ...validConfig.axes[0], poles: ['', 'Introvert'] as [string, string] }, validConfig.axes[1]],
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects an axis whose second pole label is blank', () => {
+    const cfg = {
+      ...validConfig,
+      axes: [validConfig.axes[0], { ...validConfig.axes[1], poles: ['Sensing', ''] as [string, string] }],
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
 })

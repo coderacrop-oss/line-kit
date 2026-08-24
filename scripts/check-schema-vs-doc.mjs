@@ -75,6 +75,13 @@ const LOCAL_TABLES = {
   // LIFF Platform · เก็บ session/state ต่อ participant (+ external_key ที่ query ข้าม participant ได้)
   // schema จริงอยู่ที่ docs/superpowers/specs/2026-08-21-liff-platform-design.md §4
   liff_session: 'LIFF Platform — per-participant session/state storage, keyed by external_key',
+  // Native Quiz Engine · คำตอบถาวรของผู้เล่นต่อคำถามหนึ่งข้อ (upsert ตอบซ้ำได้) — คนละ
+  // แนวคิดกับ activity.input_config (นั่นคือ config ของแอดมิน นี่คือคำตอบของผู้เล่น)
+  // schema จริงอยู่ที่ docs/superpowers/specs/2026-08-24-native-quiz-engine-design.md §3.2
+  quiz_answer: 'Native Quiz Engine — per-participant per-question answers (upsert, no versioning)',
+  // Native Quiz Engine · คู่ duo ที่จับคู่สำเร็จแล้ว พร้อมคะแนน/ผลลัพธ์ที่แช่แข็งไว้ตอน
+  // จับคู่ (scores เก็บ {a, b, combined}) — schema จริงอยู่ที่เอกสารเดียวกับ quiz_answer §3.2
+  quiz_pair: 'Native Quiz Engine — matched duo pairs with frozen scores/result_code',
 }
 
 async function readLiveSchema(sql) {

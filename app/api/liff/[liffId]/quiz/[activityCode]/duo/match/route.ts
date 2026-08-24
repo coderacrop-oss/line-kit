@@ -19,7 +19,7 @@ export async function POST(
     return Response.json({ error: 'อ่าน request body ไม่ได้ — ต้องเป็น JSON' }, { status: 400, headers: LIFF_CORS_HEADERS })
   }
 
-  const auth = await resolveLiffParticipant(sql, liffId, request, {})
+  const auth = await resolveLiffParticipant(sql, liffId, request)
   if (!auth.ok) {
     return Response.json({ error: auth.reason }, { status: auth.status, headers: LIFF_CORS_HEADERS })
   }
@@ -38,6 +38,9 @@ export async function POST(
   }
 
   const answers = body.answers ?? []
+  if (!Array.isArray(answers)) {
+    return Response.json({ error: 'answers ต้องเป็น array' }, { status: 422, headers: LIFF_CORS_HEADERS })
+  }
   const validationError = validateAnswers(activity.config, answers)
   if (validationError) {
     return Response.json({ error: validationError }, { status: 422, headers: LIFF_CORS_HEADERS })
@@ -62,9 +65,18 @@ export async function POST(
       axisMe, axisBuddy,
     }, { headers: LIFF_CORS_HEADERS })
   } catch (err) {
-    const message = err instanceof Error ? err.message : 'จับคู่ไม่สำเร็จ'
-    const status = message === 'ยังไม่มีคำตอบของผู้ชวน' ? 404 : 400
-    return Response.json({ error: message }, { status, headers: LIFF_CORS_HEADERS })
+    const message = err instanceof Error ? err.message : ''
+    // เช็คทีละข้อความที่รู้จักจริง (matchQuizPair โยนแค่สองแบบนี้) แทนการเชื่อ err.message
+    // ทุกกรณี — ก่อนแก้ ข้อความดิบของ Postgres (เช่น inviterParticipantId ที่ไม่ใช่ UUID
+    // จริง "invalid input syntax for type uuid") หรือ DB ล่ม จะหลุดออกไปเป็น 400 ให้ผู้ใช้
+    // เห็นตรงๆ ทั้งที่ไม่ใช่ความผิดของคำขอเลย (Minor finding ของรีวิวรอบสุดท้าย)
+    if (message === 'ยังไม่มีคำตอบของผู้ชวน') {
+      return Response.json({ error: message }, { status: 404, headers: LIFF_CORS_HEADERS })
+    }
+    if (message === 'จับคู่กับตัวเองไม่ได้') {
+      return Response.json({ error: message }, { status: 400, headers: LIFF_CORS_HEADERS })
+    }
+    return Response.json({ error: 'จับคู่ไม่สำเร็จ' }, { status: 500, headers: LIFF_CORS_HEADERS })
   }
 }
 

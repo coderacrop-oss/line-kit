@@ -18,7 +18,7 @@ export async function POST(
     return Response.json({ error: 'อ่าน request body ไม่ได้ — ต้องเป็น JSON' }, { status: 400, headers: LIFF_CORS_HEADERS })
   }
 
-  const auth = await resolveLiffParticipant(sql, liffId, request, {})
+  const auth = await resolveLiffParticipant(sql, liffId, request)
   if (!auth.ok) {
     return Response.json({ error: auth.reason }, { status: auth.status, headers: LIFF_CORS_HEADERS })
   }
@@ -32,6 +32,9 @@ export async function POST(
   }
 
   const answers = body.answers ?? []
+  if (!Array.isArray(answers)) {
+    return Response.json({ error: 'answers ต้องเป็น array' }, { status: 422, headers: LIFF_CORS_HEADERS })
+  }
   const validationError = validateAnswers(activity.config, answers)
   if (validationError) {
     return Response.json({ error: validationError }, { status: 422, headers: LIFF_CORS_HEADERS })
