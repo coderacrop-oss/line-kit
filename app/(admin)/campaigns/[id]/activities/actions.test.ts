@@ -384,6 +384,54 @@ describe('createActivity', () => {
   })
 })
 
+/**
+ * personality_quiz ไม่มี resolve_method เลย (Task 10) — 0014_quiz_engine.sql บังคับด้วย
+ * CHECK ว่าคอลัมน์นี้เป็น NULL ได้ก็ต่อเมื่อ input_type เป็นชนิดนี้เท่านั้น ฟอร์มสร้างจึง
+ * ถามโหมด (เดี่ยว/คู่) แทนทั้งช่องแกน 2 ไม่ใช่แค่ปิดตัวเลือกบางอันแบบ BR-36 ทำกับสี่ชนิดเดิม
+ */
+describe('createActivity · personality_quiz ไม่มี resolve_method (Task 10)', () => {
+  beforeEach(() => signedInAs('configurator'))
+
+  const quizForm = (patch: Record<string, string> = {}) =>
+    createForm({ input_type: 'personality_quiz', quiz_mode: 'solo', ...patch })
+
+  it('สร้างได้โดยไม่ต้องมี resolve_method ที่ใช้งานได้ในฟอร์ม และ resolve_method ถูกเขียนเป็น NULL', async () => {
+    await createActivity('camp-1', quizForm({ resolve_method: '' }))
+    const [insert] = writesTo(/INSERT INTO activity/)
+    expect(insert.values[4]).toBeNull()
+    expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new')
+  })
+
+  it('เก็บโหมดที่เลือกไว้ใน input_config — ยังไม่แตะ axes/questions/results (Task 11 กรอกทีหลัง)', async () => {
+    await createActivity('camp-1', quizForm({ quiz_mode: 'duo' }))
+    const [insert] = writesTo(/INSERT INTO activity/)
+    expect(insert.values[5]).toEqual({ mode: 'duo' })
+  })
+
+  it('โหมดที่ไม่ใช่ solo/duo ถูกปฏิเสธก่อนถึงฐานข้อมูล', async () => {
+    await expect(createActivity('camp-1', quizForm({ quiz_mode: 'ทั้งคู่' })))
+      .rejects.toThrow('โหมด')
+    expect(state.writes).toEqual([])
+  })
+
+  it('ไม่เลือกโหมดเลย ถูกปฏิเสธ', async () => {
+    await expect(createActivity('camp-1', quizForm({ quiz_mode: '' })))
+      .rejects.toThrow('โหมด')
+    expect(state.writes).toEqual([])
+  })
+
+  /** BR-36 ตรวจเฉพาะคู่ที่มี resolve_method จริง — ควิซบุคลิกภาพไม่มีให้ตรวจ */
+  it('ไม่มีการเรียก comboProblem/BR-36 กับควิซบุคลิกภาพ — สร้างผ่านแม้ resolve_method หายไปทั้งช่อง', async () => {
+    const form = new FormData()
+    form.append('name', 'ควิซนิสัยการช้อป')
+    form.append('input_type', 'personality_quiz')
+    form.append('quiz_mode', 'solo')
+    // ไม่มี resolve_method อยู่ใน FormData เลย ต่างจาก quizForm() ที่ยังส่งมาเฉยๆ
+    await createActivity('camp-1', form)
+    expect(writesTo(/INSERT INTO activity/)).toHaveLength(1)
+  })
+})
+
 describe('saveActivity · ตัวตนและสองแกน', () => {
   beforeEach(() => signedInAs('configurator'))
 

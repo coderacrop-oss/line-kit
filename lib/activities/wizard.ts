@@ -14,8 +14,17 @@
  * guarantee.
  */
 
-/** ตรงกับ CHECK (input_type IN (…)) ใน 0001_init.sql */
-export const INPUT_TYPES = ['none', 'pick_one', 'quiz', 'text'] as const
+/**
+ * ตรงกับ CHECK (input_type IN (…)) ใน 0001_init.sql + 0014_quiz_engine.sql
+ *
+ * personality_quiz เข้ามาใน CHECK จาก 0014_quiz_engine.sql (Task 1) พร้อมกับกฎที่
+ * บังคับว่า resolve_method ต้องเป็น NULL เฉพาะชนิดนี้เท่านั้น — ไม่ใช่แค่ "ผสมกับ
+ * resolve_method บางอันไม่ได้" แบบที่ comboProblem() ด้านล่างปฏิเสธสี่ชนิดที่เหลือ
+ * แต่คือไม่มี resolve_method ให้ผสมด้วยเลยสักตัว ด้วยเหตุนี้ personality_quiz จึง
+ * ไม่ปรากฏใน BY_INPUT/comboProblem ด้านล่าง — จอที่เรียก fieldsFor()/isComboAllowed()
+ * ต้องกันมันออกไปเองก่อนเรียก (ดู CreateActivityAxes.tsx)
+ */
+export const INPUT_TYPES = ['none', 'pick_one', 'quiz', 'text', 'personality_quiz'] as const
 export type InputType = (typeof INPUT_TYPES)[number]
 
 /**
@@ -34,6 +43,7 @@ const INPUT_TYPE_NAME: Record<InputType, string> = {
   pick_one: 'ให้เลือกจากตาราง',
   quiz: 'ตอบคำถาม',
   text: 'พิมพ์ข้อความ',
+  personality_quiz: 'ควิซบุคลิกภาพ',
 }
 
 const RESOLVE_METHOD_NAME: Record<ResolveMethod, string> = {
@@ -116,8 +126,14 @@ const OUTCOMES: WizardField = {
   store: 'resolve_config',
 }
 
-/** ช่องที่มาจากแกน 1 · ชนิดอินพุตบอกว่าต้องถามอะไรเกี่ยวกับสิ่งที่ผู้เล่นส่งเข้ามา */
-const BY_INPUT: Record<InputType, WizardField[]> = {
+/**
+ * ช่องที่มาจากแกน 1 · ชนิดอินพุตบอกว่าต้องถามอะไรเกี่ยวกับสิ่งที่ผู้เล่นส่งเข้ามา
+ *
+ * personality_quiz ไม่มีแถวในนี้โดยตั้งใจ — คีย์ครบแค่สี่ชนิดที่มี resolve_method จริง
+ * เพิ่ม 'personality_quiz: []' เข้ามาจะดูเหมือนบอกว่ามันก็เป็นอีกคู่หนึ่งของแกน 1 กับ
+ * แกน 2 เหมือนสี่ชนิดแรก ทั้งที่มันไม่มีแกน 2 ให้ผสมด้วยเลย
+ */
+const BY_INPUT: Record<Exclude<InputType, 'personality_quiz'>, WizardField[]> = {
   none: [],
   pick_one: [
     {
@@ -228,7 +244,11 @@ const BY_RESOLVE: Record<ResolveMethod, WizardField[]> = {
  * wrong or to change it back.
  */
 export function fieldsFor(input: InputType, resolve: ResolveMethod): WizardField[] {
-  return [ENTRY_RULES, ...BY_INPUT[input], ...BY_RESOLVE[resolve], OUTCOMES]
+  // personality_quiz ไม่ควรเดินมาถึงฟังก์ชันนี้เลย (หน้าจอกันไว้ก่อนเรียกแล้ว — ดูคอมเมนต์
+  // ของ BY_INPUT ด้านบน) เงื่อนไขนี้จึงมีไว้กันพังทางชนิดข้อมูลของ BY_INPUT[input] เท่านั้น
+  // ไม่ใช่นิยามว่าเมื่อเรียกจริงแล้วจะได้ฟอร์มแบบไหน
+  const byInput = input === 'personality_quiz' ? [] : BY_INPUT[input]
+  return [ENTRY_RULES, ...byInput, ...BY_RESOLVE[resolve], OUTCOMES]
 }
 
 /**

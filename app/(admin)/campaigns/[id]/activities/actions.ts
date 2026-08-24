@@ -9,7 +9,7 @@ import {
   asEntryRuleType, followHolder,
 } from '@/lib/db/activities'
 import {
-  asInputType, asResolveMethod, comboProblem, inputConfigFields,
+  asInputType, asResolveMethod, comboProblem, inputConfigFields, type ResolveMethod,
 } from '@/lib/activities/wizard'
 
 /** รหัสกิจกรรมเดินทางอยู่ในปุ่มที่ส่งออกไปแล้ว · รูปเดียวกับที่ postback เข้ารหัส */
@@ -179,12 +179,33 @@ export async function createActivity(campaignId: string, formData: FormData): Pr
   const inputType = asInputType(trimmed(formData, 'input_type'))
   if (!inputType) throw new Error('ต้องเลือกวิธีรับอินพุต')
 
-  const resolveMethod = asResolveMethod(trimmed(formData, 'resolve_method'))
-  if (!resolveMethod) throw new Error('ต้องเลือกวิธีตัดสินผล')
+  /**
+   * ควิซบุคลิกภาพไม่มี resolve_method เลย · แกน 2 ทั้งแกนถูกแทนที่ด้วยโหมด
+   *
+   * 0014_quiz_engine.sql บังคับด้วย CHECK ว่า resolve_method เป็น NULL ได้ก็ต่อเมื่อ
+   * input_type เป็น personality_quiz เท่านั้น — ไม่ใช่แค่ "ผสมกับบางวิธีไม่ได้" แบบที่
+   * comboProblem() ปฏิเสธบางคู่ของสี่ชนิดที่เหลือ แต่คือไม่มีวิธีตัดสินผลให้ผสมด้วยเลย
+   * สักตัว จึงข้ามทั้ง asResolveMethod() และ comboProblem() ไปเลยสำหรับชนิดนี้ (เข้าคู่กับ
+   * lib/activities/wizard.ts ที่ตั้งใจไม่รู้จักควิซบุคลิกภาพในแง่นี้เหมือนกัน) แล้วอ่านโหมด
+   * แทน — axes/questions/results ค่อยกรอกที่จอตั้งค่าควิซของ Task 11 ทีหลัง
+   */
+  let resolveMethod: ResolveMethod | null = null
+  let inputConfig: Record<string, unknown> = {}
 
-  // BR-36 · คู่ที่ผสมกันไม่ได้ ถูกปฏิเสธตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่งขึ้น
-  const combo = comboProblem(inputType, resolveMethod)
-  if (combo) throw new Error(combo)
+  if (inputType === 'personality_quiz') {
+    const quizMode = trimmed(formData, 'quiz_mode')
+    if (quizMode !== 'solo' && quizMode !== 'duo') {
+      throw new Error('ต้องเลือกโหมดของควิซบุคลิกภาพ — เดี่ยวหรือคู่')
+    }
+    inputConfig = { mode: quizMode }
+  } else {
+    resolveMethod = asResolveMethod(trimmed(formData, 'resolve_method'))
+    if (!resolveMethod) throw new Error('ต้องเลือกวิธีตัดสินผล')
+
+    // BR-36 · คู่ที่ผสมกันไม่ได้ ถูกปฏิเสธตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่งขึ้น
+    const combo = comboProblem(inputType, resolveMethod)
+    if (combo) throw new Error(combo)
+  }
 
   const code = await slugifyActivityName(name)
   if (!CODE_PATTERN.test(code)) {
@@ -195,8 +216,9 @@ export async function createActivity(campaignId: string, formData: FormData): Pr
 
   const insertActivity = async (attemptCode: string) => {
     const [row] = await sql<{ id: string }[]>`
-      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, sort_order)
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config, sort_order)
       VALUES (${campaignId}, ${attemptCode}, ${name}, ${inputType}, ${resolveMethod},
+              ${sql.json(inputConfig as never)},
               coalesce((SELECT max(sort_order) + 1 FROM activity
                          WHERE campaign_id = ${campaignId}), 0))
       RETURNING id`

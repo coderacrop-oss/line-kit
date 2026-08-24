@@ -2,13 +2,11 @@ import { notFound, redirect } from 'next/navigation'
 import type { CSSProperties } from 'react'
 import { Badge, Button, Empty, Field, Panel, PageHead, Rows } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
-import {
-  INPUT_TYPES, RESOLVE_METHODS, inputTypeName, isComboAllowed, resolveMethodName,
-} from '@/lib/activities/wizard'
 import { listActivities } from '@/lib/db/activities'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
 import { ActivityRow } from './ActivityRow'
+import { CreateActivityAxes } from './CreateActivityAxes'
 import { createActivity } from './actions'
 
 const summaryStyle: CSSProperties = {
@@ -60,38 +58,15 @@ export default async function ActivitiesPage({ params }: { params: Promise<{ id:
                   <input name="name" required maxLength={100} placeholder="เช่น สุ่มรางวัลประจำวัน" />
                 </Field>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
-                  <Field label="แกน 1 · รับอินพุตยังไง">
-                    <select name="input_type" defaultValue="none">
-                      {INPUT_TYPES.map((type) => (
-                        <option key={type} value={type}>{inputTypeName(type)}</option>
-                      ))}
-                    </select>
-                  </Field>
-
-                  <Field
-                    label="แกน 2 · ตัดสินผลยังไง"
-                    hint="ตัวเลือกที่ผสมกันไม่ได้จะกดไม่ได้ (BR-36)"
-                  >
-                    <select name="resolve_method" defaultValue="weighted">
-                      {RESOLVE_METHODS.map((method) => (
-                        <option
-                          key={method}
-                          value={method}
-                          disabled={!isComboAllowed('none', method)}
-                        >
-                          {resolveMethodName(method)}
-                        </option>
-                      ))}
-                    </select>
-                  </Field>
-                </div>
+                <CreateActivityAxes />
 
                 {/* ฟอร์มสร้างถามแค่ตัวตนกับสองแกน · ช่องที่เหลือขึ้นกับคู่แกนที่เลือก
                     และ fieldsFor() เป็นคนบอกว่าคู่นั้นถามอะไร (BR-87) จอถัดไปจึงเป็น
-                    ที่ที่ถามมัน ไม่ใช่ที่นี่ · ตัวเลือกที่ปิดไว้ตรงนี้อิงชนิดอินพุตค่าเริ่มต้น
-                    เพราะจอนี้ไม่มีสถานะฝั่งเบราว์เซอร์ที่จะตามช่องแรกทัน — คู่ที่ผสมกันไม่ได้
-                    ถูกปฏิเสธอีกครั้งใน createActivity() ซึ่งเป็นด่านจริง */}
+                    ที่ที่ถามมัน ไม่ใช่ที่นี่ · ตัวเลือกแกน 2 ที่ปิดไว้ตามชนิดอินพุตที่เลือกสด
+                    มาจาก state ของ CreateActivityAxes (client component) — คู่ที่ผสมกันไม่ได้
+                    ถูกปฏิเสธอีกครั้งใน createActivity() ซึ่งเป็นด่านจริง · ควิซบุคลิกภาพ
+                    (personality_quiz) ไม่มี resolve_method เลย จึงสลับไปถามโหมด (เดี่ยว/คู่)
+                    แทนทั้งช่อง ไม่ใช่แค่ปิดตัวเลือกในช่องเดิม */}
                 <span style={noteStyle}>
                   ช่องที่เหลือถามที่หน้าตั้งค่า เพราะแต่ละคู่แกนถามคนละชุดกัน —
                   ฟอร์มสร้างจากนิยามชนิด ไม่ได้เขียนแยกไว้ทีละกิจกรรม (BR-87)
