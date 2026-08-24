@@ -44,6 +44,22 @@ describe('แถวหนึ่งของกิจกรรม · โครง
       .toBe('/campaigns/c1/activities/act-1')
   })
 
+  /**
+   * ควิซบุคลิกภาพไม่มีจอ M7-S02 ให้ตั้งค่า (resolve_method เป็น NULL ทำให้จอนั้น
+   * throw — ดูคอมเมนต์ของ fieldsForActivity ใน lib/db/activities.ts) ทั้งชื่อและ
+   * ปุ่ม "ตั้งค่า →" ต้องพาไปจอควิซของ Task 11 แทน ไม่ใช่จอเดิม
+   */
+  it('กิจกรรมควิซบุคลิกภาพพาไปจอควิซของ Task 11 ไม่ใช่จอ M7-S02 เดิม', () => {
+    const { container } = draw({
+      input_type: 'personality_quiz',
+      resolve_method: null as unknown as Row['resolve_method'],
+    })
+    expect(screen.getByRole('link', { name: 'สุ่มรางวัล' }).getAttribute('href'))
+      .toBe('/campaigns/c1/activities/act-1/quiz')
+    const setup = within(container).getByText('ตั้งค่า →').closest('a')
+    expect(setup?.getAttribute('href')).toBe('/campaigns/c1/activities/act-1/quiz')
+  })
+
   it('แสดงรหัสกิจกรรมไว้ข้างชื่อ · เป็นสิ่งที่ปุ่มบนการ์ดอ้างถึง', () => {
     draw()
     expect(screen.getByText('draw')).toBeDefined()

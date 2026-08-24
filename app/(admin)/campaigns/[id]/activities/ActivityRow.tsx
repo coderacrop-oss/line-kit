@@ -50,7 +50,12 @@ export function ActivityRow({ campaignId, activity, canEdit }: {
   activity: ActivityView
   canEdit: boolean
 }) {
-  const setupHref = `/campaigns/${campaignId}/activities/${activity.id}`
+  // ควิซบุคลิกภาพไม่มีจอ M7-S02 ให้ตั้งค่า (resolve_method เป็น NULL ทำให้จอนั้น throw
+  // — ดูคอมเมนต์ของ fieldsForActivity ใน lib/db/activities.ts) จึงพาไปจอควิซของ
+  // Task 11 แทนทั้งชื่อและปุ่ม "ตั้งค่า →"
+  const setupHref = activity.inputType === 'personality_quiz'
+    ? `/campaigns/${campaignId}/activities/${activity.id}/quiz`
+    : `/campaigns/${campaignId}/activities/${activity.id}`
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>

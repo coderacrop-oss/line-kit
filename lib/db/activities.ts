@@ -343,9 +343,24 @@ export function summarizeActivity(row: ActivityRow): ActivityView {
   }
 }
 
-/** ช่องที่ฟอร์มของกิจกรรมนี้ต้องถาม · lookup ยังไม่มีฟอร์มของตัวเองในรอบนี้ */
-export const fieldsForActivity = (view: ActivityView) =>
-  view.resolveMethod === 'lookup' ? [] : fieldsFor(view.inputType, view.resolveMethod)
+/**
+ * ช่องที่ฟอร์มของกิจกรรมนี้ต้องถาม · lookup ยังไม่มีฟอร์มของตัวเองในรอบนี้
+ *
+ * personality_quiz มี resolve_method เป็น NULL จริงในฐานข้อมูล (CHECK ของ
+ * 0014_quiz_engine.sql บังคับไว้) แม้ type ของ resolveMethod ในไฟล์นี้จะประกาศว่า
+ * ไม่มี null ก็ตาม (ประกาศไว้แบบนั้นมาตั้งแต่ก่อน personality_quiz จะมีอยู่) —
+ * cast ตรงนี้เพื่อเช็ค runtime ตามความจริงของคอลัมน์ ไม่ใช่ตามชนิดที่ประกาศไว้ ก่อน
+ * ส่งต่อให้ fieldsFor() ซึ่งจะ throw TypeError ถ้า resolve เป็น null
+ * (BY_RESOLVE[null] เป็น undefined แล้ว spread ...undefined ก็ throw ทันที — พิสูจน์
+ * จริงแล้วว่า M7-S02 พังทั้งจอถ้าใครกดตรงเข้ามาที่กิจกรรมชนิดนี้) จอ M7-S02 ไม่ควร
+ * มาถึงฟังก์ชันนี้เลยสำหรับ personality_quiz (ActivityRow.tsx และ actions.ts เปลี่ยน
+ * ทางไปจอควิซแทนแล้ว) แต่การกันไว้ที่นี่ทำให้ URL ตรงเข้ามาก็ไม่พังเหมือนกัน
+ */
+export const fieldsForActivity = (view: ActivityView) => {
+  const resolveMethod = view.resolveMethod as ResolveMethod | 'lookup' | null
+  if (resolveMethod === null || resolveMethod === 'lookup') return []
+  return fieldsFor(view.inputType, resolveMethod)
+}
 
 /**
  * ประโยคเดียวที่บอกว่าตอนนี้กิจกรรมนี้ทำอะไรอยู่ · กล่อง "สรุปการตั้งค่าปัจจุบัน" ของต้นแบบ

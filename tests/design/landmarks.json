@@ -728,6 +728,20 @@
         "ผลที่ตามมา": "แถวป้ายผลที่ตามมา *ต่อผลลัพธ์หนึ่งแถว* ของต้นแบบ · planEffects() อ่าน effects ของ*กิจกรรม* ไม่ใช่ของผลลัพธ์ และ grant_reward ที่ไม่ระบุรางวัลจะรับรางวัลของผลลัพธ์ที่ออกมาเอง · จอจริงจึงถามครั้งเดียวต่อกิจกรรม (ช่อง \"ค่าสะสมที่กิจกรรมนี้บวกให้เมื่อเล่นจบ\" ซึ่งบังคับไว้แล้ว) และผูกรางวัลไว้ที่แถวผลลัพธ์แล้วให้ saveOutcome เติม grant_reward ให้กิจกรรมเอง ซึ่งมีเทสต์ทั้งตอนเพิ่มและตอนถอด · คำว่า \"ผลที่ตามมา\" ลอยๆ ยังไปชนกับป้ายเดียวกันที่จอ M7-S03 ด้วย"
       }
     },
+    "M7-S05": {
+      "label": "M7-S05 เนื้อหาควิซบุคลิกภาพ (axes/questions/results/mode)",
+      "source": "app/(admin)/campaigns/[id]/activities/[activityId]/quiz/page.tsx",
+      "origin": "local",
+      "originNote": "ต้นแบบไม่มีจอนี้เลย — personality_quiz เป็นชนิดกิจกรรมใหม่ที่เพิ่มเข้ามาทั้งชุด (0014_quiz_engine.sql, Task 1-11) ไม่ได้อยู่ใน 22 จอเดิมของต้นแบบสักจอ M7-S02 ปฏิเสธชนิดนี้โดยตั้งใจ (resolve_method เป็น NULL เสมอ ไม่มีคู่แกนให้ fieldsFor() ประกอบฟอร์มให้) จอนี้จึงแยกออกมาต่างหาก ยึดธรรมเนียมหัวจอ/ลิงก์กลับ/ป้ายดูอย่างเดียวของ M7-S02 เอง",
+      "landmarks": [
+        "code=\"Task 11 · Quiz content\"",
+        "← กิจกรรมทั้งหมด",
+        "row.input_type !== 'personality_quiz'",
+        "ไม่มีการบันทึกอัตโนมัติ",
+        "<QuizConfigForm activityId={row.id} initial={draft} canEdit={canEdit} />"
+      ],
+      "rejected": {}
+    },
     "M1-S03": {
       "label": "M1-S03 ก๊อปแคมเปญ",
       "source": "app/(admin)/campaigns/duplicate/page.tsx",

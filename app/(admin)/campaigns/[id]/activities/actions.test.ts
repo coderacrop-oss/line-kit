@@ -395,11 +395,17 @@ describe('createActivity · personality_quiz ไม่มี resolve_method (Tas
   const quizForm = (patch: Record<string, string> = {}) =>
     createForm({ input_type: 'personality_quiz', quiz_mode: 'solo', ...patch })
 
-  it('สร้างได้โดยไม่ต้องมี resolve_method ที่ใช้งานได้ในฟอร์ม และ resolve_method ถูกเขียนเป็น NULL', async () => {
+  /**
+   * Task 11 · จอ M7-S02 เดิม (../[activityId]/page.tsx) throw TypeError ทันทีที่
+   * เจอ resolve_method เป็น NULL (BY_RESOLVE[null] เป็น undefined แล้ว spread ก็
+   * throw — พิสูจน์จริงตอนรีวิว Task 10) การ redirect ไปที่นั่นแบบเดิมจึงพากิจกรรม
+   * ควิซบุคลิกภาพทุกตัวไปหน้าที่พังทันทีที่โหลด ต้องพาไปจอควิซของ Task 11 แทน
+   */
+  it('สร้างได้โดยไม่ต้องมี resolve_method ที่ใช้งานได้ในฟอร์ม เขียนเป็น NULL และพาไปจอควิซของ Task 11', async () => {
     await createActivity('camp-1', quizForm({ resolve_method: '' }))
     const [insert] = writesTo(/INSERT INTO activity/)
     expect(insert.values[4]).toBeNull()
-    expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new')
+    expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new/quiz')
   })
 
   it('เก็บโหมดที่เลือกไว้ใน input_config — ยังไม่แตะ axes/questions/results (Task 11 กรอกทีหลัง)', async () => {

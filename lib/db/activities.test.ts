@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   ENTRY_RULE_CONTROLS, ENTRY_RULE_FIELDS, ENTRY_RULE_NAME, ENTRY_RULE_TYPES, type ActivityRow,
-  activityProblems, activitySummary, asEntryRuleType, comboName, conditionText, summarizeActivity,
+  activityProblems, activitySummary, asEntryRuleType, comboName, conditionText, fieldsForActivity,
+  summarizeActivity,
 } from './activities'
 
 const row = (patch: Partial<ActivityRow> = {}): ActivityRow => ({
@@ -323,6 +324,25 @@ describe('ประโยคสรุปเงื่อนไข', () => {
     expect(asEntryRuleType('limit')).toBe('limit')
     expect(asEntryRuleType('ของแปลก')).toBeNull()
     expect(asEntryRuleType(undefined)).toBeNull()
+  })
+})
+
+/**
+ * ควิซบุคลิกภาพ (personality_quiz) มี resolve_method เป็น NULL จริงในฐานข้อมูล
+ * (CHECK ของ 0014_quiz_engine.sql) — ก่อนแก้ fieldsForActivity() ส่ง null ต่อให้
+ * fieldsFor() ตรงๆ ซึ่ง BY_RESOLVE[null] เป็น undefined แล้ว spread ...undefined
+ * throw TypeError ทันที ทำให้จอ M7-S02 พังทั้งจอถ้าใครกด URL ตรงเข้ามาที่กิจกรรม
+ * ชนิดนี้ (พิสูจน์จริงระหว่างรีวิว Task 10 ไม่ใช่แค่สงสัย) — เทสต์นี้คือด่านกันไม่ให้
+ * ใครแก้กลับไปพังอีกทีในอนาคต
+ */
+describe('fieldsForActivity ไม่ระเบิดกับ personality_quiz', () => {
+  it('resolve_method เป็น null ไม่ทำให้ fieldsForActivity throw และคืนรายการว่าง', () => {
+    const view = summarizeActivity(row({
+      input_type: 'personality_quiz',
+      resolve_method: null as unknown as ActivityRow['resolve_method'],
+    }))
+    expect(() => fieldsForActivity(view)).not.toThrow()
+    expect(fieldsForActivity(view)).toEqual([])
   })
 })
 

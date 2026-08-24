@@ -242,7 +242,27 @@ export async function createActivity(campaignId: string, formData: FormData): Pr
   }
 
   touch(campaignId)
-  redirect(`/campaigns/${campaignId}/activities/${created}`)
+
+  /**
+   * ควิซบุคลิกภาพพาไปจอตั้งค่าควิซของ Task 11 ตรง ๆ ไม่ใช่จอ M7-S02 เดิม
+   *
+   * M7-S02 (ActivitySetup.tsx → fieldsForActivity → fieldsFor()) throw TypeError
+   * ทันทีที่เจอ resolve_method เป็น NULL — BY_RESOLVE[null] เป็น undefined แล้ว
+   * spread ...undefined ก็ throw โดยไม่มี error boundary ไหนรับไว้เลยในระบบนี้
+   * ก่อนหน้านี้ทุกกิจกรรม personality_quiz ที่สร้างเสร็จจะโดนพาไปหน้าที่พังทันที —
+   * ตอนนี้แก้แล้วด้วยการพาไปคนละจอ (fieldsForActivity เองก็กันไว้อีกชั้นแล้วเผื่อ
+   * ใครกด URL เก่าตรงเข้ามาเอง)
+   *
+   * if/else จริง ไม่ใช่สอง redirect() เรียงกัน — redirect() ของจริงโยน NEXT_REDIRECT
+   * ทันทีเพื่อตัดการทำงานที่เหลือ แต่ mock ของเทสต์ในระบบนี้ (ดู actions.test.ts)
+   * แค่จด path ไว้เฉยๆ ไม่โยน ถ้าเขียนเป็นสองบรรทัดเรียงกันแบบไม่มี else เทสต์จะเห็น
+   * redirect ตัวที่สองทับตัวแรกเงียบๆ ทั้งที่โปรดักชันจริงไม่มีวันไปถึงบรรทัดนั้น
+   */
+  if (inputType === 'personality_quiz') {
+    redirect(`/campaigns/${campaignId}/activities/${created}/quiz`)
+  } else {
+    redirect(`/campaigns/${campaignId}/activities/${created}`)
+  }
 }
 
 /**
