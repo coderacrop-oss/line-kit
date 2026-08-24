@@ -8,6 +8,7 @@ import type { PlayerState } from '../state'
 import type { LiveCampaign, PlayOutcome, Ports } from '../webhook/ports'
 import { buildRanked, playAndApply } from './apply'
 import { planEffects } from '../engine/effects'
+import { ensureParticipantByChannelId } from './participants'
 
 /**
  * Published config never changes (BR-05), so it is cached by config version id
@@ -226,14 +227,8 @@ export function makePorts(sql: Queryable, lineChannelIdOverride?: string): Ports
 
     async ensureParticipant(lineChannelId, lineUid) {
       const target = lineChannelIdOverride ?? lineChannelId
-      const [row] = await sql<{ id: string }[]>`
-        WITH ch AS (SELECT id FROM channel WHERE line_channel_id = ${target})
-        INSERT INTO participant (channel_id, line_uid)
-        SELECT ch.id, ${lineUid} FROM ch
-        ON CONFLICT (channel_id, line_uid)
-          DO UPDATE SET last_seen_at = now()
-        RETURNING id`
-      return row.id
+      const [ch] = await sql<{ id: string }[]>`SELECT id FROM channel WHERE line_channel_id = ${target}`
+      return ensureParticipantByChannelId(sql, ch.id, lineUid)
     },
 
     async loadPlayerState(participantId, campaignId) {

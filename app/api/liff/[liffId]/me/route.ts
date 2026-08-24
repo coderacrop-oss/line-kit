@@ -1,0 +1,20 @@
+import { db } from '@/lib/db/client'
+import { LIFF_CORS_HEADERS, liffOptionsResponse } from '@/lib/liff/cors'
+import { resolveLiffParticipant } from '@/lib/liff/auth'
+
+export async function GET(
+  request: Request, { params }: { params: Promise<{ liffId: string }> },
+): Promise<Response> {
+  const { liffId } = await params
+  // ผู้เรียกทาง API key (server-to-server) ต้องส่ง header X-Line-User-Id มาด้วย —
+  // GET ส่ง body ไม่ได้จริง จึงไม่มีทางอื่นให้ resolveLiffParticipant รู้ตัวตน (spec §5.2)
+  const auth = await resolveLiffParticipant(db(), liffId, request)
+  if (!auth.ok) {
+    return Response.json({ error: auth.reason }, { status: auth.status, headers: LIFF_CORS_HEADERS })
+  }
+  return Response.json({ participantId: auth.participantId }, { headers: LIFF_CORS_HEADERS })
+}
+
+export async function OPTIONS(): Promise<Response> {
+  return liffOptionsResponse()
+}
