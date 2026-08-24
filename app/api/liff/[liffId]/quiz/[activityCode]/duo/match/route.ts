@@ -3,7 +3,7 @@ import { db } from '@/lib/db/client'
 import { LIFF_CORS_HEADERS, liffOptionsResponse } from '@/lib/liff/cors'
 import { resolveLiffParticipant } from '@/lib/liff/auth'
 import { matchQuizPair } from '@/lib/db/quizPairs'
-import { dominantAxis, validateAnswers, type Answer } from '@/lib/quiz/engine'
+import { strongestAxis, validateAnswers, type Answer } from '@/lib/quiz/engine'
 import { loadQuizActivity } from '@/lib/quiz/loadActivity'
 
 export async function POST(
@@ -47,12 +47,15 @@ export async function POST(
     const pair = await matchQuizPair(sql, activity.config, activity.id, inviterParticipantId, auth.participantId, answers)
     const isCallerSideB = pair.participantB === auth.participantId
     // scores.a is always the inviter's own scores, scores.b is always the caller's (side B) —
-    // see lib/db/quizPairs.ts's matchQuizPair. dominantAxis() is a pure function (Task 3), cheap
-    // to recompute here rather than persisting the type-code strings redundantly on quiz_pair.
+    // see lib/db/quizPairs.ts's matchQuizPair. strongestAxis() is a pure function (Task 3), cheap
+    // to recompute here rather than persisting the axis-id strings redundantly on quiz_pair.
+    // Uses strongestAxis (not dominantAxis) so axisMe/axisBuddy are real axis ids, matching what
+    // quiz_pair.scores was actually matched on inside matchQuizPair — dominantAxis's multi-axis
+    // type-code strings aren't valid results[].pair values under schema.ts's validation.
     const myScores = isCallerSideB ? pair.scores.b : pair.scores.a
     const buddyScores = isCallerSideB ? pair.scores.a : pair.scores.b
-    const axisMe = dominantAxis(activity.config, myScores)
-    const axisBuddy = dominantAxis(activity.config, buddyScores)
+    const axisMe = strongestAxis(activity.config, myScores)
+    const axisBuddy = strongestAxis(activity.config, buddyScores)
     const rule = activity.config.results.find((r) => r.code === pair.resultCode)!
     return Response.json({
       resultCode: pair.resultCode, title: rule.title, body: rule.body, imageUrl: rule.imageUrl,

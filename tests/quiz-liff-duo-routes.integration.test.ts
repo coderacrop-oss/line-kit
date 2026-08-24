@@ -110,15 +110,20 @@ function authHeaders(lineUid: string, extra?: Record<string, string>): Record<st
   return { Authorization: `Bearer ${apiKey}`, 'X-Line-User-Id': lineUid, ...extra }
 }
 
-const answersAllA = [
+// เลือกคำตอบให้แกนที่ "เด่นที่สุด" (strongestAxis, engine.ts) ของ A กับ B เป็นคนละแกน
+// กันโดยตั้งใจ — A: ei=4, sn=-2 → strongest 'ei' · B: ei=-2, sn=4 → strongest 'sn' —
+// เพื่อให้ axisMe/axisBuddy ในผลลัพธ์ /duo/match แยกแยะได้จริงว่าใครเป็นใคร ไม่ใช่ค่า
+// เดียวกันโดยบังเอิญ (ถ้าตอบ "a" หรือ "b" ล้วนทั้งสามข้อ ei กับ sn จะเท่ากันเป๊ะ tiebreak
+// ไปทาง 'ei' เสมอทั้งสองฝั่ง ทำให้เทสต์แยกแยะไม่ออก)
+const answersA = [
   { questionId: 'q1', optionId: 'a' },
-  { questionId: 'q2', optionId: 'a' },
+  { questionId: 'q2', optionId: 'b' },
   { questionId: 'q3', optionId: 'a' },
 ]
-const answersAllB = [
+const answersB = [
   { questionId: 'q1', optionId: 'b' },
-  { questionId: 'q2', optionId: 'b' },
-  { questionId: 'q3', optionId: 'b' },
+  { questionId: 'q2', optionId: 'a' },
+  { questionId: 'q3', optionId: 'a' },
 ]
 
 const { POST: postAnswer } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/duo/answer/route')
@@ -131,7 +136,7 @@ describe('duo flow end to end', () => {
   it('A answers, gets a shareUrl containing their own participantId', async () => {
     const request = new Request('https://example.com', {
       method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ answers: answersAllA }),
+      body: JSON.stringify({ answers: answersA }),
     })
     const response = await postAnswer(request, { params: Promise.resolve({ liffId, activityCode }) })
     expect(response.status).toBe(200)
@@ -146,7 +151,7 @@ describe('duo flow end to end', () => {
   it('B matches against A\'s shareUrl and gets a combined result', async () => {
     const request = new Request('https://example.com', {
       method: 'POST', headers: { ...authHeaders(lineUidB), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inviterParticipantId, answers: answersAllB }),
+      body: JSON.stringify({ inviterParticipantId, answers: answersB }),
     })
     const response = await postMatch(request, { params: Promise.resolve({ liffId, activityCode }) })
     expect(response.status).toBe(200)
@@ -155,8 +160,8 @@ describe('duo flow end to end', () => {
     expect(body.title).toBe('คู่หูควิซ')
     expect(body.body).toBe('บอดี้คู่ DUO')
     expect(body.imageUrl).toBe('https://example.com/duo.png')
-    expect(body.axisMe).toBe('IN')
-    expect(body.axisBuddy).toBe('ES')
+    expect(body.axisMe).toBe('sn')
+    expect(body.axisBuddy).toBe('ei')
   })
 
   it('A can see the completed pair via GET my-pairs', async () => {
@@ -174,7 +179,7 @@ describe('duo flow end to end', () => {
   it('matching against an inviter who never answered returns 404', async () => {
     const request = new Request('https://example.com', {
       method: 'POST', headers: { ...authHeaders(lineUidC), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inviterParticipantId: crypto.randomUUID(), answers: answersAllB }),
+      body: JSON.stringify({ inviterParticipantId: crypto.randomUUID(), answers: answersB }),
     })
     const response = await postMatch(request, { params: Promise.resolve({ liffId, activityCode }) })
     expect(response.status).toBe(404)
@@ -185,7 +190,7 @@ describe('duo flow end to end', () => {
   it('matching against yourself returns 400', async () => {
     const request = new Request('https://example.com', {
       method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
-      body: JSON.stringify({ inviterParticipantId, answers: answersAllA }),
+      body: JSON.stringify({ inviterParticipantId, answers: answersA }),
     })
     const response = await postMatch(request, { params: Promise.resolve({ liffId, activityCode }) })
     expect(response.status).toBe(400)
