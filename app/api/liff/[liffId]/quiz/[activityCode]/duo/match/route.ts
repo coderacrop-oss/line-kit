@@ -5,6 +5,7 @@ import { resolveLiffParticipant } from '@/lib/liff/auth'
 import { matchQuizPair } from '@/lib/db/quizPairs'
 import { strongestAxis, validateAnswers, type Answer } from '@/lib/quiz/engine'
 import { loadQuizActivity } from '@/lib/quiz/loadActivity'
+import { sendDuoMatchNotify } from '@/lib/db/quizNotify'
 
 export async function POST(
   request: Request, { params }: { params: Promise<{ liffId: string; activityCode: string }> },
@@ -60,6 +61,13 @@ export async function POST(
     const axisMe = strongestAxis(activity.config, myScores)
     const axisBuddy = strongestAxis(activity.config, buddyScores)
     const rule = activity.config.results.find((r) => r.code === pair.resultCode)!
+    // แจ้ง A แบบ best-effort ก่อน return — await ไว้เพื่อให้ทำงานจบก่อน route handler
+    // จบ (Next.js/serverless อาจ freeze function หลัง response ถูกส่งแล้ว) sendDuoMatchNotify
+    // ไม่ throw ออกมาเองอยู่แล้วไม่ว่ากรณีไหน จึงไม่กระทบ response ของ B (spec §4/§6)
+    await sendDuoMatchNotify(sql, {
+      campaignId: activity.campaignId, channelId: auth.liffApp.channelId,
+      config: activity.config, theme: activity.theme, inviterParticipantId: pair.participantA,
+    })
     return Response.json({
       resultCode: pair.resultCode, title: rule.title, body: rule.body, imageUrl: rule.imageUrl,
       axisMe, axisBuddy,

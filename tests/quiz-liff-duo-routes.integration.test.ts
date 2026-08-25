@@ -21,6 +21,16 @@ vi.mock('@/lib/db/client', async (importOriginal) => ({
   db: () => sql,
 }))
 
+const pushMessageMock = vi.fn()
+const readChannelSecretMock = vi.fn()
+
+vi.mock('@/lib/line/client', () => ({
+  pushMessage: (...args: unknown[]) => pushMessageMock(...args),
+}))
+vi.mock('@/lib/db/tokens', () => ({
+  readChannelSecret: (...args: unknown[]) => readChannelSecretMock(...args),
+}))
+
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
 let channelId: string
 let campaignId: string
@@ -207,5 +217,82 @@ describe('duo flow end to end', () => {
     expect(response.status).toBe(400)
     const body = await response.json()
     expect(body.error).toBeTruthy()
+  })
+
+  it('never attempts a push when the activity has no replies configured', () => {
+    expect(pushMessageMock).not.toHaveBeenCalled()
+  })
+})
+
+describe('duo match notify', () => {
+  let notifyActivityCode: string
+  let notifyCardId: string
+
+  beforeAll(async () => {
+    const tag = randomBytes(4).toString('hex')
+    const [card] = await sql<{ id: string }[]>`
+      INSERT INTO card (campaign_id, code, render_as) VALUES (${campaignId}, ${`notifycard${tag}`}, 'text')
+      RETURNING id`
+    notifyCardId = card.id
+    await sql`
+      INSERT INTO card_block (card_id, block_type, sort_order, content)
+      VALUES (${notifyCardId}, 'body', 1, 'เพื่อนของคุณตอบครบแล้ว!')`
+
+    notifyActivityCode = `quiznotify${tag}`
+    await sql`
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
+      VALUES (${campaignId}, ${notifyActivityCode}, 'Personality quiz duo notify', 'personality_quiz', NULL,
+        ${sql.json({ ...cfg, replies: { duoMatchNotifyCardId: notifyCardId } } as never)})`
+  })
+
+  it('pushes a notification to the inviter when the match completes', async () => {
+    pushMessageMock.mockClear()
+    readChannelSecretMock.mockClear()
+    readChannelSecretMock.mockResolvedValueOnce('fake-access-token')
+
+    const answerReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidA}-notify1`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answersA }),
+    })
+    const answerRes = await postAnswer(answerReq, { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) })
+    expect(answerRes.status).toBe(200)
+    const { shareUrl } = await answerRes.json()
+    const inviterParticipantId = new URL(shareUrl).searchParams.get('inviterParticipantId')!
+    const [inviterRow] = await sql<{ line_uid: string }[]>`SELECT line_uid FROM participant WHERE id = ${inviterParticipantId}`
+
+    const matchReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidB}-notify1`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviterParticipantId, answers: answersB }),
+    })
+    const matchRes = await postMatch(matchReq, { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) })
+    expect(matchRes.status).toBe(200)
+
+    expect(pushMessageMock).toHaveBeenCalledTimes(1)
+    expect(pushMessageMock).toHaveBeenCalledWith('fake-access-token', inviterRow.line_uid, expect.anything())
+    expect(readChannelSecretMock).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ purpose: 'push_notify' }))
+  })
+
+  it('still returns the match result to B even when the push fails', async () => {
+    pushMessageMock.mockClear()
+    readChannelSecretMock.mockClear()
+    readChannelSecretMock.mockResolvedValueOnce('fake-access-token')
+    pushMessageMock.mockRejectedValueOnce(new Error('LINE push failed: 500'))
+
+    const answerReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidA}-notify2`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answersA }),
+    })
+    const answerRes = await postAnswer(answerReq, { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) })
+    const { shareUrl } = await answerRes.json()
+    const inviterParticipantId = new URL(shareUrl).searchParams.get('inviterParticipantId')!
+
+    const matchReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidB}-notify2`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviterParticipantId, answers: answersB }),
+    })
+    const matchRes = await postMatch(matchReq, { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) })
+    expect(matchRes.status).toBe(200)
+    const body = await matchRes.json()
+    expect(body.resultCode).toBeTruthy()
   })
 })
