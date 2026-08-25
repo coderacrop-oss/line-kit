@@ -50,7 +50,12 @@ export function ActivityRow({ campaignId, activity, canEdit }: {
   activity: ActivityView
   canEdit: boolean
 }) {
-  const setupHref = `/campaigns/${campaignId}/activities/${activity.id}`
+  // ควิซบุคลิกภาพไม่มีจอ M7-S02 ให้ตั้งค่า (resolve_method เป็น NULL ทำให้จอนั้น throw
+  // — ดูคอมเมนต์ของ fieldsForActivity ใน lib/db/activities.ts) จึงพาไปจอควิซของ
+  // Task 11 แทนทั้งชื่อและปุ่ม "ตั้งค่า →"
+  const setupHref = activity.inputType === 'personality_quiz'
+    ? `/campaigns/${campaignId}/activities/${activity.id}/quiz`
+    : `/campaigns/${campaignId}/activities/${activity.id}`
 
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: 14, flexWrap: 'wrap' }}>
@@ -72,7 +77,14 @@ export function ActivityRow({ campaignId, activity, canEdit }: {
           <a href={setupHref} style={{ fontSize: 14, fontWeight: 600 }}>{activity.name}</a>
           <span style={codeChipStyle}>{activity.code}</span>
           <Badge tone="mute">{activity.inputName}</Badge>
-          <Badge tone="mute">{activity.resolveName}</Badge>
+          {/* personality_quiz มี resolve_method เป็น NULL เสมอ (0014_quiz_engine.sql) —
+              resolveMethodName(null) ไม่ใช่ key จริงของ RESOLVE_METHOD_NAME จึงคืน undefined
+              และแถวนี้เคยขึ้นเป็น badge ว่างเปล่าให้ทุกกิจกรรมควิซ (Minor finding ของรีวิว
+              รอบสุดท้าย) — inputName ข้างบนโชว์ "ควิซบุคลิกภาพ" อยู่แล้ว ป้ายที่สองนี้จึง
+              ไม่มีอะไรเพิ่มให้ควิซ ไม่โชว์เลยดีกว่าโชว์ป้ายว่าง */}
+          {activity.inputType !== 'personality_quiz' && (
+            <Badge tone="mute">{activity.resolveName}</Badge>
+          )}
           {activity.isFollowEntry && <Badge tone="info">⌂ เข้าจากเมนูหลัก</Badge>}
           {activity.isUnreachable && <Badge tone="danger">ไม่มีทางเข้าถึง</Badge>}
           {activity.isIncomplete && <Badge tone="warn">ตั้งค่าไม่ครบ</Badge>}

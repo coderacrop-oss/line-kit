@@ -9,7 +9,7 @@ import {
   asEntryRuleType, followHolder,
 } from '@/lib/db/activities'
 import {
-  asInputType, asResolveMethod, comboProblem, inputConfigFields,
+  asInputType, asResolveMethod, comboProblem, inputConfigFields, type ResolveMethod,
 } from '@/lib/activities/wizard'
 
 /** รหัสกิจกรรมเดินทางอยู่ในปุ่มที่ส่งออกไปแล้ว · รูปเดียวกับที่ postback เข้ารหัส */
@@ -39,7 +39,14 @@ type CampaignRow = { id: string; status: 'draft' | 'published' | 'closed' }
  * refuse edits for the same reason: the config and the record of what happened
  * under it have to keep saying the same thing.
  */
-async function requireDraftCampaign(
+/**
+ * export ไว้ให้ app/.../[activityId]/quiz/actions.ts เรียกใช้ตัวเดียวกัน — ก่อนแก้
+ * saveQuizConfigAction เป็นตัวเดียวในบรรดา action ที่เขียน input_config ของกิจกรรม
+ * ที่ข้ามด่าน BR-05 นี้ไปเฉยๆ (Finding 3 ของรีวิวรอบสุดท้าย) แก้แคมเปญที่ publish
+ * แล้วได้อย่างเดียวในระบบทั้งหมด แม้จะมีคน duo เล่นค้างอยู่จริงตามที่ design spec เอง
+ * กังวลไว้ (§2)
+ */
+export async function requireDraftCampaign(
   sql: ReturnType<typeof db>, campaignId: string,
 ): Promise<CampaignRow> {
   const [row] = await sql<CampaignRow[]>`
@@ -139,6 +146,29 @@ const touch = (campaignId: string, activityId?: string) => {
 }
 
 /**
+ * รหัสกิจกรรมจากชื่อ · ผู้ตั้งค่าไม่ต้องรู้จักกฎ a-z 0-9 ขีดล่างอีกต่อไป
+ *
+ * The form used to ask for this directly, with the exact CODE_PATTERN spelled
+ * out as a hint. That was a second identity for something that already has a
+ * name, and asking a person typing "สุ่มรางวัลประจำวัน" to also invent
+ * "daily_draw" was asking them to do the computer's job. Truncated to 14
+ * characters rather than the full 20 CODE_PATTERN allows, so a collision retry
+ * still has room to append `_` and four digits without exceeding it.
+ *
+ * async even though the computation itself is not — this file is `'use server'`,
+ * and every export from it has to be a Server Action, which Next.js only
+ * accepts as an async function.
+ */
+export async function slugifyActivityName(name: string): Promise<string> {
+  const base = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .slice(0, 14)
+  return base || 'activity'
+}
+
+/**
  * สร้างกิจกรรมใหม่ · ถามแค่ตัวตนกับสองแกน
  *
  * The two axes are asked here rather than left to a default because they decide
@@ -150,42 +180,96 @@ export async function createActivity(campaignId: string, formData: FormData): Pr
   const sql = db()
   await requireDraftCampaign(sql, campaignId)
 
-  const code = trimmed(formData, 'code')
-  if (!CODE_PATTERN.test(code)) {
-    throw new Error('รหัสกิจกรรมใช้ได้แค่ a-z 0-9 และขีดล่าง ยาว 1–20 ตัว')
-  }
-
   const name = trimmed(formData, 'name')
   if (!name) throw new Error('ต้องมีชื่อกิจกรรม')
 
   const inputType = asInputType(trimmed(formData, 'input_type'))
   if (!inputType) throw new Error('ต้องเลือกวิธีรับอินพุต')
 
-  const resolveMethod = asResolveMethod(trimmed(formData, 'resolve_method'))
-  if (!resolveMethod) throw new Error('ต้องเลือกวิธีตัดสินผล')
+  /**
+   * ควิซบุคลิกภาพไม่มี resolve_method เลย · แกน 2 ทั้งแกนถูกแทนที่ด้วยโหมด
+   *
+   * 0014_quiz_engine.sql บังคับด้วย CHECK ว่า resolve_method เป็น NULL ได้ก็ต่อเมื่อ
+   * input_type เป็น personality_quiz เท่านั้น — ไม่ใช่แค่ "ผสมกับบางวิธีไม่ได้" แบบที่
+   * comboProblem() ปฏิเสธบางคู่ของสี่ชนิดที่เหลือ แต่คือไม่มีวิธีตัดสินผลให้ผสมด้วยเลย
+   * สักตัว จึงข้ามทั้ง asResolveMethod() และ comboProblem() ไปเลยสำหรับชนิดนี้ (เข้าคู่กับ
+   * lib/activities/wizard.ts ที่ตั้งใจไม่รู้จักควิซบุคลิกภาพในแง่นี้เหมือนกัน) แล้วอ่านโหมด
+   * แทน — axes/questions/results ค่อยกรอกที่จอตั้งค่าควิซของ Task 11 ทีหลัง
+   */
+  let resolveMethod: ResolveMethod | null = null
+  let inputConfig: Record<string, unknown> = {}
 
-  // BR-36 · คู่ที่ผสมกันไม่ได้ ถูกปฏิเสธตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่งขึ้น
-  const combo = comboProblem(inputType, resolveMethod)
-  if (combo) throw new Error(combo)
+  if (inputType === 'personality_quiz') {
+    const quizMode = trimmed(formData, 'quiz_mode')
+    if (quizMode !== 'solo' && quizMode !== 'duo') {
+      throw new Error('ต้องเลือกโหมดของควิซบุคลิกภาพ — เดี่ยวหรือคู่')
+    }
+    inputConfig = { mode: quizMode }
+  } else {
+    resolveMethod = asResolveMethod(trimmed(formData, 'resolve_method'))
+    if (!resolveMethod) throw new Error('ต้องเลือกวิธีตัดสินผล')
 
-  let created: string
-  try {
+    // BR-36 · คู่ที่ผสมกันไม่ได้ ถูกปฏิเสธตั้งแต่ตอนสร้าง ไม่ใช่ตอนส่งขึ้น
+    const combo = comboProblem(inputType, resolveMethod)
+    if (combo) throw new Error(combo)
+  }
+
+  const code = await slugifyActivityName(name)
+  if (!CODE_PATTERN.test(code)) {
+    // ป้องกันตัวเอง — slugifyActivityName() คำนวณให้ตรงรูปแบบนี้เสมอ ฟอร์มไม่มีช่อง
+    // ให้กรอกรหัสเองอีกต่อไป ถ้าไม่ตรงคือมันมีบั๊ก ไม่ใช่ผู้ใช้กรอกผิด
+    throw new Error('สร้างรหัสกิจกรรมจากชื่อไม่สำเร็จ — ลองตั้งชื่ออื่นดู')
+  }
+
+  const insertActivity = async (attemptCode: string) => {
     const [row] = await sql<{ id: string }[]>`
-      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, sort_order)
-      VALUES (${campaignId}, ${code}, ${name}, ${inputType}, ${resolveMethod},
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config, sort_order)
+      VALUES (${campaignId}, ${attemptCode}, ${name}, ${inputType}, ${resolveMethod},
+              ${sql.json(inputConfig as never)},
               coalesce((SELECT max(sort_order) + 1 FROM activity
                          WHERE campaign_id = ${campaignId}), 0))
       RETURNING id`
-    created = row.id
+    return row.id
+  }
+
+  let created: string
+  try {
+    created = await insertActivity(code)
   } catch (error) {
-    if ((error as { code?: string }).code === UNIQUE_VIOLATION) {
+    if ((error as { code?: string }).code !== UNIQUE_VIOLATION) throw error
+    // รหัสที่สร้างจากชื่อชนกับกิจกรรมอื่นในแคมเปญเดียวกัน — คนตั้งชื่อซ้ำกันไม่ควร
+    // ต้องรู้จัก slug หรือมาแก้เอง ต่อเลขสุ่มสี่หลักแล้วลองอีกครั้งเดียวก็พอ
+    const retryCode = `${code}_${Math.floor(Math.random() * 9000 + 1000)}`
+    try {
+      created = await insertActivity(retryCode)
+    } catch (retryError) {
+      if ((retryError as { code?: string }).code !== UNIQUE_VIOLATION) throw retryError
       throw new Error(`แคมเปญนี้มีกิจกรรมรหัส "${code}" อยู่แล้ว — ไปแก้ตัวเดิมแทน`)
     }
-    throw error
   }
 
   touch(campaignId)
-  redirect(`/campaigns/${campaignId}/activities/${created}`)
+
+  /**
+   * ควิซบุคลิกภาพพาไปจอตั้งค่าควิซของ Task 11 ตรง ๆ ไม่ใช่จอ M7-S02 เดิม
+   *
+   * M7-S02 (ActivitySetup.tsx → fieldsForActivity → fieldsFor()) throw TypeError
+   * ทันทีที่เจอ resolve_method เป็น NULL — BY_RESOLVE[null] เป็น undefined แล้ว
+   * spread ...undefined ก็ throw โดยไม่มี error boundary ไหนรับไว้เลยในระบบนี้
+   * ก่อนหน้านี้ทุกกิจกรรม personality_quiz ที่สร้างเสร็จจะโดนพาไปหน้าที่พังทันที —
+   * ตอนนี้แก้แล้วด้วยการพาไปคนละจอ (fieldsForActivity เองก็กันไว้อีกชั้นแล้วเผื่อ
+   * ใครกด URL เก่าตรงเข้ามาเอง)
+   *
+   * if/else จริง ไม่ใช่สอง redirect() เรียงกัน — redirect() ของจริงโยน NEXT_REDIRECT
+   * ทันทีเพื่อตัดการทำงานที่เหลือ แต่ mock ของเทสต์ในระบบนี้ (ดู actions.test.ts)
+   * แค่จด path ไว้เฉยๆ ไม่โยน ถ้าเขียนเป็นสองบรรทัดเรียงกันแบบไม่มี else เทสต์จะเห็น
+   * redirect ตัวที่สองทับตัวแรกเงียบๆ ทั้งที่โปรดักชันจริงไม่มีวันไปถึงบรรทัดนั้น
+   */
+  if (inputType === 'personality_quiz') {
+    redirect(`/campaigns/${campaignId}/activities/${created}/quiz`)
+  } else {
+    redirect(`/campaigns/${campaignId}/activities/${created}`)
+  }
 }
 
 /**
@@ -204,11 +288,50 @@ export async function saveActivity(
   await requireDraftCampaign(sql, campaignId)
   const current = await requireActivity(sql, campaignId, activityId)
 
+  /**
+   * กิจกรรมที่เป็นควิซบุคลิกภาพอยู่แล้ว ห้ามแก้จากจอนี้เด็ดขาด — ไม่ว่าฟอร์มจะส่ง
+   * input_type อะไรมาก็ตาม
+   *
+   * ช่อง "แกน 1" ของจอนี้ไม่มี personality_quiz เป็นตัวเลือกอีกต่อไป (ดูการ์ดถัดไป)
+   * แต่ใครก็ตามที่พิมพ์ URL ของจอนี้ตรงเข้ามาเองสำหรับกิจกรรมที่เป็นควิซอยู่แล้ว
+   * (ลิงก์ปกติพาไปจอควิซ /quiz แต่ไม่มีอะไรกัน URL เดิม) จะเจอ <select> ที่
+   * defaultValue="personality_quiz" ไม่ตรงกับ <option> ไหนเลย เบราว์เซอร์จึงเลือก
+   * ตัวแรกในลิสต์ ('none') ให้เงียบๆ กดบันทึกแล้วจะเขียนทับ input_type เป็น 'none'
+   * พร้อม resolve_method จริงๆ ทันที — โดยไม่มีด่านไหนข้างล่างจับได้เลยเพราะด่าน
+   * เดิมเช็คแค่ input_type ที่ "ส่งมา" ไม่ใช่ชนิดเดิมของแถว ผลคือ input_config
+   * (แกน/คำถาม/ผลลัพธ์) ของควิซถูกตัดขาดจากกิจกรรมเงียบๆ ไม่มีจอไหนแสดง/แก้มันได้
+   * อีกเลย — แย่กว่า CHECK constraint เดิมที่อย่างน้อยยัง error ดังๆ (Finding จาก
+   * รีวิวรอบสอง ต่อจาก Finding 2 ของรีวิวรอบแรก) เช็คจากชนิดเดิมของแถวก่อนแตะ
+   * ฟิลด์อื่นใดๆ เลย
+   */
+  if (current.input_type === 'personality_quiz') {
+    throw new Error('กิจกรรมนี้เป็นควิซบุคลิกภาพ — แก้ไขที่หน้าตั้งค่าควิซแทน')
+  }
+
   const name = trimmed(formData, 'name')
   if (!name) throw new Error('ต้องมีชื่อกิจกรรม')
 
   const inputType = asInputType(trimmed(formData, 'input_type'))
   if (!inputType) throw new Error('ต้องเลือกวิธีรับอินพุต')
+
+  /**
+   * จอนี้ (M7-S02) ไม่มีทางเขียน personality_quiz ให้ถูกกติกาได้เลย — ควิซบุคลิกภาพ
+   * บังคับ resolve_method เป็น NULL เท่านั้น (0014_quiz_engine.sql) แต่ฟอร์มนี้ยังไง
+   * ก็ส่ง resolve_method ที่เป็นค่าจริงมาด้วยเสมอ (ช่องนั้นเป็น select ที่ไม่มีค่าว่าง)
+   * เขียนแล้วจะชน activity_resolve_method_check ที่ฐานข้อมูลแทน ซึ่ง error ที่ได้ไม่ใช่
+   * unique-violation จึงถูก rethrow ออกไปเป็น error ดิบที่ถูกเซ็นเซอร์แบบทั่วไปให้ผู้ใช้
+   * เห็น (Finding 2 ของรีวิวรอบสุดท้าย) — กันไว้ตั้งแต่ก่อนแตะฐานข้อมูล พร้อมชี้ทางที่ถูก
+   *
+   * ด่านนี้กับด่านข้างบนเช็คคนละกรณี — ด่านนี้กันไม่ให้แปลงกิจกรรมชนิดอื่นให้เป็นควิซ
+   * ผ่านจอนี้ (แม้จอจะไม่เสนอตัวเลือกนี้แล้ว แต่ request ที่แต่งเองยังส่งมาได้)
+   * ด่านข้างบนกันไม่ให้ควิซที่มีอยู่แล้วถูกแปลงออกไปเป็นชนิดอื่น — ต้องมีทั้งคู่
+   */
+  if (inputType === 'personality_quiz') {
+    throw new Error(
+      'ตั้งค่าควิซบุคลิกภาพจากจอนี้ไม่ได้ — ควิซไม่มี "วิธีตัดสินผล" ให้เลือกแบบกิจกรรมอื่น'
+      + ' สร้างกิจกรรมชนิดควิซบุคลิกภาพขึ้นใหม่แทน แล้วไปตั้งค่าที่จอควิซของกิจกรรมนั้น',
+    )
+  }
 
   const resolveMethod = asResolveMethod(trimmed(formData, 'resolve_method'))
   if (!resolveMethod) throw new Error('ต้องเลือกวิธีตัดสินผล')

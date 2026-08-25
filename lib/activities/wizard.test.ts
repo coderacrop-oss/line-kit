@@ -4,6 +4,14 @@ import {
   inputConfigFields, inputTypeName, resolveMethodName,
 } from './wizard'
 
+/**
+ * personality_quiz ไม่มี resolve_method เลย (Task 10) จึงไม่เข้าเมทริกซ์คู่ผสมด้านล่าง —
+ * เมทริกซ์นี้เป็นเรื่องของสี่ชนิดที่มีแกน 2 จริงเท่านั้น ใส่ personality_quiz ปนเข้าไปจะ
+ * ทำให้ "คู่ที่ 16" กลายเป็น 20 อย่างเงียบๆ และเทสต์ที่เทียบว่าแต่ละชนิดถามต่างจากชนิด
+ * อื่นจะพังจริง (personality_quiz กับ none ให้ผลลัพธ์ไม่ต่างกันเลยจาก BY_INPUT ฝั่ง wizard.ts)
+ */
+const RESOLVABLE_INPUT_TYPES = INPUT_TYPES.filter((type) => type !== 'personality_quiz')
+
 describe('fieldsFor', () => {
   it('pick_one ถามผังช่องและรายการตัวเลือก', () => {
     const keys = fieldsFor('pick_one', 'weighted').map((f) => f.key)
@@ -26,7 +34,7 @@ describe('fieldsFor', () => {
   })
 
   it('คู่ผสมทุกคู่คืนรายการช่อง ไม่มีคู่ไหนคืนว่าง', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       for (const resolve of RESOLVE_METHODS) {
         expect(fieldsFor(input, resolve).length, `${input} × ${resolve}`).toBeGreaterThan(0)
       }
@@ -43,9 +51,9 @@ describe('fieldsFor', () => {
    * anything from that axis.
    */
   it('ทุกชนิดอินพุตทำให้ฟอร์มต่างจากชนิดอื่นอย่างน้อยหนึ่งคู่', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       const mine = fieldsFor(input, 'weighted').map((f) => f.key).join(',')
-      const others = INPUT_TYPES.filter((other) => other !== input)
+      const others = RESOLVABLE_INPUT_TYPES.filter((other) => other !== input)
         .map((other) => fieldsFor(other, 'weighted').map((f) => f.key).join(','))
       expect(others, `${input} ถามเหมือนชนิดอื่นทุกตัว`).not.toContain(mine)
     }
@@ -61,7 +69,7 @@ describe('fieldsFor', () => {
   })
 
   it('ทุกคู่ถามผลลัพธ์เสมอ — กิจกรรมที่ไม่ตอบอะไรเลยไม่มีความหมาย', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       for (const resolve of RESOLVE_METHODS) {
         expect(fieldsFor(input, resolve).map((f) => f.key), `${input} × ${resolve}`)
           .toContain('outcomes')
@@ -70,7 +78,7 @@ describe('fieldsFor', () => {
   })
 
   it('ไม่มีคู่ไหนถามช่องเดียวกันสองครั้ง', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       for (const resolve of RESOLVE_METHODS) {
         const keys = fieldsFor(input, resolve).map((f) => f.key)
         expect(new Set(keys).size, `${input} × ${resolve} ถามซ้ำ`).toBe(keys.length)
@@ -79,7 +87,7 @@ describe('fieldsFor', () => {
   })
 
   it('ทุกช่องมีป้ายที่คนอ่านออก ไม่ใช่คีย์เปล่าๆ', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       for (const resolve of RESOLVE_METHODS) {
         for (const field of fieldsFor(input, resolve)) {
           expect(field.label.length, `${input} × ${resolve} · ${field.key}`).toBeGreaterThan(0)
@@ -90,7 +98,7 @@ describe('fieldsFor', () => {
   })
 
   it('การ์ดสำรองถูกถามเฉพาะตอน quota — ที่อื่นไม่มีของให้หมด', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       for (const resolve of RESOLVE_METHODS) {
         const asked = fieldsFor(input, resolve).some((f) => f.key === 'fallback_card_id')
         expect(asked, `${input} × ${resolve}`).toBe(resolve === 'quota')
@@ -110,7 +118,7 @@ describe('fieldsFor', () => {
  * fieldsFor() and stay ignorant of what kind of activity they are looking at.
  */
 describe('ช่องบอกวิธีวาดและที่เก็บของตัวเอง', () => {
-  const everyField = INPUT_TYPES.flatMap((input) =>
+  const everyField = RESOLVABLE_INPUT_TYPES.flatMap((input) =>
     RESOLVE_METHODS.map((resolve) => ({ input, resolve, fields: fieldsFor(input, resolve) })))
 
   it('ทุกช่องของทุกคู่มี control ที่จอรู้จัก', () => {
@@ -150,7 +158,7 @@ describe('ช่องบอกวิธีวาดและที่เก็�
    * allowed to hold, which is the axis leaking into the wrong column.
    */
   it('วิธีตัดสินผลไม่มีสิทธิ์เพิ่มช่องลง input_config', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       const keys = RESOLVE_METHODS.map((resolve) =>
         inputConfigFields(input, resolve).map((f) => f.key).join(','))
       expect(new Set(keys).size, input).toBe(1)
@@ -220,14 +228,14 @@ describe('comboProblem', () => {
   })
 
   it('weighted กับ quota ใช้ได้กับทุกชนิดอินพุต', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       expect(comboProblem(input, 'weighted'), input).toBeNull()
       expect(comboProblem(input, 'quota'), input).toBeNull()
     }
   })
 
   it('ทุกเหตุผลที่ปฏิเสธบอกว่าทำไม ไม่ใช่แค่บอกว่าไม่ได้', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       for (const resolve of RESOLVE_METHODS) {
         const problem = comboProblem(input, resolve)
         if (problem !== null) expect(problem.length, `${input} × ${resolve}`).toBeGreaterThan(20)
@@ -236,7 +244,7 @@ describe('comboProblem', () => {
   })
 
   it('ยังเหลือคู่ที่ใช้ได้สำหรับทุกชนิดอินพุต — ไม่มีชนิดไหนถูกปิดตาย', () => {
-    for (const input of INPUT_TYPES) {
+    for (const input of RESOLVABLE_INPUT_TYPES) {
       const usable = RESOLVE_METHODS.filter((resolve) => comboProblem(input, resolve) === null)
       expect(usable.length, input).toBeGreaterThan(0)
     }
@@ -253,9 +261,20 @@ describe('ชื่อที่คนอ่าน', () => {
   })
 
   /** ชุดนี้ต้องตรงกับ CHECK ของคอลัมน์ ไม่งั้นจอเสนอค่าที่ตารางไม่รับ */
-  it('ชุดค่าตรงกับ CHECK ใน 0001_init.sql', () => {
-    expect([...INPUT_TYPES]).toEqual(['none', 'pick_one', 'quiz', 'text'])
+  it('ชุดค่าตรงกับ CHECK ใน 0001_init.sql + 0014_quiz_engine.sql', () => {
+    expect([...INPUT_TYPES]).toEqual(['none', 'pick_one', 'quiz', 'text', 'personality_quiz'])
     // lookup อยู่ใน CHECK แต่ยังไม่อยู่ในสไลซ์นี้ · จอไม่เสนอให้เลือก
     expect([...RESOLVE_METHODS]).toEqual(['fixed', 'weighted', 'quota', 'score'])
+  })
+})
+
+/**
+ * personality_quiz มีชื่อเหมือนสี่ชนิดที่เหลือ แต่ไม่มี resolve_method ให้ผสมด้วยเลย
+ * (Task 10) — จึงมีชื่อแต่ไม่มีที่ยืนในเมทริกซ์คู่ผสมข้างบนสักคู่
+ */
+describe('personality_quiz', () => {
+  it('มีชื่อที่คนอ่านได้ แต่ไม่เข้าเมทริกซ์คู่ผสมอินพุต×วิธีตัดสินผล เพราะไม่มี resolve_method มาผสมด้วยเลย', () => {
+    expect(inputTypeName('personality_quiz')).toBe('ควิซบุคลิกภาพ')
+    expect(INPUT_TYPES).toContain('personality_quiz')
   })
 })

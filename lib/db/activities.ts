@@ -3,6 +3,7 @@ import {
   type InputType, type ResolveMethod, comboProblem, fieldsFor,
   inputTypeName, resolveMethodName,
 } from '../activities/wizard'
+import { QuizConfig } from '../quiz/schema'
 
 /**
  * ผลลัพธ์หนึ่งแถว อย่างที่ engine อ่านจริง
@@ -205,40 +206,54 @@ export function comboName(input: InputType, resolve: ResolveMethod | 'lookup'): 
  */
 export function activityProblems(row: ActivityRow): string[] {
   const problems: string[] = []
-  const outcomes = asArray<OutcomeConfig>(row.resolve_config?.outcomes)
   const rules = asArray<EntryRuleConfig>(row.entry_rules)
 
-  if (row.resolve_method === 'lookup') {
-    problems.push('วิธีตัดสินผล "ค้นจากตาราง" ยังไม่รองรับในรอบนี้ — เลือกวิธีอื่นก่อนส่งขึ้น')
-  } else {
-    const combo = comboProblem(row.input_type, row.resolve_method)
-    if (combo) problems.push(combo)
-  }
-
-  if (outcomes.length === 0) {
-    problems.push('ยังไม่มีผลลัพธ์สักอัน — กิจกรรมที่ไม่ตอบอะไรเลยไม่มีความหมาย')
-  }
-
-  outcomes.forEach((outcome, index) => {
-    if (!outcome.cardId) {
-      problems.push(`ผลลัพธ์ที่ ${index + 1} ยังไม่ได้เลือกการ์ดที่ตอบ — ผู้เล่นกดแล้วเงียบ`)
+  /**
+   * personality_quiz ไม่มี resolve_config.outcomes เลย — เนื้อหาทั้งชุด (แกน/คำถาม/
+   * ผลลัพธ์) อยู่ใน input_config แทน (ดู lib/quiz/schema.ts) ก่อนแก้ตรงนี้ ด่านข้างล่าง
+   * (ยังไม่มีผลลัพธ์สักอัน · BR-31 · comboProblem) จะติดกับกิจกรรมชนิดนี้เสมอเพราะ
+   * outcomes ว่างเป็นค่าเริ่มต้นที่ไม่มีวันถูกเติม — แคมเปญที่มีควิซจึง publish ไม่ได้
+   * เลยสักครั้ง (Finding 1 ของรีวิวรอบสุดท้าย) เช็คด้วย QuizConfig.safeParse() แทน
+   */
+  if (row.input_type === 'personality_quiz') {
+    if (!QuizConfig.safeParse(row.input_config).success) {
+      problems.push('ควิซยังตั้งค่าไม่ครบ — ไปตั้งแกน/คำถาม/ผลลัพธ์ให้ครบที่จอตั้งค่าควิซก่อนส่งขึ้น')
     }
-  })
+  } else {
+    const outcomes = asArray<OutcomeConfig>(row.resolve_config?.outcomes)
 
-  if (row.resolve_method === 'score') {
+    if (row.resolve_method === 'lookup') {
+      problems.push('วิธีตัดสินผล "ค้นจากตาราง" ยังไม่รองรับในรอบนี้ — เลือกวิธีอื่นก่อนส่งขึ้น')
+    } else {
+      const combo = comboProblem(row.input_type, row.resolve_method)
+      if (combo) problems.push(combo)
+    }
+
+    if (outcomes.length === 0) {
+      problems.push('ยังไม่มีผลลัพธ์สักอัน — กิจกรรมที่ไม่ตอบอะไรเลยไม่มีความหมาย')
+    }
+
     outcomes.forEach((outcome, index) => {
-      if (outcome.scoreMin === undefined && outcome.scoreMax === undefined) {
-        problems.push(`ผลลัพธ์ที่ ${index + 1} ยังไม่ได้ตั้งช่วงคะแนน — ไม่มีคะแนนไหนเข้าช่วงนี้`)
+      if (!outcome.cardId) {
+        problems.push(`ผลลัพธ์ที่ ${index + 1} ยังไม่ได้เลือกการ์ดที่ตอบ — ผู้เล่นกดแล้วเงียบ`)
       }
     })
-  }
 
-  // BR-31 · การ์ดสำรองบังคับเมื่อของหมดได้
-  if (row.resolve_method === 'quota' && !row.fallback_card_id) {
-    problems.push(
-      'วิธีตัดสินผลแบบโควตาต้องมีการ์ดสำรองเมื่อของหมด (BR-31)'
-      + ' — ของหมดแล้วยังมีคนกดเล่น คนนั้นจะไม่ได้รับอะไรเลย',
-    )
+    if (row.resolve_method === 'score') {
+      outcomes.forEach((outcome, index) => {
+        if (outcome.scoreMin === undefined && outcome.scoreMax === undefined) {
+          problems.push(`ผลลัพธ์ที่ ${index + 1} ยังไม่ได้ตั้งช่วงคะแนน — ไม่มีคะแนนไหนเข้าช่วงนี้`)
+        }
+      })
+    }
+
+    // BR-31 · การ์ดสำรองบังคับเมื่อของหมดได้
+    if (row.resolve_method === 'quota' && !row.fallback_card_id) {
+      problems.push(
+        'วิธีตัดสินผลแบบโควตาต้องมีการ์ดสำรองเมื่อของหมด (BR-31)'
+        + ' — ของหมดแล้วยังมีคนกดเล่น คนนั้นจะไม่ได้รับอะไรเลย',
+      )
+    }
   }
 
   // BR-26 · ทุกเงื่อนไขต้องมีการ์ดตอบ
@@ -343,9 +358,24 @@ export function summarizeActivity(row: ActivityRow): ActivityView {
   }
 }
 
-/** ช่องที่ฟอร์มของกิจกรรมนี้ต้องถาม · lookup ยังไม่มีฟอร์มของตัวเองในรอบนี้ */
-export const fieldsForActivity = (view: ActivityView) =>
-  view.resolveMethod === 'lookup' ? [] : fieldsFor(view.inputType, view.resolveMethod)
+/**
+ * ช่องที่ฟอร์มของกิจกรรมนี้ต้องถาม · lookup ยังไม่มีฟอร์มของตัวเองในรอบนี้
+ *
+ * personality_quiz มี resolve_method เป็น NULL จริงในฐานข้อมูล (CHECK ของ
+ * 0014_quiz_engine.sql บังคับไว้) แม้ type ของ resolveMethod ในไฟล์นี้จะประกาศว่า
+ * ไม่มี null ก็ตาม (ประกาศไว้แบบนั้นมาตั้งแต่ก่อน personality_quiz จะมีอยู่) —
+ * cast ตรงนี้เพื่อเช็ค runtime ตามความจริงของคอลัมน์ ไม่ใช่ตามชนิดที่ประกาศไว้ ก่อน
+ * ส่งต่อให้ fieldsFor() ซึ่งจะ throw TypeError ถ้า resolve เป็น null
+ * (BY_RESOLVE[null] เป็น undefined แล้ว spread ...undefined ก็ throw ทันที — พิสูจน์
+ * จริงแล้วว่า M7-S02 พังทั้งจอถ้าใครกดตรงเข้ามาที่กิจกรรมชนิดนี้) จอ M7-S02 ไม่ควร
+ * มาถึงฟังก์ชันนี้เลยสำหรับ personality_quiz (ActivityRow.tsx และ actions.ts เปลี่ยน
+ * ทางไปจอควิซแทนแล้ว) แต่การกันไว้ที่นี่ทำให้ URL ตรงเข้ามาก็ไม่พังเหมือนกัน
+ */
+export const fieldsForActivity = (view: ActivityView) => {
+  const resolveMethod = view.resolveMethod as ResolveMethod | 'lookup' | null
+  if (resolveMethod === null || resolveMethod === 'lookup') return []
+  return fieldsFor(view.inputType, resolveMethod)
+}
 
 /**
  * ประโยคเดียวที่บอกว่าตอนนี้กิจกรรมนี้ทำอะไรอยู่ · กล่อง "สรุปการตั้งค่าปัจจุบัน" ของต้นแบบ

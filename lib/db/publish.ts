@@ -166,6 +166,9 @@ export async function loadPublishScreen(
         trigger: activity.trigger,
         reachedBy: activity.reachedBy,
         counterCodes: Object.keys(activity.counterUnits),
+        // personality_quiz เท่านั้นที่ checkPublish() อ่านค่านี้ (Finding 1) —
+        // ส่งไปเสมอเพราะ PublishConfig ไม่รู้ว่ากิจกรรมแถวไหนเป็นชนิดไหนล่วงหน้า
+        inputConfig: activity.inputConfig,
       })),
       keywordRules: keywordRules.map((rule) => ({
         id: rule.id,

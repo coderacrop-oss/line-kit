@@ -43,6 +43,8 @@ const state: {
   playedCount: number
   writes: Array<{ text: string; values: unknown[] }>
   failNextWriteWith: string | undefined
+  /** จำนวนครั้งที่ยังต้องล้มเหลวติดกันด้วยรหัสเดียวกัน ก่อนจะให้ผ่าน · ค่าเริ่มต้นคือ 1 ครั้ง */
+  failWriteTimes: number | undefined
   redirectedTo: string | undefined
 } = {
   cookie: undefined,
@@ -56,6 +58,7 @@ const state: {
   playedCount: 0,
   writes: [],
   failNextWriteWith: undefined,
+  failWriteTimes: undefined,
   redirectedTo: undefined,
 }
 
@@ -115,7 +118,12 @@ const sql = Object.assign(
 
     if (state.failNextWriteWith) {
       const code = state.failNextWriteWith
-      state.failNextWriteWith = undefined
+      if (state.failWriteTimes && state.failWriteTimes > 1) {
+        state.failWriteTimes -= 1
+      } else {
+        state.failNextWriteWith = undefined
+        state.failWriteTimes = undefined
+      }
       return Promise.reject(Object.assign(new Error('duplicate key value'), { code }))
     }
 
@@ -140,6 +148,7 @@ vi.mock('@/lib/db/client', () => ({ db: () => sql }))
 const {
   createActivity, deleteActivity, removeEntryRule, removeOutcome, saveActivity,
   saveEffects, saveEntryRule, saveInputConfig, saveOutcome, setActivityEnabled,
+  slugifyActivityName,
 } = await import('./actions')
 
 const signedInAs = (role: string, isActive = true) => {
@@ -156,7 +165,7 @@ const form = (fields: Record<string, string | string[]>) => {
 }
 
 const createForm = (patch: Record<string, string> = {}) =>
-  form({ code: 'draw2', name: 'สุ่มอีกรอบ', input_type: 'none', resolve_method: 'weighted', ...patch })
+  form({ name: 'สุ่มอีกรอบ', input_type: 'none', resolve_method: 'weighted', ...patch })
 
 const saveForm = (patch: Record<string, string> = {}) =>
   form({ name: 'สุ่มรางวัล', input_type: 'none', resolve_method: 'weighted', ...patch })
@@ -178,6 +187,7 @@ beforeEach(() => {
   state.playedCount = 0
   state.writes = []
   state.failNextWriteWith = undefined
+  state.failWriteTimes = undefined
   state.redirectedTo = undefined
 })
 
@@ -275,16 +285,40 @@ describe('แคมเปญที่ส่งขึ้นแล้ว', () => {
   })
 })
 
+/**
+ * ตัวช่วยแปลงชื่อเป็นรหัส — เอาไว้ในไฟล์เดียวกับ createActivity() ที่ใช้มัน
+ *
+ * The form used to ask for a code directly, spelling out CODE_PATTERN as a
+ * hint. Task 9 removed that field: the code now comes from the name the
+ * person already typed, so it never has to be invented twice.
+ */
+describe('slugifyActivityName', () => {
+  // async เพราะไฟล์นี้เป็น 'use server' — export ทุกตัวต้องเป็น Server Action
+  // ซึ่ง Next.js รับเฉพาะฟังก์ชัน async เท่านั้น แม้ตัวการคำนวณจะไม่ได้ await อะไรเลย
+  it('ตัวพิมพ์เล็กและแทนช่องว่าง/เครื่องหมายด้วยขีดล่าง', async () => {
+    await expect(slugifyActivityName('สุ่มรางวัลประจำวัน')).resolves.toMatch(/^[a-z0-9_]{1,20}$/)
+    await expect(slugifyActivityName('Daily Draw!')).resolves.toBe('daily_draw')
+  })
+
+  it('ชื่อยาว ได้รหัสที่ยังตรงรูปแบบ CODE_PATTERN (1–20 ตัว)', async () => {
+    const slug = await slugifyActivityName('a'.repeat(50))
+    expect(slug.length).toBeLessThanOrEqual(20)
+    expect(slug).toMatch(/^[a-z0-9_]{1,20}$/)
+  })
+
+  it('ชื่อที่ไม่เหลือตัวอักษร a-z0-9 เลย ได้ค่าสำรอง ไม่ใช่สตริงว่าง', async () => {
+    await expect(slugifyActivityName('！！！')).resolves.toBe('activity')
+    await expect(slugifyActivityName('')).resolves.toBe('activity')
+  })
+
+  it('เว้นที่ให้ต่อขีดล่างกับเลขสุ่มสี่หลักได้โดยไม่เกิน 20 ตัว', async () => {
+    const slug = await slugifyActivityName('x'.repeat(50))
+    expect(`${slug}_9999`.length).toBeLessThanOrEqual(20)
+  })
+})
+
 describe('createActivity', () => {
   beforeEach(() => signedInAs('configurator'))
-
-  it('รหัสที่ไม่ใช่ a-z 0-9 ขีดล่าง ถูกปฏิเสธ', async () => {
-    for (const code of ['', 'Draw', 'draw-2', 'สุ่ม', 'x'.repeat(21), 'a b']) {
-      await expect(createActivity('camp-1', createForm({ code })), code)
-        .rejects.toThrow('รหัสกิจกรรม')
-    }
-    expect(state.writes).toEqual([])
-  })
 
   it('ไม่มีชื่อ ถูกปฏิเสธ', async () => {
     await expect(createActivity('camp-1', createForm({ name: '  ' })))
@@ -313,15 +347,94 @@ describe('createActivity', () => {
     expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new')
   })
 
-  it('รหัสซ้ำในแคมเปญเดียวกัน ได้ประโยคที่บอกทางออก ไม่ใช่ชื่อ constraint', async () => {
-    state.failNextWriteWith = '23505'
-    await expect(createActivity('camp-1', createForm({ code: 'draw' })))
-      .rejects.toThrow('มีกิจกรรมรหัส "draw" อยู่แล้ว')
+  it('รหัสถูกสร้างจากชื่อเอง ไม่มีช่องกรอกรหัสในฟอร์มอีกต่อไป', async () => {
+    await createActivity('camp-1', createForm({ name: 'Daily Draw!' }))
+    const [insert] = writesTo(/INSERT INTO activity/)
+    expect(insert.values[1]).toBe('daily_draw')
   })
 
-  it('ข้อผิดพลาดอื่นของฐานข้อมูล ไม่ถูกแปลงเป็นเรื่องรหัสซ้ำ', async () => {
+  /**
+   * รหัสที่สร้างจากชื่อชนกับกิจกรรมอื่นในแคมเปญเดียวกัน
+   *
+   * A person naming two activities the same thing should not have to learn
+   * what a slug collision is — the action retries once with a random suffix
+   * instead of surfacing the clash as an error.
+   */
+  it('รหัสที่สร้างจากชื่อชนกัน ลองอีกครั้งด้วยเลขต่อท้าย โดยไม่ถามผู้ใช้', async () => {
+    state.failNextWriteWith = '23505'
+    await createActivity('camp-1', createForm({ name: 'Daily Draw!' }))
+    const inserts = writesTo(/INSERT INTO activity/)
+    expect(inserts).toHaveLength(1)
+    expect(String(inserts[0].values[1])).toMatch(/^daily_draw_\d{4}$/)
+    expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new')
+  })
+
+  it('ชนกันสองรอบติด (รอบต่อท้ายก็ชน) ได้ประโยคทางออก ไม่ใช่ error ดิบจากฐานข้อมูล', async () => {
+    state.failNextWriteWith = '23505'
+    state.failWriteTimes = 2
+    await expect(createActivity('camp-1', createForm({ name: 'Daily Draw!' })))
+      .rejects.toThrow('มีกิจกรรมรหัส "daily_draw" อยู่แล้ว')
+    expect(state.writes).toEqual([])
+  })
+
+  it('ข้อผิดพลาดอื่นของฐานข้อมูล ไม่ถูกแปลงเป็นเรื่องรหัสซ้ำ และไม่ลองซ้ำ', async () => {
     state.failNextWriteWith = '23503'
     await expect(createActivity('camp-1', createForm())).rejects.toThrow('duplicate key value')
+    expect(state.writes).toEqual([])
+  })
+})
+
+/**
+ * personality_quiz ไม่มี resolve_method เลย (Task 10) — 0014_quiz_engine.sql บังคับด้วย
+ * CHECK ว่าคอลัมน์นี้เป็น NULL ได้ก็ต่อเมื่อ input_type เป็นชนิดนี้เท่านั้น ฟอร์มสร้างจึง
+ * ถามโหมด (เดี่ยว/คู่) แทนทั้งช่องแกน 2 ไม่ใช่แค่ปิดตัวเลือกบางอันแบบ BR-36 ทำกับสี่ชนิดเดิม
+ */
+describe('createActivity · personality_quiz ไม่มี resolve_method (Task 10)', () => {
+  beforeEach(() => signedInAs('configurator'))
+
+  const quizForm = (patch: Record<string, string> = {}) =>
+    createForm({ input_type: 'personality_quiz', quiz_mode: 'solo', ...patch })
+
+  /**
+   * Task 11 · จอ M7-S02 เดิม (../[activityId]/page.tsx) throw TypeError ทันทีที่
+   * เจอ resolve_method เป็น NULL (BY_RESOLVE[null] เป็น undefined แล้ว spread ก็
+   * throw — พิสูจน์จริงตอนรีวิว Task 10) การ redirect ไปที่นั่นแบบเดิมจึงพากิจกรรม
+   * ควิซบุคลิกภาพทุกตัวไปหน้าที่พังทันทีที่โหลด ต้องพาไปจอควิซของ Task 11 แทน
+   */
+  it('สร้างได้โดยไม่ต้องมี resolve_method ที่ใช้งานได้ในฟอร์ม เขียนเป็น NULL และพาไปจอควิซของ Task 11', async () => {
+    await createActivity('camp-1', quizForm({ resolve_method: '' }))
+    const [insert] = writesTo(/INSERT INTO activity/)
+    expect(insert.values[4]).toBeNull()
+    expect(state.redirectedTo).toBe('/campaigns/camp-1/activities/act-new/quiz')
+  })
+
+  it('เก็บโหมดที่เลือกไว้ใน input_config — ยังไม่แตะ axes/questions/results (Task 11 กรอกทีหลัง)', async () => {
+    await createActivity('camp-1', quizForm({ quiz_mode: 'duo' }))
+    const [insert] = writesTo(/INSERT INTO activity/)
+    expect(insert.values[5]).toEqual({ mode: 'duo' })
+  })
+
+  it('โหมดที่ไม่ใช่ solo/duo ถูกปฏิเสธก่อนถึงฐานข้อมูล', async () => {
+    await expect(createActivity('camp-1', quizForm({ quiz_mode: 'ทั้งคู่' })))
+      .rejects.toThrow('โหมด')
+    expect(state.writes).toEqual([])
+  })
+
+  it('ไม่เลือกโหมดเลย ถูกปฏิเสธ', async () => {
+    await expect(createActivity('camp-1', quizForm({ quiz_mode: '' })))
+      .rejects.toThrow('โหมด')
+    expect(state.writes).toEqual([])
+  })
+
+  /** BR-36 ตรวจเฉพาะคู่ที่มี resolve_method จริง — ควิซบุคลิกภาพไม่มีให้ตรวจ */
+  it('ไม่มีการเรียก comboProblem/BR-36 กับควิซบุคลิกภาพ — สร้างผ่านแม้ resolve_method หายไปทั้งช่อง', async () => {
+    const form = new FormData()
+    form.append('name', 'ควิซนิสัยการช้อป')
+    form.append('input_type', 'personality_quiz')
+    form.append('quiz_mode', 'solo')
+    // ไม่มี resolve_method อยู่ใน FormData เลย ต่างจาก quizForm() ที่ยังส่งมาเฉยๆ
+    await createActivity('camp-1', form)
+    expect(writesTo(/INSERT INTO activity/)).toHaveLength(1)
   })
 })
 
@@ -372,6 +485,38 @@ describe('saveActivity · ตัวตนและสองแกน', () => {
     await expect(saveActivity('camp-1', 'act-1',
       saveForm({ resolve_method: 'quota', fallback_card_id: 'card-ของคนอื่น' })))
       .rejects.toThrow('การ์ดของแคมเปญนี้')
+    expect(state.writes).toEqual([])
+  })
+
+  /**
+   * Finding 2 ของรีวิวรอบสุดท้าย · จอนี้ไม่มีทางเขียน personality_quiz ให้ถูกกติกา
+   * ได้เลย (resolve_method ต้องเป็น NULL เท่านั้นตาม 0014_quiz_engine.sql แต่ฟอร์ม
+   * นี้ส่ง resolve_method ที่เป็นค่าจริงมาเสมอ) — ก่อนแก้ ค่านี้จะหลุดผ่าน
+   * comboProblem() ไปเขียนทับจนชน CHECK ของฐานข้อมูลแทน ซึ่งกลายเป็น error ดิบที่
+   * ถูกเซ็นเซอร์แบบทั่วไปให้ผู้ใช้เห็น ไม่ใช่ข้อความที่บอกทางแก้
+   */
+  it('เลือกชนิดอินพุตเป็นควิซบุคลิกภาพจากจอนี้ ถูกปฏิเสธด้วยข้อความที่บอกทางแก้', async () => {
+    await expect(saveActivity('camp-1', 'act-1', saveForm({ input_type: 'personality_quiz' })))
+      .rejects.toThrow('ควิซบุคลิกภาพ')
+    expect(state.writes).toEqual([])
+  })
+
+  /**
+   * รีวิวรอบสอง (ต่อจาก Finding 2) · ด่านข้างบนเช็คแค่ input_type ที่ "ส่งมา" —
+   * ไม่ได้กันกรณีกลับกัน คือกิจกรรมที่เป็นควิซอยู่แล้วถูกแก้จากจอนี้ (URL ตรงมาเอง
+   * ไม่ผ่าน ActivityRow.tsx) ช่อง input_type ในฟอร์มไม่มี personality_quiz เป็น
+   * ตัวเลือกอีกต่อไป defaultValue ที่ไม่ตรงกับ option ไหนเลยจะให้เบราว์เซอร์เลือก
+   * ตัวแรกในลิสต์ ('none') แทนอย่างเงียบๆ กดบันทึกแล้วจะเขียนทับ input_type เป็น
+   * 'none' พร้อม resolve_method จริง ตัดขาด input_config (แกน/คำถาม/ผลลัพธ์) ของ
+   * ควิซออกจากกิจกรรมอย่างเงียบๆ ไม่มีจอไหนแสดง/แก้มันได้อีกเลย — แย่กว่า CHECK
+   * constraint เดิมที่อย่างน้อยยัง error ดังๆ ให้เห็น เช็คจากชนิดเดิมของแถวกัน
+   */
+  it('กิจกรรมที่เป็นควิซบุคลิกภาพอยู่แล้ว แก้จากจอนี้ไม่ได้ไม่ว่าฟอร์มจะส่งชนิดอะไรมา', async () => {
+    state.activities = [activity({
+      id: 'act-1', input_type: 'personality_quiz', resolve_method: null as unknown as string,
+    })]
+    await expect(saveActivity('camp-1', 'act-1', saveForm({ input_type: 'none' })))
+      .rejects.toThrow('ควิซบุคลิกภาพ')
     expect(state.writes).toEqual([])
   })
 })

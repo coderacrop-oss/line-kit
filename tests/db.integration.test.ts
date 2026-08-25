@@ -179,3 +179,42 @@ describe('toSqlEffect · buildRanked', () => {
     expect(built[1].effects).toEqual([{ type: 'grant_reward', reward_code: 'rb' }])
   })
 })
+
+describe('quiz engine schema', () => {
+  it('personality_quiz activity with resolve_method=NULL succeeds', async () => {
+    const s = await seed(sql)
+    const [activity] = await sql<{ id: string }[]>`
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, fallback_card_id)
+      VALUES (${s.campaignId}, 'personality_q', 'Personality Quiz', 'personality_quiz', NULL, ${s.cardIds.fallback})
+      RETURNING id`
+    expect(activity.id).toBeDefined()
+  })
+
+  it('personality_quiz activity with resolve_method set fails CHECK', async () => {
+    const s = await seed(sql)
+    let error: Error | null = null
+    try {
+      await sql`
+        INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, fallback_card_id)
+        VALUES (${s.campaignId}, 'personality_q2', 'Personality Quiz', 'personality_quiz', 'fixed', ${s.cardIds.fallback})`
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error).toBeDefined()
+    expect(error?.message).toContain('new row for relation "activity" violates check constraint')
+  })
+
+  it('quiz_pair with participant_a = participant_b fails CHECK', async () => {
+    const s = await seed(sql)
+    let error: Error | null = null
+    try {
+      await sql`
+        INSERT INTO quiz_pair (activity_id, participant_a, participant_b, result_code, scores)
+        VALUES (${s.activityId}, ${s.participantIds[0]}, ${s.participantIds[0]}, 'tie', '{"a":0,"b":0}'::jsonb)`
+    } catch (e) {
+      error = e as Error
+    }
+    expect(error).toBeDefined()
+    expect(error?.message).toContain('new row for relation "quiz_pair" violates check constraint')
+  })
+})

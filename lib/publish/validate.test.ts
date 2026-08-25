@@ -177,6 +177,53 @@ describe('กิจกรรม', () => {
   })
 })
 
+/**
+ * Finding 1 ของรีวิวรอบสุดท้าย — personality_quiz ไม่มี resolve_config.outcomes เลย
+ * (เนื้อหาอยู่ใน input_config แทน) ก่อนแก้ ด่าน "ยังไม่มีผลลัพธ์สักอัน"/BR-31 ข้างบน
+ * ติดกับกิจกรรมชนิดนี้เสมอเพราะ outcomes ว่างเป็นค่าเริ่มต้นที่ไม่มีวันถูกเติม —
+ * แคมเปญที่มีควิซจึง publish ไม่ได้เลยสักครั้ง
+ */
+describe('personality_quiz ไม่ใช้ด่าน outcomes/BR-31 ของกิจกรรมชนิดอื่น (Finding 1)', () => {
+  const validQuizConfig = {
+    mode: 'solo',
+    axes: [
+      { id: 'ei', label: 'E/I', poles: ['E', 'I'] },
+      { id: 'sn', label: 'S/N', poles: ['S', 'N'] },
+    ],
+    questions: [
+      { id: 'q1', text: 'ข้อ 1', options: [
+        { id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } },
+      ] },
+      { id: 'q2', text: 'ข้อ 2', options: [
+        { id: 'a', label: 'A', scores: { sn: 1 } }, { id: 'b', label: 'B', scores: { sn: -1 } },
+      ] },
+      { id: 'q3', text: 'ข้อ 3', options: [
+        { id: 'a', label: 'A', scores: {} }, { id: 'b', label: 'B', scores: {} },
+      ] },
+    ],
+    results: [{ code: 'ES', title: 't', body: 'b' }, { code: 'IN', title: 't', body: 'b' }],
+    fallbackResultCode: 'ES',
+  }
+
+  const quizActivity = {
+    id: 'a1', code: 'quiz1', resolveMethod: null as unknown as string,
+    fallbackCardId: null, entryRules: [], outcomes: [],
+    inputType: 'personality_quiz', inputConfig: validQuizConfig,
+  }
+
+  it('ควิซที่ตั้งค่าครบแล้ว ผ่านด่านหมด — ไม่ติด "ยังไม่มีผลลัพธ์สักอัน" ทั้งที่ outcomes ว่าง', () => {
+    const good = { ...ok, activities: [quizActivity] }
+    expect(validateForPublish(good)).toEqual([])
+  })
+
+  it('ควิซที่ยังตั้งค่าไม่ครบ (input_config ว่างเปล่า) บล็อกด้วยข้อความเฉพาะของควิซ', () => {
+    const bad = { ...ok, activities: [{ ...quizActivity, inputConfig: {} }] }
+    const problems = validateForPublish(bad)
+    expect(problems.length).toBeGreaterThan(0)
+    expect(problems.some((p) => p.message.includes('ควิซ'))).toBe(true)
+  })
+})
+
 describe('คีย์เวิร์ด', () => {
   it('คีย์เวิร์ดที่ชี้ไปกิจกรรมที่ไม่มีอยู่ บล็อก', () => {
     const bad = {

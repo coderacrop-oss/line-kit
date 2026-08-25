@@ -32,6 +32,19 @@ export default async function ActivitySetupPage({ params }: {
   const screen = await loadActivity(sql, campaign.id, activityId)
   if (!screen) notFound()
 
+  /**
+   * ควิซบุคลิกภาพไม่มีจอนี้ให้ตั้งค่า — พาไปจอควิซแทนทันที แทนที่จะวาดฟอร์มที่
+   * ช่อง "แกน 1" ไม่มี personality_quiz เป็นตัวเลือกให้เลือกอยู่แล้ว (ActivitySetup.tsx
+   * กรองออกไปแล้ว) ซึ่งจะทำให้ <select> ขึ้นค่าที่ไม่ตรงกับ defaultValue เดิมของแถว
+   * แบบดูแปลกๆ · ปุ่ม/ลิงก์ปกติทั้งหมดพาไปจอควิซอยู่แล้ว (ActivityRow.tsx) URL นี้จึง
+   * ต้องถูกพิมพ์ตรงเข้ามาเองเท่านั้นถึงจะมาถึงจุดนี้ — การป้องกันข้อมูลเสียจริงๆ อยู่ที่
+   * saveActivity() ปฏิเสธ current.input_type === 'personality_quiz' (../actions.ts)
+   * ก่อนเขียนเสมอ ส่วน redirect นี้เป็นแค่ไม่ให้เห็นจอที่ดูพังด้วยซ้ำ
+   */
+  if (screen.activity.inputType === 'personality_quiz') {
+    redirect(`/campaigns/${campaign.id}/activities/${activityId}/quiz`)
+  }
+
   // ตัวที่ถือทริกเกอร์ "ตอนแอดเป็นเพื่อน" อยู่ (BR-90) · อาจเป็นตัวนี้เอง
   const holder = await followHolder(sql, campaign.id)
   const canEdit = session.role === 'configurator'

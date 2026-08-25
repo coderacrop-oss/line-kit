@@ -23,6 +23,14 @@ const smallLabelStyle: CSSProperties = { ...labelStyle, fontSize: 10, fontWeight
 
 const noteStyle: CSSProperties = { fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }
 
+/**
+ * ควิซบุคลิกภาพไม่มี resolve_method ให้ผสม (0014_quiz_engine.sql) และจอนี้ (M7-S02)
+ * ไม่ใช่จอตั้งค่าของมัน (ดู ../[activityId]/quiz/page.tsx) — เสนอมันในช่องแกน 1 ที่
+ * นี่จะทำให้แก้กิจกรรมชนิดอื่นให้กลายเป็นควิซได้จากจอที่ไม่มีทางเขียนมันให้ถูกกติกา
+ * แล้ว saveActivity จะชน CHECK ของฐานข้อมูลแทน (Finding 2 ของรีวิวรอบสุดท้าย)
+ */
+const EDITABLE_INPUT_TYPES = INPUT_TYPES.filter((type) => type !== 'personality_quiz')
+
 const readOnlyBoxStyle: CSSProperties = {
   fontFamily: 'var(--mono)', fontSize: 13,
   background: 'var(--panel-2)', border: '1px solid var(--rule)',
@@ -505,7 +513,7 @@ export function ActivitySetup({ campaignId, screen, followHolder, canEdit }: {
             <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 14 }}>
               <Field label="แกน 1 · รับอินพุตยังไง">
                 <select name="input_type" defaultValue={activity.inputType} disabled={!canEdit}>
-                  {INPUT_TYPES.map((type) => (
+                  {EDITABLE_INPUT_TYPES.map((type) => (
                     <option key={type} value={type}>{inputTypeName(type)}</option>
                   ))}
                 </select>
