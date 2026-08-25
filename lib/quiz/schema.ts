@@ -41,6 +41,7 @@ export const QuizConfig = z.object({
   results: z.array(QuizResultRule).min(2),
   fallbackResultCode: z.string().min(1),
   group: z.lazy(() => GroupConfig).optional(),
+  replies: z.lazy(() => QuizReplies).optional(),
 }).superRefine((cfg, ctx) => {
   const axisIds = new Set(cfg.axes.map((a) => a.id))
   if (axisIds.size !== cfg.axes.length) {
@@ -151,3 +152,8 @@ export const GroupConfig = z.object({
   }
 })
 export type GroupConfig = z.infer<typeof GroupConfig>
+
+export const QuizReplies = z.object({
+  duoMatchNotifyCardId: z.string().uuid().optional(),  // การ์ดแจ้ง A ตอน B ตอบครบ
+})
+export type QuizReplies = z.infer<typeof QuizReplies>
