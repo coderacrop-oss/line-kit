@@ -88,7 +88,7 @@ async function loadKeywords(sql: Queryable, campaignId: string) {
  */
 export const DEFAULT_THEME = { primary: '#17756A', secondary: '#EFF3F1', text: '#151F1D' }
 
-async function loadCards(sql: Queryable, campaignId: string) {
+export async function loadCards(sql: Queryable, campaignId: string) {
   const cards = await sql<{
     id: string; code: string; render_as: RenderableCard['renderAs']
     parent_card_id: string | null; sort_in_parent: number | null

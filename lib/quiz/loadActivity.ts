@@ -1,5 +1,7 @@
 // lib/quiz/loadActivity.ts
 import type { Queryable } from '../db/client'
+import { DEFAULT_THEME } from '../db/queries'
+import type { Theme } from '../render/flex'
 import { QuizConfig } from './schema'
 
 /**
@@ -13,12 +15,17 @@ import { QuizConfig } from './schema'
  * lib/engine/entry.ts (`ctx.now < campaignStart || ctx.now > campaignEnd`) บังคับกับ
  * ทุกกิจกรรมที่ chat-triggered engine เล่นได้ — ก่อนแก้ตรงนี้ แอดมินปิดกิจกรรมควิซ
  * หรือช่วงแคมเปญหมดอายุแล้ว LIFF ก็ยังรับเล่นต่อได้เรื่อยๆ (Finding 4)
+ *
+ * `campaignId`/`theme` เพิ่มเข้ามาสำหรับ duo-match-notify (docs/superpowers/specs/
+ * 2026-08-25-quiz-duo-reply-notify-design.md) — มาจากแถวที่ query นี้ join อยู่แล้ว
+ * ไม่ต้อง query เพิ่มรอบสอง route อื่นที่เรียก loadQuizActivity() อยู่แล้วไม่ต้องแก้
+ * อะไร เพราะ TS structural typing ไม่สนใจฟิลด์เกินที่ไม่ได้ใช้
  */
 export async function loadQuizActivity(
   sql: Queryable, channelId: string, activityCode: string,
-): Promise<{ id: string; config: QuizConfig } | null> {
-  const [row] = await sql<{ id: string; input_config: unknown }[]>`
-    SELECT a.id, a.input_config
+): Promise<{ id: string; config: QuizConfig; campaignId: string; theme: Theme } | null> {
+  const [row] = await sql<{ id: string; input_config: unknown; campaign_id: string; theme: Partial<Theme> }[]>`
+    SELECT a.id, a.input_config, a.campaign_id, ca.theme
       FROM activity a
       JOIN campaign_channel cc ON cc.campaign_id = a.campaign_id
       JOIN campaign ca ON ca.id = a.campaign_id
@@ -29,5 +36,5 @@ export async function loadQuizActivity(
   if (!row) return null
 
   const parsed = QuizConfig.parse(row.input_config) // throws → surfaces as 500; a saved-but-invalid config is a bug, not a client error
-  return { id: row.id, config: parsed }
+  return { id: row.id, config: parsed, campaignId: row.campaign_id, theme: { ...DEFAULT_THEME, ...row.theme } }
 }
