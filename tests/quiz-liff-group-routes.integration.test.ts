@@ -18,6 +18,7 @@ let channelId: string
 let campaignId: string
 let liffId: string
 let activityCode: string
+let activityCodeNoGroup: string
 let lineUidA: string
 let lineUidB: string
 let lineUidC: string
@@ -53,6 +54,11 @@ const cfg: QuizConfig = {
   },
 }
 
+// Same activity, but group mode not enabled — covers the 404 gate that both routes
+// must apply BEFORE calling into lib/db/quizGroups.ts (checked ahead of any answer
+// lookup, independent of whether the caller has answered).
+const cfgNoGroup: QuizConfig = { ...cfg, group: undefined }
+
 beforeAll(async () => {
   process.env.SECRET_KEY_V1 = randomBytes(32).toString('base64')
   sql = testDb(url)
@@ -80,6 +86,11 @@ beforeAll(async () => {
   await sql`
     INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
     VALUES (${campaignId}, ${activityCode}, 'Personality quiz group', 'personality_quiz', NULL, ${sql.json(cfg as never)})`
+
+  activityCodeNoGroup = `quizgrpx${tag}`
+  await sql`
+    INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
+    VALUES (${campaignId}, ${activityCodeNoGroup}, 'Personality quiz no group', 'personality_quiz', NULL, ${sql.json(cfgNoGroup as never)})`
 
   const app = await createLiffApp(sql, {
     name: 'Quiz LIFF group', liffId: `2012-${tag}`,
@@ -176,5 +187,23 @@ describe('group create + join', () => {
       { params: Promise.resolve({ liffId, activityCode, groupId: crypto.randomUUID() }) },
     )
     expect(response.status).toBe(404)
+  })
+
+  it('create and join both 404 when group mode is not enabled for the activity', async () => {
+    const createResponse = await postCreate(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode: activityCodeNoGroup }) },
+    )
+    expect(createResponse.status).toBe(404)
+    const createBody = await createResponse.json()
+    expect(createBody.error).toBe('ควิซนี้ไม่เปิดผลลัพธ์กลุ่ม')
+
+    const joinResponse = await postJoin(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode: activityCodeNoGroup, groupId: crypto.randomUUID() }) },
+    )
+    expect(joinResponse.status).toBe(404)
+    const joinBody = await joinResponse.json()
+    expect(joinBody.error).toBe('ควิซนี้ไม่เปิดผลลัพธ์กลุ่ม')
   })
 })
