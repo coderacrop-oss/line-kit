@@ -6,7 +6,7 @@ import { boxStyle, noteStyle, removeAt, replaceAt, rowStyle, smallLabelStyle, un
 
 const DEFAULT_GROUP: GroupConfig = {
   enabled: true, minMembers: 2, maxMembers: 50, resultLocksAt: 0,
-  archetypes: [{ code: 'default', title: '', body: '', minGroupSize: 2, fallback: true }],
+  archetypes: [{ code: 'default', title: 'Archetype 1', body: '', minGroupSize: 2, fallback: true }],
   fallbackArchetype: 'default',
 }
 

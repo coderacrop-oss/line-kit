@@ -3,7 +3,7 @@
 import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { GroupConfigEditor } from './GroupConfigEditor'
-import type { GroupConfig, QuizAxis } from '@/lib/quiz/schema'
+import { GroupConfig as GroupConfigSchema, type GroupConfig, type QuizAxis } from '@/lib/quiz/schema'
 
 afterEach(cleanup)
 
@@ -31,6 +31,8 @@ describe('GroupConfigEditor', () => {
     render(<GroupConfigEditor group={undefined} axes={axes} canEdit onChange={onChange} />)
     fireEvent.click(screen.getByLabelText(/เปิดใช้งานผลลัพธ์กลุ่ม/))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }))
+    const defaultGroup = onChange.mock.calls[0][0] as GroupConfig
+    expect(GroupConfigSchema.safeParse(defaultGroup).success).toBe(true)
   })
 
   it('renders every archetype row and lets you edit a title', () => {
