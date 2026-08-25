@@ -40,6 +40,7 @@ export const QuizConfig = z.object({
   questions: z.array(QuizQuestion).min(3).max(10),
   results: z.array(QuizResultRule).min(2),
   fallbackResultCode: z.string().min(1),
+  group: z.lazy(() => GroupConfig).optional(),
 }).superRefine((cfg, ctx) => {
   const axisIds = new Set(cfg.axes.map((a) => a.id))
   if (axisIds.size !== cfg.axes.length) {
@@ -103,3 +104,50 @@ export const QuizConfig = z.object({
   }
 })
 export type QuizConfig = z.infer<typeof QuizConfig>
+
+export const GroupCondition = z.object({
+  hasAxes: z.array(z.string().min(1)).min(1).optional(),
+  hasMode: z.enum(['any', 'all']).default('any'),
+  topAxes: z.array(z.string().min(1)).min(1).optional(),
+  topN: z.number().int().min(1).max(5).default(1),
+  isBalanced: z.boolean().optional(),
+  dominantThreshold: z.number().min(0.3).max(0.9).default(0.5),
+  minMembersWithAxis: z.number().int().min(1).optional(),
+  maxDistinct: z.number().int().min(1).max(6).optional(),
+})
+export type GroupCondition = z.infer<typeof GroupCondition>
+
+export const GroupArchetype = z.object({
+  code: z.string().min(1).max(30),
+  title: z.string().min(1).max(120),
+  body: z.string().max(600),
+  imageUrl: z.string().url().optional(),
+  minGroupSize: z.number().int().min(2).max(200).default(2),
+  maxGroupSize: z.number().int().min(2).max(200).optional(),
+  condition: GroupCondition.nullable().optional(),
+  fallback: z.boolean().optional(),
+})
+export type GroupArchetype = z.infer<typeof GroupArchetype>
+
+export const GroupConfig = z.object({
+  enabled: z.boolean().default(false),
+  minMembers: z.number().int().min(2).max(200).default(2),
+  maxMembers: z.number().int().min(2).max(200).default(50),
+  resultLocksAt: z.number().int().min(0).max(200).default(0),
+  archetypes: z.array(GroupArchetype).min(1),
+  fallbackArchetype: z.string().min(1),
+}).superRefine((cfg, ctx) => {
+  if (cfg.maxMembers < cfg.minMembers) {
+    ctx.addIssue({ code: 'custom', path: ['maxMembers'], message: 'maxMembers ต้อง >= minMembers' })
+  }
+  if (!cfg.archetypes.some((a) => a.code === cfg.fallbackArchetype)) {
+    ctx.addIssue({ code: 'custom', path: ['fallbackArchetype'], message: 'fallbackArchetype ต้องมีอยู่จริงใน archetypes' })
+  }
+  const tiers = [...new Set(cfg.archetypes.map((a) => a.minGroupSize))]
+  for (const tier of tiers) {
+    if (!cfg.archetypes.some((a) => a.minGroupSize === tier && a.fallback)) {
+      ctx.addIssue({ code: 'custom', path: ['archetypes'], message: `min_group_size=${tier} ไม่มี fallback` })
+    }
+  }
+})
+export type GroupConfig = z.infer<typeof GroupConfig>
