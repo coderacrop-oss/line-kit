@@ -110,6 +110,26 @@ describe('joinQuizGroup', () => {
     await expect(joinQuizGroup(sql, cfg, activityId, groupId, pFourth.id)).rejects.toThrow('กลุ่มนี้เต็มแล้ว')
   })
 
+  it('holds the max_members cap under real concurrent joins (not just sequential ones)', async () => {
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    // cfg in this file has maxMembers: 3 — seat 1 is participantA (creator).
+    // Create enough fresh participants + saved answers to race for the remaining 2 seats.
+    const joiners: string[] = []
+    for (let i = 0; i < 5; i++) {
+      const [p] = await sql<{ id: string }[]>`
+        INSERT INTO participant (channel_id, line_uid) VALUES (${channelId}, ${`U-${randomBytes(4).toString('hex')}`}) RETURNING id`
+      await saveQuizAnswers(sql, activityId, p.id, [{ questionId: 'q1', optionId: 'a' }])
+      joiners.push(p.id)
+    }
+
+    const results = await Promise.allSettled(joiners.map((p) => joinQuizGroup(sql, cfg, activityId, groupId, p)))
+    const fulfilled = results.filter((r) => r.status === 'fulfilled').length
+    expect(fulfilled).toBe(2) // only 2 more seats available (maxMembers 3 - creator's 1)
+
+    const members = await sql`SELECT participant_id FROM quiz_group_member WHERE group_id = ${groupId}`
+    expect(members).toHaveLength(3) // never exceeds maxMembers, even under real concurrency
+  })
+
   it('rejects joining a group that does not exist', async () => {
     await expect(joinQuizGroup(sql, cfg, activityId, crypto.randomUUID(), participantA)).rejects.toThrow('ไม่พบกลุ่มนี้')
   })
