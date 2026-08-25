@@ -217,4 +217,18 @@ describe('quiz engine schema', () => {
     expect(error).toBeDefined()
     expect(error?.message).toContain('new row for relation "quiz_pair" violates check constraint')
   })
+
+  it('quiz_group_member round-trips a frozen snapshot', async () => {
+    const s = await seed(sql)
+    const [group] = await sql<{ id: string }[]>`
+      INSERT INTO quiz_group (activity_id, created_by) VALUES (${s.activityId}, ${s.participantIds[0]})
+      RETURNING id`
+    await sql`
+      INSERT INTO quiz_group_member (group_id, participant_id, top_axis, axis_scores)
+      VALUES (${group.id}, ${s.participantIds[0]}, 'ei', '{"ei":3,"sn":-1}'::jsonb)`
+    const [member] = await sql<{ top_axis: string; axis_scores: Record<string, number> }[]>`
+      SELECT top_axis, axis_scores FROM quiz_group_member WHERE group_id = ${group.id}`
+    expect(member.top_axis).toBe('ei')
+    expect(member.axis_scores).toEqual({ ei: 3, sn: -1 })
+  })
 })

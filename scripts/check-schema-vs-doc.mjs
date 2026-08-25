@@ -82,6 +82,11 @@ const LOCAL_TABLES = {
   // Native Quiz Engine · คู่ duo ที่จับคู่สำเร็จแล้ว พร้อมคะแนน/ผลลัพธ์ที่แช่แข็งไว้ตอน
   // จับคู่ (scores เก็บ {a, b, combined}) — schema จริงอยู่ที่เอกสารเดียวกับ quiz_answer §3.2
   quiz_pair: 'Native Quiz Engine — matched duo pairs with frozen scores/result_code',
+  // Native Quiz Engine — Group Mode · กลุ่มที่สร้างขึ้น (ใครสร้าง) และสมาชิกแต่ละคนพร้อม
+  // top_axis/axis_scores ที่แช่แข็งไว้ตอนเข้ากลุ่ม — schema จริงอยู่ที่
+  // docs/superpowers/specs/2026-08-25-quiz-group-mode-design.md §3
+  quiz_group: 'Native Quiz Engine Group Mode — groups players form on top of a quiz activity',
+  quiz_group_member: 'Native Quiz Engine Group Mode — frozen per-member axis scores, snapshotted at join time',
 }
 
 async function readLiveSchema(sql) {
