@@ -6,6 +6,9 @@ import { scoreAnswers, strongestAxis } from '../quiz/engine'
 import { evaluateGroupArchetype } from '../quiz/groupEngine'
 import type { QuizConfig } from '../quiz/schema'
 
+/** รูปร่าง UUID เท่านั้น (ไม่เช็คว่ามีแถวจริง) — กันไม่ให้ pairId เพี้ยนหลุดไปชน Postgres error 22P02 กลางลูป */
+const UUID_SHAPE_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
 /**
  * สร้างกลุ่มใหม่ ใส่ creator เป็นสมาชิกคนแรกในธุรกรรมเดียว — คะแนนของ creator
  * แช่แข็ง (snapshot) ตอนนี้เลย ตรงกับพฤติกรรม quiz_pair.scores ของ duo (lib/db/quizPairs.ts)
@@ -108,7 +111,20 @@ export async function getQuizGroup(
   } else {
     archetype = evaluateGroupArchetype(cfg, members)
     if (groupCfg.resultLocksAt > 0 && total >= groupCfg.resultLocksAt && archetype) {
-      await sql`UPDATE quiz_group SET locked_archetype_code = ${archetype.code}, locked_at = now() WHERE id = ${groupId}`
+      // Guarded ด้วย `AND locked_archetype_code IS NULL` — กัน GET สอง request พร้อมกันที่
+      // ต่างอ่านค่า NULL มาก่อนใครจะเขียน แล้วตัวหลังเขียนทับ archetype ของตัวแรกที่ commit
+      // ไปแล้วด้วยค่าที่ต่างกัน (สอง request คำนวณ archetype จาก snapshot สมาชิกคนละช่วง
+      // เวลากันได้) ถ้า UPDATE นี้ไม่ได้แถวคืนมา แปลว่ามีคนอื่นล็อกไปก่อนแล้วระหว่างที่เรา
+      // อ่าน — ต้องอ่านค่าที่ชนะจริงกลับมาใช้ ไม่ใช่ยึดค่าที่เราคำนวณเองไว้
+      const [locked] = await sql<{ locked_archetype_code: string }[]>`
+        UPDATE quiz_group SET locked_archetype_code = ${archetype.code}, locked_at = now()
+         WHERE id = ${groupId} AND locked_archetype_code IS NULL
+         RETURNING locked_archetype_code`
+      if (!locked) {
+        const [winner] = await sql<{ locked_archetype_code: string }[]>`
+          SELECT locked_archetype_code FROM quiz_group WHERE id = ${groupId}`
+        archetype = groupCfg.archetypes.find((a) => a.code === winner.locked_archetype_code) ?? archetype
+      }
       isLocked = true
     }
   }
@@ -146,6 +162,11 @@ export async function addPairsToQuizGroup(
 
     let added = 0
     for (const pairId of pairIds) {
+      // pairId เพี้ยนรูปร่าง (ไม่ใช่ UUID) ต้องข้ามก่อนยิง query — Postgres โยน 22P02 ทันทีถ้า
+      // ส่ง string ที่ไม่ใช่ UUID เข้าคอลัมน์ uuid ซึ่งจะทำให้ทั้ง transaction ถูก abort (รวม
+      // ถึงคู่ที่ insert สำเร็จไปแล้วก่อนหน้าในลูปเดียวกัน) ไม่ใช่แค่ pairId ตัวนั้นถูกข้าม
+      if (!UUID_SHAPE_RE.test(pairId)) continue
+
       const [pair] = await tx<{ participant_a: string; participant_b: string; scores: { a: Record<string, number>; b: Record<string, number> } }[]>`
         SELECT participant_a, participant_b, scores FROM quiz_pair WHERE id = ${pairId} AND activity_id = ${activityId}`
       if (!pair) continue

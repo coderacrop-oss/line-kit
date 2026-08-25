@@ -194,4 +194,49 @@ describe('addPairsToQuizGroup', () => {
     const result = await addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [crypto.randomUUID()])
     expect(result.added).toBe(0)
   })
+
+  it('skips a malformed (non-UUID) pairId without rolling back a valid insert earlier in the same batch', async () => {
+    const duoCfg: QuizConfig = { ...cfg, mode: 'duo', results: [{ code: 'PAIR', title: 't', body: 'b' }], fallbackResultCode: 'PAIR' }
+    const [partner] = await sql<{ id: string }[]>`
+      INSERT INTO participant (channel_id, line_uid) VALUES (${channelId}, ${`U-${randomBytes(4).toString('hex')}`}) RETURNING id`
+    const pair = await matchQuizPair(sql, duoCfg, activityId, participantA, partner.id, [{ questionId: 'q1', optionId: 'a' }])
+
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    const result = await addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [pair.id, 'not-a-uuid'])
+    expect(result.added).toBe(1)
+    const members = await sql`SELECT participant_id FROM quiz_group_member WHERE group_id = ${groupId} AND participant_id = ${partner.id}`
+    expect(members).toHaveLength(1)
+  })
+
+  it('holds the max_members cap when add-pairs races concurrent joins on the same group', async () => {
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    // cfg has maxMembers: 3 — creator already occupies seat 1, leaving 2 seats to race for.
+    const duoCfg: QuizConfig = { ...cfg, mode: 'duo', results: [{ code: 'PAIR', title: 't', body: 'b' }], fallbackResultCode: 'PAIR' }
+
+    // Seed 4 real quiz_pair rows (creator + a fresh partner each) for the add-pairs side of the race.
+    const pairIds: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const [partner] = await sql<{ id: string }[]>`
+        INSERT INTO participant (channel_id, line_uid) VALUES (${channelId}, ${`U-${randomBytes(4).toString('hex')}`}) RETURNING id`
+      const pair = await matchQuizPair(sql, duoCfg, activityId, participantA, partner.id, [{ questionId: 'q1', optionId: 'a' }])
+      pairIds.push(pair.id)
+    }
+
+    // Seed 4 fresh answered participants for the direct-join side of the race.
+    const joiners: string[] = []
+    for (let i = 0; i < 4; i++) {
+      const [p] = await sql<{ id: string }[]>`
+        INSERT INTO participant (channel_id, line_uid) VALUES (${channelId}, ${`U-${randomBytes(4).toString('hex')}`}) RETURNING id`
+      await saveQuizAnswers(sql, activityId, p.id, [{ questionId: 'q1', optionId: 'a' }])
+      joiners.push(p.id)
+    }
+
+    const addPairCalls = pairIds.map((pid) => addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [pid]))
+    const joinCalls = joiners.map((jid) => joinQuizGroup(sql, cfg, activityId, groupId, jid))
+    await Promise.allSettled([...addPairCalls, ...joinCalls])
+
+    const [{ count }] = await sql<{ count: number }[]>`
+      SELECT COUNT(*)::int AS count FROM quiz_group_member WHERE group_id = ${groupId}`
+    expect(count).toBeLessThanOrEqual(cfg.group!.maxMembers) // never exceeds maxMembers, even under real concurrency
+  })
 })
