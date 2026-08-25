@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation'
 import { Button, ErrorModal, Field, Note, Panel } from '@/components/ui'
 import { QuizConfig, type QuizAxis, type QuizOption, type QuizQuestion, type QuizResultRule } from '@/lib/quiz/schema'
 import { saveQuizConfigAction } from './actions'
+import { GroupConfigEditor } from './GroupConfigEditor'
 
 /**
  * ฟอร์มเดียวที่ประกอบ mode/axes/questions/results ทั้งชุดไว้ใน client state ก่อนส่ง
@@ -28,16 +29,16 @@ const labelStyle: CSSProperties = {
   textTransform: 'uppercase', color: 'var(--ink-3)',
 }
 
-const smallLabelStyle: CSSProperties = { ...labelStyle, fontSize: 10, fontWeight: 500 }
+export const smallLabelStyle: CSSProperties = { ...labelStyle, fontSize: 10, fontWeight: 500 }
 
-const noteStyle: CSSProperties = { fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }
+export const noteStyle: CSSProperties = { fontSize: 11, color: 'var(--ink-3)', lineHeight: 1.6 }
 
-const boxStyle: CSSProperties = {
+export const boxStyle: CSSProperties = {
   border: '1px solid var(--rule)', borderRadius: 'var(--r)', padding: 13,
   display: 'flex', flexDirection: 'column', gap: 9,
 }
 
-const rowStyle: CSSProperties = { display: 'flex', gap: 9, alignItems: 'flex-end', flexWrap: 'wrap' }
+export const rowStyle: CSSProperties = { display: 'flex', gap: 9, alignItems: 'flex-end', flexWrap: 'wrap' }
 
 const numberStyle: CSSProperties = { fontFamily: 'var(--mono)', width: 64, textAlign: 'right' }
 
@@ -60,11 +61,11 @@ const Block = ({ children }: { children: ReactNode }) => (
 )
 
 /** ตัวช่วยแก้แถวในอาเรย์แบบไม่แก้ของเดิม · ใช้ซ้ำทั้งแกน/คำถาม/ตัวเลือก/ผลลัพธ์ */
-function replaceAt<T>(list: T[], index: number, patch: Partial<T>): T[] {
+export function replaceAt<T>(list: T[], index: number, patch: Partial<T>): T[] {
   return list.map((item, i) => (i === index ? { ...item, ...patch } : item))
 }
 
-function removeAt<T>(list: T[], index: number): T[] {
+export function removeAt<T>(list: T[], index: number): T[] {
   return list.filter((_, i) => i !== index)
 }
 
@@ -90,7 +91,7 @@ function omitKey<T extends Record<string, number>>(obj: T, key: string): T {
  * อาเรย์ — ปลอดภัยไม่ว่าประวัติการเพิ่ม/ลบจะเป็นอย่างไร เพราะไม่ได้พึ่งตัวนับที่
  * อาจไม่ตรงกับสถานะจริงหลังลบแทรก
  */
-function uniqueId(existing: Iterable<string>, prefix: string): string {
+export function uniqueId(existing: Iterable<string>, prefix: string): string {
   const taken = new Set(existing)
   let n = taken.size + 1
   let id = `${prefix}${n}`
@@ -597,6 +598,13 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
               </Field>
             </Block>
           </Panel>
+
+          <GroupConfigEditor
+            group={draft.group}
+            axes={draft.axes}
+            canEdit={canEdit}
+            onChange={(group) => setDraft((d) => ({ ...d, group }))}
+          />
 
           {validation.success ? (
             <Note tone="ok">กรอกครบและถูกต้องตาม schema แล้ว — บันทึกได้</Note>

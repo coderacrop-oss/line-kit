@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { QuizConfig } from './schema'
+import { GroupConfig, QuizConfig } from './schema'
 
 const validConfig = {
   mode: 'solo' as const,
@@ -157,5 +157,99 @@ describe('QuizConfig', () => {
       axes: [validConfig.axes[0], { ...validConfig.axes[1], poles: ['Sensing', ''] as [string, string] }],
     }
     expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+})
+
+describe('GroupConfig', () => {
+  const validGroupConfig = {
+    enabled: true,
+    minMembers: 2,
+    maxMembers: 10,
+    resultLocksAt: 0,
+    archetypes: [
+      { code: 'balanced', title: 'สมดุล', body: 'ทุกแกนพอๆ กัน', minGroupSize: 2, condition: { isBalanced: true }, fallback: false },
+      { code: 'mixed', title: 'ปนกัน', body: 'fallback', minGroupSize: 2, fallback: true },
+    ],
+    fallbackArchetype: 'mixed',
+  }
+
+  it('accepts a valid group config', () => {
+    expect(GroupConfig.safeParse(validGroupConfig).success).toBe(true)
+  })
+
+  it('rejects when fallbackArchetype has no matching archetype code', () => {
+    const cfg = { ...validGroupConfig, fallbackArchetype: 'nope' }
+    expect(GroupConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects when a min_group_size tier has no fallback archetype', () => {
+    const cfg = {
+      ...validGroupConfig,
+      archetypes: [
+        { code: 'small', title: 't', body: 'b', minGroupSize: 2, fallback: false, condition: { isBalanced: true } },
+        { code: 'big', title: 't', body: 'b', minGroupSize: 5, fallback: true },
+      ],
+      fallbackArchetype: 'big',
+    }
+    expect(GroupConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects maxMembers < minMembers', () => {
+    const cfg = { ...validGroupConfig, minMembers: 10, maxMembers: 5 }
+    expect(GroupConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('accepts a full GroupCondition with every field set', () => {
+    const cfg = {
+      ...validGroupConfig,
+      archetypes: [
+        {
+          code: 'full', title: 't', body: 'b', minGroupSize: 2, maxGroupSize: 20, fallback: false,
+          condition: {
+            hasAxes: ['ei'], hasMode: 'all' as const, topAxes: ['ei', 'sn'], topN: 2,
+            isBalanced: true, dominantThreshold: 0.6, minMembersWithAxis: 2, maxDistinct: 3,
+          },
+        },
+        { code: 'mixed', title: 'ปนกัน', body: 'fallback', minGroupSize: 2, fallback: true },
+      ],
+    }
+    expect(GroupConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('QuizConfig.group is optional — a config with no group field is still valid', () => {
+    const cfg = {
+      mode: 'solo' as const,
+      axes: [
+        { id: 'ei', label: 'E/I', poles: ['E', 'I'] as [string, string] },
+        { id: 'sn', label: 'S/N', poles: ['S', 'N'] as [string, string] },
+      ],
+      questions: [
+        { id: 'q1', text: 'q1', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+        { id: 'q2', text: 'q2', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+        { id: 'q3', text: 'q3', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+      ],
+      results: [{ code: 'E', title: 't', body: 'b' }, { code: 'I', title: 't', body: 'b' }],
+      fallbackResultCode: 'E',
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('QuizConfig accepts group alongside duo mode', () => {
+    const cfg = {
+      mode: 'duo' as const,
+      axes: [
+        { id: 'ei', label: 'E/I', poles: ['E', 'I'] as [string, string] },
+        { id: 'sn', label: 'S/N', poles: ['S', 'N'] as [string, string] },
+      ],
+      questions: [
+        { id: 'q1', text: 'q1', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+        { id: 'q2', text: 'q2', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+        { id: 'q3', text: 'q3', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+      ],
+      results: [{ code: 'E', title: 't', body: 'b' }, { code: 'I', title: 't', body: 'b' }],
+      fallbackResultCode: 'E',
+      group: validGroupConfig,
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
   })
 })
