@@ -65,17 +65,26 @@ export async function listQuizPairsForParticipant(
  * รับ sql เป็น postgres.Sql ไม่ใช่ Queryable ที่กว้างกว่า — เพราะ .begin() มีอยู่
  * เฉพาะบน pool เท่านั้น TransactionSql (อีกฝั่งของ Queryable) ไม่มีให้เปิดซ้อน
  * ตามลวดลายเดียวกับ withBorrowedStock ใน lib/db/preview.ts
+ *
+ * คืน { pair, created } แทนที่จะคืนแค่ pair เฉยๆ — ผู้เรียก (เช่น route duo/match) ต้อง
+ * รู้ว่าคู่นี้ "เพิ่งถูกสร้างจริงในคำขอนี้" หรือ "มีอยู่แล้ว" เพื่อตัดสินใจว่าควร push
+ * แจ้งเตือน A ซ้ำหรือไม่ — DB layer นี้ idempotent อยู่แล้ว (คืนแถวเดิมถ้ามีอยู่) แต่ถ้า
+ * ผู้เรียกยิง side effect เพิ่ม (push) แบบไม่มีเงื่อนไขทุกครั้งที่ฟังก์ชันนี้ return
+ * สำเร็จ ก็จะเสีย idempotency นั้นไปที่ชั้น route แทน — `created` ต้องแม่นแม้ในเคส
+ * race ของสอง transaction พร้อมกัน (คอมเมนต์ด้านบน) จึงใช้ `(xmax = 0) AS inserted`
+ * แยกแยะ INSERT จริง จาก ON CONFLICT DO UPDATE ที่ถูกบังคับชนกัน — ตัวที่แพ้การแข่ง
+ * (ผ่าน DO UPDATE) จะได้ created: false แม้ผ่าน pre-check ตอนต้นมาเหมือนกันก็ตาม
  */
 export async function matchQuizPair(
   sql: postgres.Sql, cfg: QuizConfig, activityId: string,
   inviterParticipantId: string, bParticipantId: string, bAnswers: Answer[],
-): Promise<QuizPair> {
+): Promise<{ pair: QuizPair; created: boolean }> {
   if (inviterParticipantId === bParticipantId) {
     throw new Error('จับคู่กับตัวเองไม่ได้')
   }
 
   const existing = await findQuizPair(sql, activityId, inviterParticipantId, bParticipantId)
-  if (existing) return existing
+  if (existing) return { pair: existing, created: false }
 
   return sql.begin(async (tx) => {
     const inviterAnswers = await loadQuizAnswers(tx, activityId, inviterParticipantId)
@@ -86,14 +95,14 @@ export async function matchQuizPair(
     await saveQuizAnswers(tx, activityId, bParticipantId, bAnswers)
     const outcome = resolvePair(cfg, inviterAnswers, bAnswers)
 
-    const [row] = await tx<QuizPairRow[]>`
+    const [row] = await tx<(QuizPairRow & { inserted: boolean })[]>`
       INSERT INTO quiz_pair (activity_id, participant_a, participant_b, result_code, scores)
       VALUES (
         ${activityId}, ${inviterParticipantId}, ${bParticipantId}, ${outcome.resultCode},
         ${tx.json({ a: outcome.scoresA, b: outcome.scoresB, combined: outcome.combined })}
       )
       ON CONFLICT (activity_id, participant_a, participant_b) DO UPDATE SET activity_id = EXCLUDED.activity_id
-      RETURNING ${tx.unsafe(SELECT_COLUMNS)}`
-    return toQuizPair(row)
+      RETURNING ${tx.unsafe(SELECT_COLUMNS)}, (xmax = 0) AS inserted`
+    return { pair: toQuizPair(row), created: row.inserted }
   })
 }

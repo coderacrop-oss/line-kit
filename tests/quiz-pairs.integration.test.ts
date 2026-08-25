@@ -2,7 +2,7 @@
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { testDb } from '../lib/db/client'
-import { findQuizPair, listQuizPairsForParticipant, matchQuizPair } from '../lib/db/quizPairs'
+import { findQuizPair, listQuizPairsForParticipant, matchQuizPair, type QuizPair } from '../lib/db/quizPairs'
 import { saveQuizAnswers } from '../lib/db/quizAnswers'
 import type { QuizConfig } from '../lib/quiz/schema'
 
@@ -74,9 +74,10 @@ describe('matchQuizPair', () => {
   })
 
   it('creates the pair, saves B\'s answers, and returns the computed result', async () => {
-    const pair = await matchQuizPair(sql, cfg, activityId, participantA, participantB, [
+    const { pair, created } = await matchQuizPair(sql, cfg, activityId, participantA, participantB, [
       { questionId: 'q1', optionId: 'a' },
     ])
+    expect(created).toBe(true)
     expect(pair.resultCode).toBe('EE')
     expect(pair.participantA).toBe(participantA)
     expect(pair.participantB).toBe(participantB)
@@ -85,14 +86,21 @@ describe('matchQuizPair', () => {
     expect(found?.id).toBe(pair.id)
   })
 
-  it('is idempotent — matching the same pair again returns the same row, no duplicate', async () => {
+  it('is idempotent — matching the same pair again returns the same row, no duplicate, and created flips to false', async () => {
+    // ใช้คู่ A-B ที่ทดสอบ 'creates the pair' ก่อนหน้าสร้างไว้แล้ว (describe block นี้รันเทสต์
+    // เรียงลำดับ ใช้ sql/activityId ร่วมกัน) — เจตนา: ทั้งสองครั้งในเทสต์นี้ต้องเจอแถวเดิม
+    // (created: false ทั้งคู่) พิสูจน์ว่า `created` สะท้อนสถานะจริงของคำขอนี้ ไม่ใช่แค่
+    // "เป็นครั้งแรกที่ฟังก์ชันถูกเรียกในเทสต์" — นี่คือธงเดียวกับที่ route duo/match ใช้
+    // ตัดสินใจว่าควร push แจ้งเตือนซ้ำหรือไม่ (บั๊กที่รีวิวรอบสุดท้ายจับได้)
     const first = await matchQuizPair(sql, cfg, activityId, participantA, participantB, [
       { questionId: 'q1', optionId: 'a' },
     ])
     const second = await matchQuizPair(sql, cfg, activityId, participantA, participantB, [
       { questionId: 'q1', optionId: 'a' },
     ])
-    expect(second.id).toBe(first.id)
+    expect(second.pair.id).toBe(first.pair.id)
+    expect(first.created).toBe(false)
+    expect(second.created).toBe(false)
   })
 
   // ใช้ participantC ที่ไม่เคยจับคู่กับ A มาก่อน — ถ้าใช้ participantB ตามที่ทดสอบ
@@ -110,6 +118,14 @@ describe('matchQuizPair', () => {
     const rows = await sql`SELECT id FROM quiz_pair WHERE activity_id = ${activityId}
       AND participant_a = ${participantA} AND participant_b = ${participantC}`
     expect(rows).toHaveLength(1)
+
+    // ตัวที่แพ้การแข่ง INSERT (ชนกับ unique constraint แล้วไปเข้า ON CONFLICT DO UPDATE)
+    // ต้องได้ created: false แม้จะ "สำเร็จ" (fulfilled) เหมือนกันก็ตาม — ไม่งั้น route
+    // duo/match จะ push แจ้งเตือน A ซ้ำสองครั้งจากคำขอที่ชนกันจริงๆ พอดี (ไม่ใช่แค่ retry)
+    const createdFlags = [r1, r2]
+      .filter((r): r is PromiseFulfilledResult<{ pair: QuizPair; created: boolean }> => r.status === 'fulfilled')
+      .map((r) => r.value.created)
+    expect(createdFlags.filter(Boolean)).toHaveLength(1)
   })
 })
 

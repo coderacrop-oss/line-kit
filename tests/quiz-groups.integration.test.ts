@@ -180,7 +180,7 @@ describe('addPairsToQuizGroup', () => {
 
   it('adds the duo partner (not the creator) from a real quiz_pair, computing topAxis via strongestAxis', async () => {
     const duoCfg: QuizConfig = { ...cfg, mode: 'duo', results: [{ code: 'PAIR', title: 't', body: 'b' }], fallbackResultCode: 'PAIR' }
-    const pair = await matchQuizPair(sql, duoCfg, activityId, participantA, participantB, [{ questionId: 'q1', optionId: 'b' }])
+    const { pair } = await matchQuizPair(sql, duoCfg, activityId, participantA, participantB, [{ questionId: 'q1', optionId: 'b' }])
 
     const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
     const result = await addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [pair.id])
@@ -199,7 +199,7 @@ describe('addPairsToQuizGroup', () => {
     const duoCfg: QuizConfig = { ...cfg, mode: 'duo', results: [{ code: 'PAIR', title: 't', body: 'b' }], fallbackResultCode: 'PAIR' }
     const [partner] = await sql<{ id: string }[]>`
       INSERT INTO participant (channel_id, line_uid) VALUES (${channelId}, ${`U-${randomBytes(4).toString('hex')}`}) RETURNING id`
-    const pair = await matchQuizPair(sql, duoCfg, activityId, participantA, partner.id, [{ questionId: 'q1', optionId: 'a' }])
+    const { pair } = await matchQuizPair(sql, duoCfg, activityId, participantA, partner.id, [{ questionId: 'q1', optionId: 'a' }])
 
     const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
     const result = await addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [pair.id, 'not-a-uuid'])
@@ -218,7 +218,7 @@ describe('addPairsToQuizGroup', () => {
     for (let i = 0; i < 4; i++) {
       const [partner] = await sql<{ id: string }[]>`
         INSERT INTO participant (channel_id, line_uid) VALUES (${channelId}, ${`U-${randomBytes(4).toString('hex')}`}) RETURNING id`
-      const pair = await matchQuizPair(sql, duoCfg, activityId, participantA, partner.id, [{ questionId: 'q1', optionId: 'a' }])
+      const { pair } = await matchQuizPair(sql, duoCfg, activityId, participantA, partner.id, [{ questionId: 'q1', optionId: 'a' }])
       pairIds.push(pair.id)
     }
 

@@ -48,7 +48,7 @@ export async function POST(
   }
 
   try {
-    const pair = await matchQuizPair(sql, activity.config, activity.id, inviterParticipantId, auth.participantId, answers)
+    const { pair, created } = await matchQuizPair(sql, activity.config, activity.id, inviterParticipantId, auth.participantId, answers)
     const isCallerSideB = pair.participantB === auth.participantId
     // scores.a is always the inviter's own scores, scores.b is always the caller's (side B) —
     // see lib/db/quizPairs.ts's matchQuizPair. strongestAxis() is a pure function (Task 3), cheap
@@ -64,10 +64,17 @@ export async function POST(
     // แจ้ง A แบบ best-effort ก่อน return — await ไว้เพื่อให้ทำงานจบก่อน route handler
     // จบ (Next.js/serverless อาจ freeze function หลัง response ถูกส่งแล้ว) sendDuoMatchNotify
     // ไม่ throw ออกมาเองอยู่แล้วไม่ว่ากรณีไหน จึงไม่กระทบ response ของ B (spec §4/§6)
-    await sendDuoMatchNotify(sql, {
-      campaignId: activity.campaignId, channelId: auth.liffApp.channelId,
-      config: activity.config, theme: activity.theme, inviterParticipantId: pair.participantA,
-    })
+    // ยิงเฉพาะตอน created === true — matchQuizPair (lib/db/quizPairs.ts) idempotent อยู่แล้ว
+    // ที่ชั้น DB (คืนแถวเดิมถ้าคู่นี้จับคู่ไปแล้ว) แต่ถ้า push ไม่เช็คธงนี้ ทุก POST ซ้ำ
+    // (LIFF retry, กด submit ซ้ำ, B เปิดหน้าผลลัพธ์ซ้ำ) จะยิง push จริงไปหา A ซ้ำทุกครั้ง
+    // ทั้งที่ DB ไม่ได้สร้างอะไรใหม่เลย — ข้อความ LINE เรียกคืนไม่ได้และ push กิน quota
+    // (บั๊กที่รีวิวรอบสุดท้ายจับได้จริงด้วยเทสต์ยิง POST ซ้ำสองครั้งแล้วนับจำนวน push)
+    if (created) {
+      await sendDuoMatchNotify(sql, {
+        campaignId: activity.campaignId, channelId: auth.liffApp.channelId,
+        config: activity.config, theme: activity.theme, inviterParticipantId: pair.participantA,
+      })
+    }
     return Response.json({
       resultCode: pair.resultCode, title: rule.title, body: rule.body, imageUrl: rule.imageUrl,
       axisMe, axisBuddy,

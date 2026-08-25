@@ -279,7 +279,7 @@ describe('group get + add-pairs', () => {
     const [activityRow] = await sql<{ id: string }[]>`SELECT id FROM activity WHERE code = ${activityCode} AND campaign_id = ${campaignId}`
     const [participantRowA] = await sql<{ id: string }[]>`SELECT id FROM participant WHERE line_uid = ${lineUidA}`
     const [participantRowB] = await sql<{ id: string }[]>`SELECT id FROM participant WHERE line_uid = ${lineUidB}`
-    const pair = await matchQuizPair(sql, cfg, activityRow.id, participantRowA.id, participantRowB.id, [{ questionId: 'q1', optionId: 'b' }])
+    const { pair } = await matchQuizPair(sql, cfg, activityRow.id, participantRowA.id, participantRowB.id, [{ questionId: 'q1', optionId: 'b' }])
 
     const addResponse = await postAddPairs(
       new Request('https://example.com', {

@@ -219,9 +219,37 @@ describe('duo flow end to end', () => {
     expect(body.error).toBeTruthy()
   })
 
-  it('never attempts a push when the activity has no replies configured', () => {
+  /**
+   * Finding ของรีวิวรอบสุดท้าย · เดิมเทสต์นี้ไม่ await/ไม่เรียก postMatch เองเลย
+   * แค่เช็ค pushMessageMock ที่สะสมมาจากเทสต์ก่อนหน้าใน describe block นี้ว่ายังว่างอยู่
+   * ผ่านได้แม้ฟีเจอร์ push ทั้งหมดไม่เคยถูกเดินสายเลยก็ตาม (vacuous — ไม่ได้พิสูจน์อะไร
+   * เกี่ยวกับ "activity ที่ไม่ได้ตั้ง replies" จริงๆ) แก้โดยให้เทสต์นี้ทำ match จริงเอง
+   * บน `activityCode` (ไม่มี config.replies) แล้วค่อยเช็คว่า push ไม่ถูกเรียก — ผูก
+   * assertion เข้ากับ action ของเทสต์นี้เองโดยตรง
+   */
+  it('never attempts a push when the activity has no replies configured', async () => {
+    pushMessageMock.mockClear()
+    readChannelSecretMock.mockClear()
+
+    const answerReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidA}-noreplies`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answersA }),
+    })
+    const answerRes = await postAnswer(answerReq, { params: Promise.resolve({ liffId, activityCode }) })
+    expect(answerRes.status).toBe(200)
+    const { shareUrl } = await answerRes.json()
+    const noRepliesInviterId = new URL(shareUrl).searchParams.get('inviterParticipantId')!
+
+    const matchReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidB}-noreplies`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ inviterParticipantId: noRepliesInviterId, answers: answersB }),
+    })
+    const matchRes = await postMatch(matchReq, { params: Promise.resolve({ liffId, activityCode }) })
+    expect(matchRes.status).toBe(200)
+
     expect(pushMessageMock).not.toHaveBeenCalled()
   })
+
 })
 
 describe('duo match notify', () => {
@@ -294,5 +322,110 @@ describe('duo match notify', () => {
     expect(matchRes.status).toBe(200)
     const body = await matchRes.json()
     expect(body.resultCode).toBeTruthy()
+  })
+
+  /**
+   * บั๊กที่รีวิวรอบสุดท้ายจับได้จริงด้วยเทสต์นี้ (empirically confirmed: two identical
+   * postMatch calls used to produce 2 push calls) — matchQuizPair (lib/db/quizPairs.ts)
+   * idempotent อยู่แล้วที่ชั้น DB (คืนแถวเดิมถ้าคู่นี้จับคู่ไปแล้ว ไม่สร้างซ้ำ) แต่ route
+   * เดิมยิง sendDuoMatchNotify แบบไม่มีเงื่อนไขทุกครั้งที่ matchQuizPair สำเร็จ — ยิง POST
+   * .../duo/match ซ้ำด้วย inviterParticipantId + B เดิม (LIFF retry, กด submit ซ้ำ, B
+   * เปิดหน้าผลลัพธ์ซ้ำ) จึง push ซ้ำไปหา A ทั้งที่ DB ไม่ได้สร้างอะไรใหม่เลย
+   */
+  it('does not push a second time when the same B repeats the same duo/match request', async () => {
+    pushMessageMock.mockClear()
+    readChannelSecretMock.mockClear()
+    readChannelSecretMock.mockResolvedValueOnce('fake-access-token')
+
+    const answerReq = new Request('https://example.com', {
+      method: 'POST', headers: { ...authHeaders(`${lineUidA}-notify3`), 'Content-Type': 'application/json' },
+      body: JSON.stringify({ answers: answersA }),
+    })
+    const answerRes = await postAnswer(answerReq, { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) })
+    expect(answerRes.status).toBe(200)
+    const { shareUrl } = await answerRes.json()
+    const inviterParticipantId = new URL(shareUrl).searchParams.get('inviterParticipantId')!
+
+    const matchBody = JSON.stringify({ inviterParticipantId, answers: answersB })
+    const matchRes1 = await postMatch(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(`${lineUidB}-notify3`), 'Content-Type': 'application/json' }, body: matchBody,
+      }),
+      { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) },
+    )
+    expect(matchRes1.status).toBe(200)
+
+    // เดิม readChannelSecretMock ตั้งด้วย mockResolvedValueOnce ครั้งเดียว — ถ้า push
+    // ถูกเรียกครั้งที่สองจริง readChannelSecret รอบสองจะได้ค่า default (undefined) แทน
+    // ทำให้ push ครั้งที่สอง (ถ้าเกิดขึ้น) น่าจะพังคนละแบบ แต่ยืนยันด้วยจำนวนเรียกตรงๆ
+    // ชัดเจนกว่า — คำขอซ้ำเป๊ะ (inviterParticipantId + B คนเดิม) ต้องได้ 200 เหมือนเดิม
+    // และห้าม push ครั้งที่สองเด็ดขาด
+    const matchRes2 = await postMatch(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(`${lineUidB}-notify3`), 'Content-Type': 'application/json' }, body: matchBody,
+      }),
+      { params: Promise.resolve({ liffId, activityCode: notifyActivityCode }) },
+    )
+    expect(matchRes2.status).toBe(200)
+
+    expect(pushMessageMock).toHaveBeenCalledTimes(1)
+  })
+
+  /**
+   * design spec §7 ระบุเคสนี้ไว้ตรงๆ ("การ์ดที่ตั้งไว้ไม่ใช่ของแคมเปญนี้ → ข้ามเงียบๆ
+   * ไม่กระทบ response") แต่มีแค่เทสต์ unit ของ sendDuoMatchNotify เอง
+   * (lib/db/quizNotify.test.ts) ที่ mock loadCards ไว้ตรงๆ — ยังไม่มีเทสต์ระดับ route/
+   * integration จริงที่พิสูจน์ผ่าน Postgres จริงว่า route ทั้งเส้นไม่พัง เพิ่มเทสต์นี้
+   * โดย seed การ์ดไว้ใน campaign ที่สอง แล้วตั้ง activity (ของ campaign เดิม) ให้ชี้
+   * duoMatchNotifyCardId ไปหาการ์ดข้ามแคมเปญนั้น
+   */
+  it('a duoMatchNotifyCardId pointing at a card from another campaign is skipped silently — response unaffected, no push', async () => {
+    pushMessageMock.mockClear()
+    readChannelSecretMock.mockClear()
+
+    const tag = randomBytes(4).toString('hex')
+    const [otherUser] = await sql<{ id: string }[]>`
+      INSERT INTO app_user (email, role) VALUES (${`quizliffduo-oc-${tag}@example.com`}, 'configurator')
+      RETURNING id`
+    const [otherCampaign] = await sql<{ id: string }[]>`
+      INSERT INTO campaign (name, code, start_at, end_at, created_by)
+      VALUES ('Quiz LIFF duo other campaign', ${`qoc${tag}`}, now(), now() + interval '30 days', ${otherUser.id})
+      RETURNING id`
+    const [otherCard] = await sql<{ id: string }[]>`
+      INSERT INTO card (campaign_id, code, render_as) VALUES (${otherCampaign.id}, ${`ocard${tag}`}, 'text')
+      RETURNING id`
+    await sql`
+      INSERT INTO card_block (card_id, block_type, sort_order, content)
+      VALUES (${otherCard.id}, 'body', 1, 'การ์ดของแคมเปญอื่น ไม่ควรถูกใช้')`
+
+    const wrongCampActivityCode = `qwrongcamp${tag}`
+    await sql`
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
+      VALUES (${campaignId}, ${wrongCampActivityCode}, 'Personality quiz duo wrong-campaign card', 'personality_quiz', NULL,
+        ${sql.json({ ...cfg, replies: { duoMatchNotifyCardId: otherCard.id } } as never)})`
+
+    try {
+      const answerReq = new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(`${lineUidA}-wrongcamp`), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: answersA }),
+      })
+      const answerRes = await postAnswer(answerReq, { params: Promise.resolve({ liffId, activityCode: wrongCampActivityCode }) })
+      expect(answerRes.status).toBe(200)
+      const { shareUrl } = await answerRes.json()
+      const inviterParticipantId = new URL(shareUrl).searchParams.get('inviterParticipantId')!
+
+      const matchReq = new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(`${lineUidB}-wrongcamp`), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ inviterParticipantId, answers: answersB }),
+      })
+      const matchRes = await postMatch(matchReq, { params: Promise.resolve({ liffId, activityCode: wrongCampActivityCode }) })
+      expect(matchRes.status).toBe(200)
+      const body = await matchRes.json()
+      expect(body.resultCode).toBeTruthy()
+
+      expect(pushMessageMock).not.toHaveBeenCalled()
+    } finally {
+      await sql`DELETE FROM campaign WHERE id = ${otherCampaign.id}`
+    }
   })
 })
