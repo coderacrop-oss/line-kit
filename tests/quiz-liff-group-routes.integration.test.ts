@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest'
 import type postgres from 'postgres'
 import { testDb } from '../lib/db/client'
 import { createLiffApp } from '../lib/db/liffApps'
+import { matchQuizPair } from '../lib/db/quizPairs'
 import type { QuizConfig } from '../lib/quiz/schema'
 
 let sql: postgres.Sql
@@ -115,6 +116,9 @@ function authHeaders(lineUid: string): Record<string, string> {
 const { POST: postSoloAnswer } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/solo/answer/route')
 const { POST: postCreate } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/group/create/route')
 const { POST: postJoin } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/group/[groupId]/join/route')
+const { POST: postDuoAnswer } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/duo/answer/route')
+const { GET: getGroup } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/group/[groupId]/route')
+const { POST: postAddPairs } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/group/[groupId]/add-pairs/route')
 
 async function answerSolo(lineUid: string): Promise<void> {
   const request = new Request('https://example.com', {
@@ -205,5 +209,113 @@ describe('group create + join', () => {
     expect(joinResponse.status).toBe(404)
     const joinBody = await joinResponse.json()
     expect(joinBody.error).toBe('ควิซนี้ไม่เปิดผลลัพธ์กลุ่ม')
+  })
+})
+
+describe('group get + add-pairs', () => {
+  it('GET reflects live composition, amIMember, and canJoin', async () => {
+    await answerSolo(lineUidA)
+    const { groupId } = await (await postCreate(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode }) },
+    )).json()
+
+    const asCreator = await getGroup(
+      new Request('https://example.com', { headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    expect(asCreator.status).toBe(200)
+    const creatorBody = await asCreator.json()
+    expect(creatorBody.groupId).toBe(groupId)
+    expect(creatorBody.totalMembers).toBe(1)
+    expect(creatorBody.result).toBeNull() // minMembers is 2
+    expect(creatorBody.amIMember).toBe(true)
+    expect(creatorBody.canJoin).toBe(false) // already a member
+
+    await answerSolo(lineUidC)
+    const asStranger = await getGroup(
+      new Request('https://example.com', { headers: authHeaders(lineUidC) }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    const strangerBody = await asStranger.json()
+    expect(strangerBody.amIMember).toBe(false)
+    expect(strangerBody.canJoin).toBe(true)
+  })
+
+  it('GET returns 404 for a group id that does not exist', async () => {
+    await answerSolo(lineUidA)
+    const response = await getGroup(
+      new Request('https://example.com', { headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode, groupId: crypto.randomUUID() }) },
+    )
+    expect(response.status).toBe(404)
+  })
+
+  it('add-pairs by the creator adds a real duo partner, then GET shows 2 members and a result', async () => {
+    // reuse the duo flow (Task 6/7 of the original quiz-engine plan) to get a real quiz_pair —
+    // this cfg is solo-mode for create/join but duo pairing is orthogonal to it (Global Constraints)
+    const duoResponse = await postDuoAnswer(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ answers: [{ questionId: 'q1', optionId: 'a' }] }),
+      }),
+      { params: Promise.resolve({ liffId, activityCode }) },
+    )
+    // duo/answer requires config.mode === 'duo', but this fixture's cfg.mode is 'solo' — expect
+    // a 400 here confirms group and duo really are independent; get a real quiz_pair a different
+    // way instead: call matchQuizPair (lib/db/quizPairs.ts) directly. It never checks cfg.mode —
+    // duo pairing and this fixture's group config are simply two unrelated features of the same
+    // activity — so this produces a real, correctly-computed quiz_pair row without going through
+    // a route that only exists for mode: 'duo' activities.
+    expect(duoResponse.status).toBe(400)
+
+    await answerSolo(lineUidA)
+    await answerSolo(lineUidB)
+    const { groupId } = await (await postCreate(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode }) },
+    )).json()
+
+    const [activityRow] = await sql<{ id: string }[]>`SELECT id FROM activity WHERE code = ${activityCode} AND campaign_id = ${campaignId}`
+    const [participantRowA] = await sql<{ id: string }[]>`SELECT id FROM participant WHERE line_uid = ${lineUidA}`
+    const [participantRowB] = await sql<{ id: string }[]>`SELECT id FROM participant WHERE line_uid = ${lineUidB}`
+    const pair = await matchQuizPair(sql, cfg, activityRow.id, participantRowA.id, participantRowB.id, [{ questionId: 'q1', optionId: 'b' }])
+
+    const addResponse = await postAddPairs(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairIds: [pair.id] }),
+      }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    expect(addResponse.status).toBe(200)
+    const addBody = await addResponse.json()
+    expect(addBody.added).toBe(1)
+
+    const finalView = await getGroup(
+      new Request('https://example.com', { headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    const finalBody = await finalView.json()
+    expect(finalBody.totalMembers).toBe(2)
+    expect(finalBody.result?.code).toBe('fallback')
+  })
+
+  it('add-pairs by a non-creator returns 403', async () => {
+    await answerSolo(lineUidA)
+    const { groupId } = await (await postCreate(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode }) },
+    )).json()
+
+    await answerSolo(lineUidB)
+    const response = await postAddPairs(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(lineUidB), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairIds: [crypto.randomUUID()] }),
+      }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    expect(response.status).toBe(403)
   })
 })
