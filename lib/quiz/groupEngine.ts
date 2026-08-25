@@ -8,10 +8,10 @@ export function axisCountsFromMembers(members: GroupMember[]): Record<string, nu
   return counts
 }
 
-/** Clamp negatives to 0, normalise to sum=1 · a member whose scores sum to 0 is left as-is (no div-by-zero) */
+/** Clamp negatives to 0, normalise to sum=1 · a member whose clamped scores sum to 0 contributes 0 on every axis (no div-by-zero) */
 function normaliseScores(raw: Record<string, number>): Record<string, number> {
   const total = Object.values(raw).reduce((s, v) => s + Math.max(0, v), 0)
-  if (total === 0) return raw
+  if (total === 0) return Object.fromEntries(Object.entries(raw).map(([k]) => [k, 0]))
   return Object.fromEntries(Object.entries(raw).map(([k, v]) => [k, Math.max(0, v) / total]))
 }
 

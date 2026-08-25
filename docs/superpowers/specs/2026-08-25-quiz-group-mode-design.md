@@ -147,7 +147,7 @@ export type GroupConfig = z.infer<typeof GroupConfig>
    `axisScores` ดิบ
 2. `axisCountsFromMembers` — นับสมาชิกกี่คนที่ `topAxis` เป็นอะไรบ้าง → `Record<axisId, count>`
 3. `normaliseScores` — แปลงคะแนนดิบของสมาชิกคนหนึ่งเป็นสัดส่วน (ค่าลบ clamp เป็น 0 ก่อน แล้วหารด้วยผลรวม รวม
-   เป็น 1 ทุกแกน — ถ้าผลรวมเป็น 0 คืนค่าดิบกลับไปตรงๆ กันหารด้วยศูนย์)
+   เป็น 1 ทุกแกน — ถ้าผลรวม (หลัง clamp) เป็น 0 คืนค่า 0 ทุกแกนแทน กันหารด้วยศูนย์)
 4. `avgScoresFromMembers` — normalize คะแนนของทุกคนแล้วเฉลี่ยรวม → "โปรไฟล์กลุ่ม" (`Record<axisId, 0..1>`)
 5. `matchesGroupCondition(cond, axisCounts, avgNorm)` — เช็คทุกเงื่อนไขที่ตั้งไว้ใน `cond` (ทุกอันที่ไม่ได้ตั้ง
    ข้าม) ต้องผ่านหมดถึงจะ true:

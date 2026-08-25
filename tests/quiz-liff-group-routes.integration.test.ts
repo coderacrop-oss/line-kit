@@ -344,4 +344,21 @@ describe('group get + add-pairs', () => {
     )
     expect(emptyResponse.status).toBe(422)
   })
+
+  it('add-pairs returns 422 when pairIds is longer than group.maxMembers (2)', async () => {
+    await answerSolo(lineUidA)
+    const { groupId } = await (await postCreate(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode }) },
+    )).json()
+
+    const tooManyResponse = await postAddPairs(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairIds: [crypto.randomUUID(), crypto.randomUUID(), crypto.randomUUID()] }),
+      }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    expect(tooManyResponse.status).toBe(422)
+  })
 })

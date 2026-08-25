@@ -63,4 +63,47 @@ describe('GroupConfigEditor', () => {
     render(<GroupConfigEditor group={deadGroup} axes={axes} canEdit onChange={vi.fn()} />)
     expect(screen.getByText(/ไม่มีเงื่อนไข.*ไม่มีวันถูกใช้/)).toBeDefined()
   })
+
+  it('renders the archetype imageUrl field with the current value and lets you edit it', () => {
+    const onChange = vi.fn()
+    const groupWithImage: GroupConfig = {
+      ...fullGroup,
+      archetypes: [
+        { ...fullGroup.archetypes[0], imageUrl: 'https://example.com/balanced.png' },
+        fullGroup.archetypes[1],
+      ],
+    }
+    render(<GroupConfigEditor group={groupWithImage} axes={axes} canEdit onChange={onChange} />)
+    const imageInput = screen.getByDisplayValue('https://example.com/balanced.png') as HTMLInputElement
+    fireEvent.change(imageInput, { target: { value: 'https://example.com/new.png' } })
+    expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
+      archetypes: expect.arrayContaining([expect.objectContaining({ imageUrl: 'https://example.com/new.png' })]),
+    }))
+  })
+
+  it('gives each conditioned archetype row distinct condition-field ids (no DOM id collisions)', () => {
+    const twoConditionedGroup: GroupConfig = {
+      enabled: true, minMembers: 2, maxMembers: 10, resultLocksAt: 0,
+      archetypes: [
+        { code: 'a', title: 'A', body: 'b', minGroupSize: 2, fallback: false, condition: { hasMode: 'any', topN: 1, dominantThreshold: 0.5, isBalanced: true } },
+        { code: 'b', title: 'B', body: 'b', minGroupSize: 2, fallback: false, condition: { hasMode: 'all', topN: 2, dominantThreshold: 0.6, hasAxes: ['ei'] } },
+        { code: 'c', title: 'C', body: 'b', minGroupSize: 2, fallback: true },
+      ],
+      fallbackArchetype: 'c',
+    }
+    render(<GroupConfigEditor group={twoConditionedGroup} axes={axes} canEdit onChange={vi.fn()} />)
+    const hasAxesInputs = document.querySelectorAll('input[id^="cond-has-axes"]')
+    expect(hasAxesInputs).toHaveLength(2)
+    const ids = Array.from(hasAxesInputs).map((el) => el.id)
+    expect(new Set(ids).size).toBe(ids.length)
+    expect(document.getElementById('cond-has-axes-0')).not.toBeNull()
+    expect(document.getElementById('cond-has-axes-1')).not.toBeNull()
+  })
+
+  it('unchecking "enable group" on an already-configured group flips enabled without discarding archetypes', () => {
+    const onChange = vi.fn()
+    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit onChange={onChange} />)
+    fireEvent.click(screen.getByLabelText(/เปิดใช้งานผลลัพธ์กลุ่ม/))
+    expect(onChange).toHaveBeenCalledWith({ ...fullGroup, enabled: false })
+  })
 })

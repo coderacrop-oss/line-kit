@@ -36,8 +36,13 @@ describe('avgScoresFromMembers', () => {
     expect(avg.sn).toBeCloseTo(0.5)
   })
 
-  it('a member whose raw scores sum to 0 (or all-negative) is left as-is rather than divide-by-zero', () => {
+  it('a member whose raw scores sum to 0 (all-zero) normalises to all-zero rather than divide-by-zero', () => {
     const avg = avgScoresFromMembers([member('ei', { ei: 0, sn: 0 })])
+    expect(avg).toEqual({ ei: 0, sn: 0 })
+  })
+
+  it('a member whose clamped scores sum to 0 (all-negative) normalises to all-zero, not the raw negatives', () => {
+    const avg = avgScoresFromMembers([member('ei', { ei: -9, sn: -5 })])
     expect(avg).toEqual({ ei: 0, sn: 0 })
   })
 })
@@ -151,6 +156,31 @@ describe('evaluateGroupArchetype', () => {
     }
     const members = [member('ei', {}), member('sn', {}), member('ei', {}), member('sn', {})]
     expect(evaluateGroupArchetype(cfg, members)?.code).toBe('big-fallback')
+  })
+
+  it('a member with all-negative scores does not get counted as "balanced" via leaked raw negatives (regression)', () => {
+    // 2 members maximally ei-dominant + 1 member all-negative on every axis.
+    // Pre-fix: the all-negative member's un-clamped raw scores leaked into avgNorm, dragging the
+    // average below dominantThreshold and wrongly satisfying isBalanced. Post-fix, the all-negative
+    // member contributes 0 on every axis, so ei's average stays high (dominated by the 2 ei members)
+    // and isBalanced correctly fails to match.
+    const cfg: QuizConfig = {
+      ...baseCfg,
+      group: {
+        enabled: true, minMembers: 2, maxMembers: 50, resultLocksAt: 0,
+        fallbackArchetype: 'fallback',
+        archetypes: [
+          { code: 'fallback', title: 't', body: 'b', minGroupSize: 2, fallback: true },
+          { code: 'balanced', title: 't', body: 'b', minGroupSize: 2, fallback: false, condition: { isBalanced: true, hasMode: 'any', topN: 1, dominantThreshold: 0.5 } },
+        ],
+      },
+    }
+    const members = [
+      member('ei', { ei: 9, sn: 0 }),
+      member('ei', { ei: 9, sn: 0 }),
+      member('ei', { ei: -9, sn: -9 }),
+    ]
+    expect(evaluateGroupArchetype(cfg, members)?.code).toBe('fallback')
   })
 
   it('a non-fallback archetype with no condition is never matched (dead entry, same as KimLIFF)', () => {

@@ -35,6 +35,9 @@ export async function POST(
   if (!Array.isArray(pairIds) || pairIds.length === 0) {
     return Response.json({ error: 'pairIds ต้องเป็น array ที่ไม่ว่าง' }, { status: 422, headers: LIFF_CORS_HEADERS })
   }
+  if (pairIds.length > activity.config.group.maxMembers) {
+    return Response.json({ error: 'pairIds ยาวเกินไป' }, { status: 422, headers: LIFF_CORS_HEADERS })
+  }
 
   try {
     const result = await addPairsToQuizGroup(sql, activity.config, activity.id, groupId, auth.participantId, pairIds)

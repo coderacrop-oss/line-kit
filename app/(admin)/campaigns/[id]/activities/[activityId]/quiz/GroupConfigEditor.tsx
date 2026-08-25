@@ -10,8 +10,9 @@ const DEFAULT_GROUP: GroupConfig = {
   fallbackArchetype: 'default',
 }
 
-function ConditionEditor({ condition, canEdit, onChange }: {
+function ConditionEditor({ condition, index, canEdit, onChange }: {
   condition: GroupCondition | null | undefined
+  index: number
   canEdit: boolean
   onChange: (condition: GroupCondition | undefined) => void
 }) {
@@ -22,7 +23,7 @@ function ConditionEditor({ condition, canEdit, onChange }: {
     <div style={{ ...boxStyle, background: 'var(--panel-2, transparent)' }}>
       <span style={smallLabelStyle}>เงื่อนไของค์ประกอบกลุ่ม (ไม่ตั้งข้อไหนเลย = ไม่กรองข้อนั้น)</span>
       <div style={rowStyle}>
-        <Field id="cond-has-axes" label="มีแกน (คั่นด้วย ,)" hint="เว้นว่าง = ไม่เช็ค">
+        <Field id={`cond-has-axes-${index}`} label="มีแกน (คั่นด้วย ,)" hint="เว้นว่าง = ไม่เช็ค">
           <input
             value={(cond.hasAxes ?? []).join(',')} disabled={!canEdit}
             onChange={(e) => {
@@ -32,13 +33,13 @@ function ConditionEditor({ condition, canEdit, onChange }: {
             style={{ fontFamily: 'var(--mono)', width: 140 }}
           />
         </Field>
-        <Field id="cond-has-mode" label="แบบ">
+        <Field id={`cond-has-mode-${index}`} label="แบบ">
           <select value={cond.hasMode} disabled={!canEdit} onChange={(e) => patch({ hasMode: e.target.value as 'any' | 'all' })}>
             <option value="any">มีสักคน (any)</option>
             <option value="all">ต้องมีครบ (all)</option>
           </select>
         </Field>
-        <Field id="cond-min-members-with-axis" label="อย่างน้อยกี่คนในแกนนั้น" hint="มีความหมายเมื่อ 'มีแกน' ระบุแกนเดียว">
+        <Field id={`cond-min-members-with-axis-${index}`} label="อย่างน้อยกี่คนในแกนนั้น" hint="มีความหมายเมื่อ 'มีแกน' ระบุแกนเดียว">
           <input
             type="number" min={1} disabled={!canEdit}
             value={cond.minMembersWithAxis ?? ''}
@@ -48,7 +49,7 @@ function ConditionEditor({ condition, canEdit, onChange }: {
         </Field>
       </div>
       <div style={rowStyle}>
-        <Field id="cond-top-axes" label="อยู่ใน top-N แกน (คั่นด้วย ,)" hint="เว้นว่าง = ไม่เช็ค">
+        <Field id={`cond-top-axes-${index}`} label="อยู่ใน top-N แกน (คั่นด้วย ,)" hint="เว้นว่าง = ไม่เช็ค">
           <input
             value={(cond.topAxes ?? []).join(',')} disabled={!canEdit}
             onChange={(e) => {
@@ -58,7 +59,7 @@ function ConditionEditor({ condition, canEdit, onChange }: {
             style={{ fontFamily: 'var(--mono)', width: 140 }}
           />
         </Field>
-        <Field id="cond-top-n" label="N">
+        <Field id={`cond-top-n-${index}`} label="N">
           <input
             type="number" min={1} max={5} disabled={!canEdit} value={cond.topN}
             onChange={(e) => patch({ topN: Number(e.target.value) })}
@@ -74,14 +75,14 @@ function ConditionEditor({ condition, canEdit, onChange }: {
           />
           ไม่มีแกนไหนครองเกิน threshold (สมดุล)
         </label>
-        <Field id="cond-threshold" label="threshold">
+        <Field id={`cond-threshold-${index}`} label="threshold">
           <input
             type="number" min={0.3} max={0.9} step={0.05} disabled={!canEdit} value={cond.dominantThreshold}
             onChange={(e) => patch({ dominantThreshold: Number(e.target.value) })}
             style={{ width: 64, textAlign: 'right' }}
           />
         </Field>
-        <Field id="cond-max-distinct" label="จำกัดจำนวนแกนต่างกัน" hint="เว้นว่าง = ไม่จำกัด">
+        <Field id={`cond-max-distinct-${index}`} label="จำกัดจำนวนแกนต่างกัน" hint="เว้นว่าง = ไม่จำกัด">
           <input
             type="number" min={1} max={6} disabled={!canEdit}
             value={cond.maxDistinct ?? ''}
@@ -155,9 +156,17 @@ function ArchetypeRow({ archetype, index, canEdit, onChange, onRemove }: {
         />
       </Field>
 
+      <Field id={`arch-image-url-${index}`} label="รูปภาพ (ไม่บังคับ)" hint="ใส่ URL รูป ไม่ใส่ก็ได้">
+        <input
+          value={archetype.imageUrl ?? ''} disabled={!canEdit}
+          onChange={(e) => onChange({ imageUrl: e.target.value.trim() === '' ? undefined : e.target.value })}
+        />
+      </Field>
+
       {!archetype.fallback && (
         <ConditionEditor
           condition={archetype.condition}
+          index={index}
           canEdit={canEdit}
           onChange={(condition) => onChange({ condition: condition ?? null })}
         />
@@ -216,7 +225,7 @@ export function GroupConfigEditor({ group, axes: _axes, canEdit, onChange }: Gro
         <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13 }}>
           <input
             id="group-enabled" type="checkbox" checked={group.enabled} disabled={!canEdit}
-            onChange={(e) => onChange(e.target.checked ? group : undefined)}
+            onChange={(e) => onChange({ ...group, enabled: e.target.checked })}
           />
           เปิดใช้งานผลลัพธ์กลุ่ม
         </label>
