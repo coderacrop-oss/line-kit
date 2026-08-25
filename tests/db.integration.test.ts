@@ -231,4 +231,13 @@ describe('quiz engine schema', () => {
     expect(member.top_axis).toBe('ei')
     expect(member.axis_scores).toEqual({ ei: 3, sn: -1 })
   })
+
+  it('token_access_log accepts push_notify as a purpose', async () => {
+    const s = await seed(sql)
+    const [row] = await sql<{ id: string }[]>`
+      INSERT INTO token_access_log (channel_id, actor_type, purpose)
+      VALUES (${s.channelId}, 'system', 'push_notify')
+      RETURNING id`
+    expect(row.id).toBeDefined()
+  })
 })

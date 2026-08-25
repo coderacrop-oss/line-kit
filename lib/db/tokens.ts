@@ -16,9 +16,13 @@ import { decryptSecret } from '../crypto/secretbox'
  * เว้นว่างไว้ (แก้บัญชีเดิมโดยไม่พิมพ์โทเคนใหม่) จึงต้องอ่านโทเคนที่เก็บไว้แล้วผ่าน
  * readChannelSecret() — พิมพ์โทเคนใหม่มาตรงๆ ในฟอร์มไม่ต้องอ่านจากตรงนี้เลย เพราะมีค่า
  * อยู่ในมือ (ฝั่ง client) แล้ว
+ *
+ * `push_notify` เพิ่มโดย migration 0016 สำหรับการส่งข้อความอัตโนมัติที่เริ่มต้นจากเซิร์ฟเวอร์
+ * (เช่น การแจ้งเตือนการจับคู่สำหรับโหมด duo ของ quiz engine) — คนละเหตุการณ์กับ
+ * `send_reply` (ตอบสิ่งที่ผู้เล่นส่งมา) และ `test_send` (การส่งทดสอบด้วยตนเอง)
  */
 export type TokenPurpose =
-  | 'send_reply' | 'publish' | 'verify_signature' | 'display_last4' | 'test_send' | 'fetch_bot_info'
+  | 'send_reply' | 'publish' | 'verify_signature' | 'display_last4' | 'test_send' | 'fetch_bot_info' | 'push_notify'
 
 /** สองกุญแจที่บัญชีหนึ่งบัญชีเก็บไว้ · โทเคนไว้พูด ซีเคร็ตไว้ตรวจว่าใครพูด */
 export type SecretField = 'token' | 'secret'
