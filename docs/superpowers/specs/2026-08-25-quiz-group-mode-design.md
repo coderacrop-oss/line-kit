@@ -141,7 +141,10 @@ export type GroupConfig = z.infer<typeof GroupConfig>
 
 `lib/quiz/groupEngine.ts` — pure module ใหม่ (ห้ามแตะ DB/เน็ต/`process.env` เหมือน `lib/quiz/engine.ts`):
 
-1. แต่ละสมาชิกมี `topAxis` (แกนเด่นของตัวเอง จาก `dominantAxis` §5 ของสเปก solo/duo) และ `axisScores` ดิบ
+1. แต่ละสมาชิกมี `topAxis` (แกนเด่นที่สุด**แกนเดียว**ของตัวเอง จาก `strongestAxis` เดิมใน `lib/quiz/engine.ts`
+   — ตัวเดียวกับที่ duo ใช้หา `axisA`/`axisB` ตอนจับคู่ ไม่ใช่ `dominantAxis` ที่คืน type-code รวมทุกแกน
+   เพราะ `has_axes`/`top_axes` ด้านล่างต้องเทียบกับ **แกนเดียว** เช่น `"ei"` ไม่ใช่ type-code แบบ `"ES"`) และ
+   `axisScores` ดิบ
 2. `axisCountsFromMembers` — นับสมาชิกกี่คนที่ `topAxis` เป็นอะไรบ้าง → `Record<axisId, count>`
 3. `normaliseScores` — แปลงคะแนนดิบของสมาชิกคนหนึ่งเป็นสัดส่วน (ค่าลบ clamp เป็น 0 ก่อน แล้วหารด้วยผลรวม รวม
    เป็น 1 ทุกแกน — ถ้าผลรวมเป็น 0 คืนค่าดิบกลับไปตรงๆ กันหารด้วยศูนย์)
@@ -168,7 +171,7 @@ export type GroupConfig = z.infer<typeof GroupConfig>
 1. `resolveLiffParticipant` → `participantId`
 2. โหลด activity + `QuizConfig` (ผ่าน `loadQuizActivity` เดิม) — 404 ถ้าไม่มี `group.enabled`
 3. โหลด `quiz_answer` ของ participant — 400 "ยังไม่ได้ตอบควิซ" ถ้าไม่มี
-4. คำนวณ `topAxis`/`axisScores` (ใช้ `scoreAnswers`/`dominantAxis` เดิมจาก `lib/quiz/engine.ts`)
+4. คำนวณ `topAxis`/`axisScores` (ใช้ `scoreAnswers`/`strongestAxis` เดิมจาก `lib/quiz/engine.ts` — ดู §4 ข้อ 1)
 5. `INSERT quiz_group` + `INSERT quiz_group_member` (creator เป็นคนแรก) ในธุรกรรมเดียว
 6. คืน `{ groupId, shareUrl: "{LIFF_URL}?groupId={groupId}&activityCode={code}" }`
 
@@ -183,8 +186,8 @@ export type GroupConfig = z.infer<typeof GroupConfig>
 1. `resolveLiffParticipant` → ต้องเป็น `created_by` ของกลุ่มนี้ — 403 ถ้าไม่ใช่
 2. รับ `{ pairIds: string[] }` — แต่ละ `pairId` โหลด `quiz_pair` ของ `activity_id` เดียวกัน หา "อีกฝ่าย" (ไม่ใช่
    creator) แล้วดึง `axisScores` จาก `quiz_pair.scores` (`.a` หรือ `.b` แล้วแต่ว่าอีกฝ่ายเป็นฝั่งไหน) จากนั้น
-   คำนวณ `topAxis` ด้วย `dominantAxis(cfg, axisScores)` เดิม (`quiz_pair.scores` เก็บแค่คะแนนดิบ ไม่มี `topAxis`
-   สำเร็จรูป)
+   คำนวณ `topAxis` ด้วย `strongestAxis(cfg, axisScores)` เดิม (`quiz_pair.scores` เก็บแค่คะแนนดิบ ไม่มี `topAxis`
+   สำเร็จรูป — และต้องเป็น `strongestAxis` ไม่ใช่ `dominantAxis` ด้วยเหตุผลเดียวกับ §4 ข้อ 1)
 3. ข้ามเงียบๆ ถ้า `pairId` ไม่มีจริง/คนละ activity/ไม่มีอีกฝ่ายอยู่ในนั้นจริง/เกิน `max_members` แล้ว/เป็นสมาชิกอยู่
    แล้ว — ไม่ throw ทั้งคำขอ
 4. คืน `{ added: number }`
