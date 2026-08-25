@@ -318,4 +318,30 @@ describe('group get + add-pairs', () => {
     )
     expect(response.status).toBe(403)
   })
+
+  it('add-pairs returns 422 when pairIds is missing or empty', async () => {
+    await answerSolo(lineUidA)
+    const { groupId } = await (await postCreate(
+      new Request('https://example.com', { method: 'POST', headers: authHeaders(lineUidA) }),
+      { params: Promise.resolve({ liffId, activityCode }) },
+    )).json()
+
+    const missingResponse = await postAddPairs(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    expect(missingResponse.status).toBe(422)
+
+    const emptyResponse = await postAddPairs(
+      new Request('https://example.com', {
+        method: 'POST', headers: { ...authHeaders(lineUidA), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pairIds: [] }),
+      }),
+      { params: Promise.resolve({ liffId, activityCode, groupId }) },
+    )
+    expect(emptyResponse.status).toBe(422)
+  })
 })
