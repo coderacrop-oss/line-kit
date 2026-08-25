@@ -2,7 +2,8 @@
 import { randomBytes } from 'node:crypto'
 import { afterAll, beforeAll, describe, expect, it } from 'vitest'
 import { testDb } from '../lib/db/client'
-import { createQuizGroup, joinQuizGroup } from '../lib/db/quizGroups'
+import { addPairsToQuizGroup, createQuizGroup, getQuizGroup, joinQuizGroup } from '../lib/db/quizGroups'
+import { matchQuizPair } from '../lib/db/quizPairs'
 import { saveQuizAnswers } from '../lib/db/quizAnswers'
 import type { QuizConfig } from '../lib/quiz/schema'
 
@@ -132,5 +133,65 @@ describe('joinQuizGroup', () => {
 
   it('rejects joining a group that does not exist', async () => {
     await expect(joinQuizGroup(sql, cfg, activityId, crypto.randomUUID(), participantA)).rejects.toThrow('ไม่พบกลุ่มนี้')
+  })
+})
+
+describe('getQuizGroup', () => {
+  it('returns null for a group that does not exist', async () => {
+    expect(await getQuizGroup(sql, cfg, activityId, crypto.randomUUID())).toBeNull()
+  })
+
+  it('result is null until minMembers is reached, then reflects live composition', async () => {
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    const soloView = await getQuizGroup(sql, cfg, activityId, groupId)
+    expect(soloView?.totalMembers).toBe(1)
+    expect(soloView?.result).toBeNull() // minMembers is 2
+
+    await saveQuizAnswers(sql, activityId, participantB, [{ questionId: 'q1', optionId: 'a' }])
+    await joinQuizGroup(sql, cfg, activityId, groupId, participantB)
+    const pairView = await getQuizGroup(sql, cfg, activityId, groupId)
+    expect(pairView?.totalMembers).toBe(2)
+    expect(pairView?.result?.code).toBe('fallback')
+    expect(pairView?.isLocked).toBe(false)
+  })
+
+  it('locks the result once resultLocksAt is reached, and stops recomputing after', async () => {
+    const lockingCfg: QuizConfig = { ...cfg, group: { ...cfg.group!, minMembers: 2, resultLocksAt: 2 } }
+    const { groupId } = await createQuizGroup(sql, lockingCfg, activityId, participantA)
+    await saveQuizAnswers(sql, activityId, participantC, [{ questionId: 'q1', optionId: 'a' }])
+    await joinQuizGroup(sql, lockingCfg, activityId, groupId, participantC)
+
+    const locked = await getQuizGroup(sql, lockingCfg, activityId, groupId)
+    expect(locked?.isLocked).toBe(true)
+    expect(locked?.result?.code).toBe('fallback')
+
+    const [row] = await sql<{ locked_archetype_code: string }[]>`
+      SELECT locked_archetype_code FROM quiz_group WHERE id = ${groupId}`
+    expect(row.locked_archetype_code).toBe('fallback')
+  })
+})
+
+describe('addPairsToQuizGroup', () => {
+  it('rejects when the caller is not the group creator', async () => {
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    await expect(addPairsToQuizGroup(sql, cfg, activityId, groupId, participantB, ['whatever']))
+      .rejects.toThrow('ไม่ใช่ผู้สร้างกลุ่มนี้')
+  })
+
+  it('adds the duo partner (not the creator) from a real quiz_pair, computing topAxis via strongestAxis', async () => {
+    const duoCfg: QuizConfig = { ...cfg, mode: 'duo', results: [{ code: 'PAIR', title: 't', body: 'b' }], fallbackResultCode: 'PAIR' }
+    const pair = await matchQuizPair(sql, duoCfg, activityId, participantA, participantB, [{ questionId: 'q1', optionId: 'b' }])
+
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    const result = await addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [pair.id])
+    expect(result.added).toBe(1)
+    const members = await sql`SELECT participant_id FROM quiz_group_member WHERE group_id = ${groupId} AND participant_id = ${participantB}`
+    expect(members).toHaveLength(1)
+  })
+
+  it('silently skips a pairId that does not belong to this activity/creator', async () => {
+    const { groupId } = await createQuizGroup(sql, cfg, activityId, participantA)
+    const result = await addPairsToQuizGroup(sql, cfg, activityId, groupId, participantA, [crypto.randomUUID()])
+    expect(result.added).toBe(0)
   })
 })
