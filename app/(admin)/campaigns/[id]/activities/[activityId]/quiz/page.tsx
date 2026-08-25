@@ -67,6 +67,9 @@ export default async function QuizConfigPage({ params }: {
         title={`ควิซบุคลิกภาพ: ${row.name}`}
         actions={
           <>
+            <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/replies`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+              Replies →
+            </a>
             <Badge tone="mute">{draft.mode === 'duo' ? 'โหมดคู่ · Duo' : 'โหมดเดี่ยว · Solo'}</Badge>
             {!canEdit && <Badge tone="mute">ดูอย่างเดียว</Badge>}
           </>

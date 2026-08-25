@@ -742,6 +742,19 @@
       ],
       "rejected": {}
     },
+    "M7-S06": {
+      "label": "M7-S06 การ์ดแจ้งเตือนตอนคู่ duo จับกันสำเร็จ",
+      "source": "app/(admin)/campaigns/[id]/activities/[activityId]/quiz/replies/page.tsx",
+      "origin": "local",
+      "originNote": "ต้นแบบไม่มีจอนี้เลย เหมือน M7-S05 — จอนี้เป็นส่วนต่อขยายของ personality_quiz (duo match notify, งานต่อเนื่องจาก Task 1-4 ที่เพิ่ม replies.duoMatchNotifyCardId และการ push แจ้ง A ตอน B ตอบครบ) แยกออกจาก M7-S05 เพราะเป็นคนละชั้นความรับผิดชอบ: axes/questions/results คือควิซคืออะไร ส่วนนี้คือระบบทำอะไรเมื่อคู่จับกันสำเร็จ ยึดธรรมเนียมหัวจอ/ลิงก์กลับของ M7-S05 เอง",
+      "landmarks": [
+        "code=\"M7-S06 · Quiz replies\"",
+        "← ตั้งค่าควิซ",
+        "row.input_type !== 'personality_quiz'",
+        "<RepliesForm campaignId={campaign.id} activityId={row.id} initial={draft} cards={cards} canEdit={canEdit} />"
+      ],
+      "rejected": {}
+    },
     "M1-S03": {
       "label": "M1-S03 ก๊อปแคมเปญ",
       "source": "app/(admin)/campaigns/duplicate/page.tsx",
