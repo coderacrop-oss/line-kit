@@ -164,6 +164,24 @@ describe('สิ่งที่ถูกเขียนลงไป', () => {
     await runExpectingRedirect(validForm())
     expect(writes().filter((s) => /INSERT INTO card_block/.test(s.text))).toHaveLength(2)
   })
+
+  it('owner_activity_id ที่ส่งมาถูกเขียนลงไปด้วย', async () => {
+    signedInAs('configurator')
+    await runExpectingRedirect(validForm({ owner_activity_id: 'activity-1' }))
+
+    const insert = cardInsert()
+    expect(insert?.text).toContain('owner_activity_id')
+    expect(insert?.values).toContain('activity-1')
+  })
+
+  it('ไม่ส่ง owner_activity_id มา → เขียนเป็น NULL (การ์ดทั่วไป)', async () => {
+    signedInAs('configurator')
+    await runExpectingRedirect(validForm())
+
+    const insert = cardInsert()
+    expect(insert?.text).toContain('owner_activity_id')
+    expect(insert?.values).toContain(null)
+  })
 })
 
 describe('ค่าที่ยิงเข้ามาแล้วต้องถูกปฏิเสธ', () => {

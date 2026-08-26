@@ -97,13 +97,17 @@ export default async function NewCardPage({ params, searchParams }: {
 
   const single = (key: string) => (typeof query[key] === 'string' ? query[key] : undefined)
   const send = asSendType(single('send'))
+  const ownerActivityId = single('owner')
   const templates = send ? await listCardTemplates(sql) : []
   const template = templates.find((row) => row.code === single('tpl')) ?? null
 
-  const cardsHref = `/campaigns/${campaign.id}/cards`
-  const stepOneHref = (value: string) => `?send=${encodeURIComponent(value)}`
+  const ownerSuffix = ownerActivityId ? `&owner=${encodeURIComponent(ownerActivityId)}` : ''
+  const cardsHref = ownerActivityId
+    ? `/campaigns/${campaign.id}/activities/${ownerActivityId}/quiz/replies`
+    : `/campaigns/${campaign.id}/cards`
+  const stepOneHref = (value: string) => `?send=${encodeURIComponent(value)}${ownerSuffix}`
   const stepTwoHref = (code: string) =>
-    `?send=${encodeURIComponent(send ?? '')}&tpl=${encodeURIComponent(code)}`
+    `?send=${encodeURIComponent(send ?? '')}&tpl=${encodeURIComponent(code)}${ownerSuffix}`
 
   const byGroup = (key: TemplateGroupKey) => templates.filter((row) => row.group === key)
   const preview = template && send ? blocksFromTemplate(template.blocks, send) : []
@@ -229,6 +233,7 @@ export default async function NewCardPage({ params, searchParams }: {
               <input type="hidden" name="campaign_id" value={campaign.id} />
               <input type="hidden" name="send_type" value={send} />
               <input type="hidden" name="template_code" value={template.code} />
+              {ownerActivityId && <input type="hidden" name="owner_activity_id" value={ownerActivityId} />}
 
               <Field
                 label="รหัสการ์ด (บังคับ · ไม่ซ้ำในแคมเปญ)"

@@ -258,6 +258,7 @@ export type CreateCardInput = {
   code: string
   sendType: SendType
   templateCode: string
+  ownerActivityId?: string
 }
 
 export class CardCreateError extends Error {}
@@ -300,9 +301,9 @@ export async function createCardFromTemplate(
 
   const id = await sql.begin(async (tx) => {
     const [card] = await tx<{ id: string }[]>`
-      INSERT INTO card (campaign_id, code, render_as, template_code, has_sample_text)
+      INSERT INTO card (campaign_id, code, render_as, template_code, has_sample_text, owner_activity_id)
       VALUES (${input.campaignId}, ${input.code}, ${input.sendType},
-              ${template.code}, ${sample})
+              ${template.code}, ${sample}, ${input.ownerActivityId ?? null})
       RETURNING id`
 
     for (const block of blocks) {

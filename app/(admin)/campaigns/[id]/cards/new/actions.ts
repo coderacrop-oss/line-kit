@@ -35,12 +35,14 @@ export async function createCard(formData: FormData): Promise<void> {
   }
 
   const code = trimmed(formData, 'code')
+  const ownerActivityId = trimmed(formData, 'owner_activity_id') || undefined
 
   const { id } = await createCardFromTemplate(db(), {
     campaignId,
     code,
     sendType,
     templateCode: trimmed(formData, 'template_code'),
+    ownerActivityId,
   })
 
   revalidatePath(`/campaigns/${campaignId}/cards`)
