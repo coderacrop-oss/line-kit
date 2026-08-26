@@ -68,10 +68,14 @@ export default async function CardEditPage({ params }: {
   return (
     <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 1100, margin: '0 auto' }}>
       <a
-        href={`/campaigns/${id}/cards`}
+        href={
+          screen.card.ownerActivityId
+            ? `/campaigns/${id}/activities/${screen.card.ownerActivityId}/quiz/replies`
+            : `/campaigns/${id}/cards`
+        }
         style={{ fontSize: 12, color: 'var(--ink-3)', display: 'inline-block', marginBottom: 10 }}
       >
-        ← การ์ดทั้งหมด
+        {screen.card.ownerActivityId ? '← กลับไป Replies' : '← การ์ดทั้งหมด'}
       </a>
 
       <PageHead

@@ -103,6 +103,7 @@ export function CardTile({ campaignId, card, canEdit }: { campaignId: string; ca
           <div style={{ display: 'flex', alignItems: 'center', gap: 7, flexWrap: 'wrap' }}>
             <span style={{ fontSize: 13, fontWeight: 600 }}>{card.code}</span>
             <Badge tone="mute">{card.renderName}</Badge>
+            {card.ownerActivityName && <Badge tone="mute">เป็นของ quiz: {card.ownerActivityName}</Badge>}
           </div>
 
           {card.previewText === null ? (
