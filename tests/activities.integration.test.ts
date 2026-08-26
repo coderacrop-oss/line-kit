@@ -274,6 +274,21 @@ describe('ขอบเขตของแคมเปญอยู่ในทุ�
     const screen = await loadActivity(sql, mine.campaignId, activityId)
     expect(screen?.cards.map((c) => c.id)).not.toContain(theirCard.id)
   })
+
+  it('การ์ดที่เป็นของ activity อื่นในแคมเปญเดียวกัน ไม่โผล่ในรายการให้เลือก', async () => {
+    const mine = await aCampaign()
+    const activityId = await anActivity(mine.campaignId)
+    const otherActivityId = await anActivity(mine.campaignId)
+    const [ownedCard] = await sql<{ id: string }[]>`
+      INSERT INTO card (campaign_id, code, owner_activity_id)
+      VALUES (${mine.campaignId}, ${`owned_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`},
+              ${otherActivityId})
+      RETURNING id`
+
+    const screen = await loadActivity(sql, mine.campaignId, activityId)
+
+    expect(screen?.cards.map((c) => c.id)).not.toContain(ownedCard.id)
+  })
 })
 
 /**

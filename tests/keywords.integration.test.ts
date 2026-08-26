@@ -170,6 +170,18 @@ describe('loadKeywordScreen · ฐานข้อมูลจริง', () => {
     expect(data.cards.map((c) => c.code).sort()).toEqual(['blocked', 'fallback', 'win_a', 'win_b'])
   })
 
+  it('การ์ดที่เป็นของ activity อื่น ไม่โผล่ในรายการให้เลือกเป็นปลายทาง', async () => {
+    const s = await seed(sql)
+    const [ownedCard] = await sql<{ id: string }[]>`
+      INSERT INTO card (campaign_id, code, owner_activity_id)
+      VALUES (${s.campaignId}, ${`owned_${tag()}`}, ${s.activityId})
+      RETURNING id`
+
+    const data = await loadKeywordScreen(sql, s.campaignId)
+
+    expect(data.cards.map((c) => c.id)).not.toContain(ownedCard.id)
+  })
+
   // เครื่องข้ามกิจกรรมที่ปิดอยู่ · หน้าจอต้องรู้ว่าปิด ไม่ใช่ซ่อนจนอธิบายแถวเดิมไม่ได้
   it('กิจกรรมที่ปิดอยู่ยังอยู่ในรายการ พร้อมบอกว่าปิด', async () => {
     const s = await seed(sql)

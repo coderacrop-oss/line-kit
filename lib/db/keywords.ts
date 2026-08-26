@@ -48,7 +48,9 @@ export async function loadKeywordScreen(
       SELECT id, name, code, is_enabled FROM activity
        WHERE campaign_id = ${campaignId} ORDER BY sort_order, name`,
     sql<{ id: string; code: string }[]>`
-      SELECT id, code FROM card WHERE campaign_id = ${campaignId} ORDER BY code`,
+      SELECT id, code FROM card
+       WHERE campaign_id = ${campaignId} AND owner_activity_id IS NULL
+       ORDER BY code`,
     sql<{ name: string; existing_keywords: string[]; is_published: boolean }[]>`
       SELECT ch.name, ch.existing_keywords, cc.is_published
         FROM campaign_channel cc

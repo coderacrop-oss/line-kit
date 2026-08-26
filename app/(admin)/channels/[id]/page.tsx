@@ -3,7 +3,7 @@ import type { CSSProperties } from 'react'
 import { Badge, Button, Field, Note, PageHead, Panel } from '@/components/ui'
 import { GlobalNav } from '@/components/layout/GlobalNav'
 import { getSession } from '@/lib/auth/session'
-import { listCards } from '@/lib/db/cards'
+import { listUnownedCards } from '@/lib/db/cards'
 import {
   type ChannelSummary, type ChannelType, describePublished, loadChannel, maskedKey,
 } from '@/lib/db/channels'
@@ -90,7 +90,7 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
   // บัญชีที่ยังไม่เคยส่งแคมเปญขึ้นเลยไม่มี liveCampaignId จึงไม่มีการ์ดให้เลือก (ช่องเลือก
   // ถูกปิดไว้ด้านล่าง) listCards() ตัวเดียวกับที่จอการ์ดและจอ Rich Menu ใช้ ไม่ query เอง
   const greetingCards = channel?.liveCampaignId
-    ? await listCards(db(), channel.liveCampaignId)
+    ? await listUnownedCards(db(), channel.liveCampaignId)
     : []
 
   const canEdit = session.role === 'configurator'

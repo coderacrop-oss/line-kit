@@ -475,7 +475,9 @@ export async function loadActivity(
 
   const [cards, rewards, counters, siblings] = await Promise.all([
     sql<CardOption[]>`
-      SELECT id, code FROM card WHERE campaign_id = ${campaignId} ORDER BY code`,
+      SELECT id, code FROM card
+       WHERE campaign_id = ${campaignId} AND owner_activity_id IS NULL
+       ORDER BY code`,
     sql<{ code: string }[]>`
       SELECT code FROM reward WHERE campaign_id = ${campaignId} ORDER BY code`,
     sql<{ code: string }[]>`

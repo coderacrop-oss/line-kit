@@ -12,7 +12,7 @@ import { identifyLayout, type LayoutKey } from '../richmenu/layouts'
 import { isValidMenuImageSize } from '../richmenu/image'
 import { listActivities } from './activities'
 import { listAssets } from './assets'
-import { listCards } from './cards'
+import { listUnownedCards } from './cards'
 
 export type RichMenuRow = {
   id: string
@@ -89,7 +89,7 @@ export async function loadRichMenuScreen(sql: postgres.Sql, campaignId: string):
         FROM rich_menu WHERE campaign_id = ${campaignId} ORDER BY created_at, alias`,
     listAssets(sql, campaignId),
     listActivities(sql, campaignId),
-    listCards(sql, campaignId),
+    listUnownedCards(sql, campaignId),
   ])
 
   const images = assets
