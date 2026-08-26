@@ -53,6 +53,10 @@ export type CardRow = {
   id: string
   code: string
   render_as: CardRenderType
+  /** activity ที่เป็นเจ้าของการ์ดใบนี้ · null คือการ์ดทั่วไปของแคมเปญ */
+  owner_activity_id: string | null
+  /** ชื่อของ activity เจ้าของ · null เมื่อไม่มีเจ้าของ */
+  owner_activity_name: string | null
   /** มีบล็อกภาพอยู่ในการ์ดใบนี้ · แถบภาพหัวการ์ดของต้นแบบขึ้นอยู่กับข้อนี้ */
   has_image: boolean
   /** ข้อความของบล็อกแรกที่มีข้อความ · null เมื่อบล็อกนั้นดึงจากชุดเนื้อหาแทน */
@@ -68,6 +72,8 @@ export type CardView = {
   code: string
   renderAs: CardRenderType
   renderName: string
+  ownerActivityId: string | null
+  ownerActivityName: string | null
   hasImage: boolean
   /** ข้อความบนการ์ดอย่างที่เขียนไว้ · ตัวแปรยังไม่ถูกแทนค่า เหมือนที่ต้นแบบแสดง */
   previewText: string | null
@@ -94,6 +100,8 @@ export function summarizeCard(row: CardRow): CardView {
     code: row.code,
     renderAs: row.render_as,
     renderName: CARD_RENDER_NAME[row.render_as],
+    ownerActivityId: row.owner_activity_id,
+    ownerActivityName: row.owner_activity_name,
     hasImage: row.has_image,
     previewText: row.title_text
       ?? (row.title_selector ? `เลือกจากชุดเนื้อหา "${row.title_selector}"` : null),
@@ -138,13 +146,14 @@ export function filterCards(
  */
 function selectCards(sql: postgres.Sql, where: postgres.PendingQuery<CardRow[]>) {
   return sql<CardRow[]>`
-    SELECT c.id, c.code, c.render_as,
+    SELECT c.id, c.code, c.render_as, c.owner_activity_id, oa.name AS owner_activity_name,
            EXISTS (SELECT 1 FROM card_block b
                     WHERE b.card_id = c.id AND b.block_type = 'image') AS has_image,
            t.content AS title_text,
            t.selector_name AS title_selector,
            used.refs AS used_by
       FROM card c
+      LEFT JOIN activity oa ON oa.id = c.owner_activity_id
       LEFT JOIN LATERAL (
         SELECT b.content, sel.name AS selector_name
           FROM card_block b
@@ -172,6 +181,11 @@ function selectCards(sql: postgres.Sql, where: postgres.PendingQuery<CardRow[]>)
              WHERE a.campaign_id = c.campaign_id
                AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.entry_rules) e
                             WHERE e->>'cardId' = c.id::text)
+             UNION
+            SELECT 'activity', a.name || ' · การ์ดแจ้งเตือน duo'
+              FROM activity a
+             WHERE a.campaign_id = c.campaign_id
+               AND a.input_config->'replies'->>'duoMatchNotifyCardId' = c.id::text
              UNION
             SELECT 'keyword', 'คีย์เวิร์ด "' || k.keyword || '"'
               FROM keyword_rule k
@@ -225,4 +239,30 @@ export async function loadCard(
   )
   const [row] = rows
   return row ? summarizeCard(row) : null
+}
+
+/**
+ * การ์ดที่เป็นของ activity นี้เท่านั้น — ใช้โดยหน้า quiz replies (docs/superpowers/specs/
+ * 2026-08-26-quiz-reply-card-scoping-design.md §4) การ์ดทั่วไป (owner_activity_id เป็น
+ * NULL) ไม่โผล่ที่นี่ แม้จะอยู่แคมเปญเดียวกันก็ตาม
+ */
+export async function listCardsForActivity(
+  sql: postgres.Sql, activityId: string,
+): Promise<CardView[]> {
+  const rows = await selectCards(sql, sql<CardRow[]>`WHERE c.owner_activity_id = ${activityId}`)
+  return rows.map(summarizeCard)
+}
+
+/**
+ * การ์ดทั่วไปของแคมเปญเท่านั้น — ไม่รวมการ์ดที่เป็นของ activity ใดๆ ใช้แทน `listCards`
+ * ในทุกจุดที่เป็น "ตัวเลือกทั่วไป" (channel default/greeting card, ปุ่ม rich menu) เพื่อ
+ * กันการ์ดที่เป็นของ quiz หลุดไปโผล่ที่อื่น (§5 ของสเปกเดียวกัน)
+ */
+export async function listUnownedCards(
+  sql: postgres.Sql, campaignId: string,
+): Promise<CardView[]> {
+  const rows = await selectCards(
+    sql, sql<CardRow[]>`WHERE c.campaign_id = ${campaignId} AND c.owner_activity_id IS NULL`,
+  )
+  return rows.map(summarizeCard)
 }

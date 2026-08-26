@@ -9,6 +9,8 @@ const row = (patch: Partial<CardRow> = {}): CardRow => ({
   id: 'c1',
   code: 'win',
   render_as: 'flex_bubble',
+  owner_activity_id: null,
+  owner_activity_name: null,
   has_image: false,
   title_text: 'ยินดีด้วย {{attr.name}}',
   title_selector: null,
@@ -98,6 +100,19 @@ describe('summarizeCard · ข้อความตัวอย่างบน�
   it('มีภาพหัวการ์ดหรือไม่ มาจากบล็อกภาพ ไม่ใช่จากชนิดการส่ง', () => {
     expect(view({ has_image: true, render_as: 'text' }).hasImage).toBe(true)
     expect(view({ has_image: false, render_as: 'flex_bubble' }).hasImage).toBe(false)
+  })
+})
+
+describe('summarizeCard · เจ้าของการ์ด', () => {
+  it('การ์ดทั่วไปไม่มีเจ้าของ', () => {
+    expect(view().ownerActivityId).toBeNull()
+    expect(view().ownerActivityName).toBeNull()
+  })
+
+  it('การ์ดที่เป็นของ activity มี ownerActivityId/ownerActivityName ส่งต่อมาครบ', () => {
+    const card = view({ owner_activity_id: 'a1', owner_activity_name: 'ควิซทดสอบ' })
+    expect(card.ownerActivityId).toBe('a1')
+    expect(card.ownerActivityName).toBe('ควิซทดสอบ')
   })
 })
 
