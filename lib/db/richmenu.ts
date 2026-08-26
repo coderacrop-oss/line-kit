@@ -78,9 +78,10 @@ function toView(row: RichMenuRow, imagesById: Map<string, RichMenuImageOption>):
  * ทุกอย่างที่จอ M4-S01 ต้องใช้ — เมนูของแคมเปญนี้ · ภาพที่เลือกได้จากคลัง ·
  * กิจกรรมกับการ์ดที่ช่องเลือกเป้าหมายต้องใช้
  *
- * `listAssets`/`listActivities`/`listCards` ตัวเดียวกับที่จออื่นใช้ — ด่านที่ตัดสิน
- * ว่าจะยิงของขึ้น LINE หรือไม่ต้องมองเห็นของชุดเดียวกับที่คนตั้งค่ามองเห็นตอนกรอก
- * (เหตุผลเดียวกับ lib/db/publish.ts)
+ * `listAssets`/`listActivities` ตัวเดียวกับที่จออื่นใช้ — ด่านที่ตัดสินว่าจะยิงของ
+ * ขึ้น LINE หรือไม่ต้องมองเห็นของชุดเดียวกับที่คนตั้งค่ามองเห็นตอนกรอก (เหตุผลเดียวกับ
+ * lib/db/publish.ts) การ์ดใช้ `listUnownedCards` แทน `listCards` โดยตั้งใจ — ปุ่มบน
+ * ริชเมนูเป็นตัวเลือกทั่วไป การ์ดที่เป็นของ quiz ไม่ควรโผล่มาให้เลือกที่นี่
  */
 export async function loadRichMenuScreen(sql: postgres.Sql, campaignId: string): Promise<RichMenuScreenData> {
   const [rows, assets, activities, cards] = await Promise.all([

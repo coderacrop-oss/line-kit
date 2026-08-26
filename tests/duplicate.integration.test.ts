@@ -358,6 +358,29 @@ describe('duplicateCampaign · ฐานข้อมูลจริง', () => {
     for (const menu of menus) expect(menu.campaign_id).toBe(made.id)
   })
 
+  /**
+   * card.owner_activity_id ต้องถูกรีแมปด้วย · ไม่ใช่ตัวชี้ที่ก๊อปไปหา id เดิม
+   * และไม่ใช่ NULL ที่หลุดกลับไปเป็นการ์ดทั่วไปโดยไม่มีใครตั้งใจ (การ์ดที่เป็นของ
+   * activity ถูกก๊อปไปก่อน activity เอง — แผนที่ id ของ activity ยังว่างอยู่ตอนนั้น
+   * จึงต้องรีแมป owner_activity_id ทีหลัง เหมือน parent_card_id/fallback_card_id)
+   */
+  it('การ์ดที่เป็นของ activity ยังเป็นของ activity เดิม (ที่ id ใหม่) ในแคมเปญที่ก๊อปมา', async () => {
+    const source = await seed(sql)
+    await sql`UPDATE card SET owner_activity_id = ${source.activityId}
+               WHERE id = ${source.cardIds.win_a}`
+
+    const made = await duplicateOf(source)
+
+    const [newActivity] = await sql<{ id: string }[]>`
+      SELECT id FROM activity WHERE campaign_id = ${made.id}`
+    const [newCard] = await sql<{ owner_activity_id: string | null }[]>`
+      SELECT owner_activity_id FROM card WHERE campaign_id = ${made.id} AND code = 'win_a'`
+
+    expect(newCard.owner_activity_id).not.toBeNull()
+    expect(newCard.owner_activity_id).toBe(newActivity.id)
+    expect(newCard.owner_activity_id).not.toBe(source.activityId)
+  })
+
   it('ก๊อปแล้วก๊อปอีกจากต้นทางเดิมได้ · ที่อยู่ไฟล์ไม่ชน UNIQUE', async () => {
     const source = await fullCampaign()
     const first = await duplicateOf(source)

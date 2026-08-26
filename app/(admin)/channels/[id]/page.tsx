@@ -88,7 +88,8 @@ export default async function BindChannelPage({ params }: { params: Promise<{ id
 
   // การ์ดทักทายต้อง scope อยู่แค่แคมเปญที่กำลังรันอยู่บนบัญชีนี้ (BR-68) — บัญชีใหม่หรือ
   // บัญชีที่ยังไม่เคยส่งแคมเปญขึ้นเลยไม่มี liveCampaignId จึงไม่มีการ์ดให้เลือก (ช่องเลือก
-  // ถูกปิดไว้ด้านล่าง) listCards() ตัวเดียวกับที่จอการ์ดและจอ Rich Menu ใช้ ไม่ query เอง
+  // ถูกปิดไว้ด้านล่าง) listUnownedCards() — ตัวเดียวกับที่จอ Rich Menu ใช้ — ตัดการ์ดที่
+  // เป็นของ quiz ออกไปด้วย ต่างจาก listCards() ที่จอการ์ดทั้งหมด (แคตตาล็อก) ใช้
   const greetingCards = channel?.liveCampaignId
     ? await listUnownedCards(db(), channel.liveCampaignId)
     : []

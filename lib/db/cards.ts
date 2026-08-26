@@ -129,6 +129,23 @@ export function filterCards(
 }
 
 /**
+ * เติมการ์ดที่เลือกไว้อยู่แล้วเข้าไปในลิสต์ ถ้ามันหลุดไปจากลิสต์นั้น
+ *
+ * ใช้กับจอ quiz replies: `duoMatchNotifyCardId` อาจถูกตั้งไว้ตั้งแต่ก่อนที่
+ * owner_activity_id จะมีอยู่ในระบบ ตอนนั้นค่านี้ชี้ไปหาการ์ดทั่วไป (หรือแม้แต่การ์ด
+ * ของ activity อื่น) ซึ่ง `listCardsForActivity` (ที่กรองเฉพาะการ์ดของ activity นี้)
+ * จะไม่คืนมาให้ — ถ้าไม่เติมกลับเข้าไป dropdown จะว่างทั้งที่มีการตั้งค่าอยู่จริง
+ * และการกดบันทึกแบบไม่ทันสังเกตจะล้างค่าที่ใช้งานได้จริงทิ้งไปเงียบๆ
+ */
+export function withSelectedCard(
+  cards: readonly { id: string; code: string }[],
+  selected: { id: string; code: string } | null,
+): { id: string; code: string }[] {
+  if (!selected || cards.some((c) => c.id === selected.id)) return [...cards]
+  return [...cards, selected]
+}
+
+/**
  * ทุกทางที่การ์ดหนึ่งใบถูกส่งออกไปได้ ตามที่ schema เขียนไว้จริง
  *
  * Nine branches because there are nine, and leaving any of them out turns the
@@ -219,6 +236,14 @@ function selectCards(sql: postgres.Sql, where: postgres.PendingQuery<CardRow[]>)
      ORDER BY c.code`
 }
 
+/**
+ * ทุกการ์ดของแคมเปญ ไม่ว่าจะมีเจ้าของหรือไม่ — รวมการ์ดที่เป็นของ activity ใดๆ ด้วย
+ *
+ * เหมาะกับจอที่ต้องเห็นการ์ดทุกใบจริงๆ เช่นแคตตาล็อกทั่วไป (M3-S01) หรือจอที่อ้างอิง
+ * การ์ดโดยไม่สนเจ้าของ (เช่น publish) เท่านั้น จอ "เลือกการ์ด" ทั่วไปต้องใช้
+ * `listUnownedCards` แทน ไม่งั้นการ์ดที่เป็นของ quiz จะหลุดไปโผล่เป็นตัวเลือกที่อื่น
+ * ซึ่งเป็นการรั่วที่ฟีเจอร์ owner_activity_id มีไว้กันโดยเฉพาะ
+ */
 export async function listCards(sql: postgres.Sql, campaignId: string): Promise<CardView[]> {
   const rows = await selectCards(sql, sql<CardRow[]>`WHERE c.campaign_id = ${campaignId}`)
   return rows.map(summarizeCard)

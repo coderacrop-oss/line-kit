@@ -254,6 +254,19 @@ const COPY_STEPS: readonly CopyStep[] = [
           RETURNING id`
         activities.set(row.id, made.id)
       }
+
+      // การ์ดที่เป็นของ activity ต้องรีแมปทีหลัง เพราะตอน copy card เอง (step ก่อนหน้านี้)
+      // ยังไม่รู้ id ใหม่ของ activity เลย — เหมือนแพทเทิร์นเดียวกับ parent_card_id/fallback_card_id
+      const owned = await sql<{ id: string; owner_activity_id: string | null }[]>`
+        SELECT id, owner_activity_id FROM card
+         WHERE campaign_id = ${sourceId} AND owner_activity_id IS NOT NULL`
+      for (const row of owned) {
+        const newCardId = mapped(cards, row.id)
+        const newActivityId = mapped(activities, row.owner_activity_id)
+        if (!newCardId || !newActivityId) continue
+        await sql`UPDATE card SET owner_activity_id = ${newActivityId} WHERE id = ${newCardId}`
+      }
+
       return rows.length
     },
   },

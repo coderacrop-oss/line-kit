@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import {
   asCardFilter, CARD_FILTERS, CARD_REF_KINDS, CARD_RENDER_NAME, CARD_RENDER_TYPES,
-  type CardRef, type CardRow, filterCards, summarizeCard,
+  type CardRef, type CardRow, filterCards, summarizeCard, withSelectedCard,
 } from './cards'
 
 const row = (patch: Partial<CardRow> = {}): CardRow => ({
@@ -189,5 +189,34 @@ describe('ตัวกรองของ M3-S01', () => {
       expect(asCardFilter(junk), String(junk)).toBe('ทั้งหมด')
     }
     expect(asCardFilter('ยังไม่ถูกใช้')).toBe('ยังไม่ถูกใช้')
+  })
+})
+
+/**
+ * จอ quiz replies: การ์ดที่ถูกเลือกไว้ตั้งแต่ก่อนมี owner_activity_id อาจไม่อยู่ใน
+ * ลิสต์การ์ดของ activity นี้อีกต่อไป — ต้องเติมกลับเข้าไปให้ dropdown ไม่ว่างเปล่า
+ */
+describe('withSelectedCard', () => {
+  const cards = [{ id: 'a', code: 'a' }, { id: 'b', code: 'b' }]
+
+  it('ไม่มีการ์ดที่เลือกไว้ · รายการเดิมไม่เปลี่ยน', () => {
+    expect(withSelectedCard(cards, null)).toEqual(cards)
+  })
+
+  it('การ์ดที่เลือกไว้อยู่ในรายการแล้ว · ไม่เติมซ้ำ', () => {
+    const result = withSelectedCard(cards, { id: 'b', code: 'b' })
+    expect(result).toEqual(cards)
+    expect(result.length).toBe(2)
+  })
+
+  it('การ์ดที่เลือกไว้หลุดจากรายการ · ถูกเติมกลับเข้าไปท้ายรายการ', () => {
+    const selected = { id: 'z', code: 'z' }
+    expect(withSelectedCard(cards, selected)).toEqual([...cards, selected])
+  })
+
+  it('ไม่แก้รายการต้นทาง · คืนอาเรย์ใหม่เสมอ', () => {
+    const before = cards.length
+    withSelectedCard(cards, { id: 'z', code: 'z' })
+    expect(cards.length).toBe(before)
   })
 })

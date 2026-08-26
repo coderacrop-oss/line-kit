@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { PageHead } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
 import { loadCampaign } from '@/lib/db/campaigns'
-import { listCardsForActivity } from '@/lib/db/cards'
+import { listCardsForActivity, withSelectedCard } from '@/lib/db/cards'
 import { db } from '@/lib/db/client'
 import { QuizConfig } from '@/lib/quiz/schema'
 import { RepliesForm } from './RepliesForm'
@@ -41,7 +41,19 @@ export default async function QuizRepliesPage({ params }: {
   }
 
   const cardRows = await listCardsForActivity(sql, row.id)
-  const cards = cardRows.map((c) => ({ id: c.id, code: c.code }))
+  const ownedCards = cardRows.map((c) => ({ id: c.id, code: c.code }))
+
+  // ตั้งค่าไว้ก่อนที่ owner_activity_id จะมีอยู่ ค่านี้อาจชี้ไปหาการ์ดทั่วไป (หรือของ
+  // activity อื่น) ที่ listCardsForActivity ไม่คืนมาให้ — ต้องหามาเติมไว้ในลิสต์เอง
+  // ไม่งั้น dropdown จะว่างทั้งที่มีการตั้งค่าอยู่จริง
+  const selectedCardId = draft.replies?.duoMatchNotifyCardId ?? null
+  const needsLookup = selectedCardId !== null && !ownedCards.some((c) => c.id === selectedCardId)
+  const [selectedCard] = needsLookup
+    ? await sql<{ id: string; code: string }[]>`
+        SELECT id, code FROM card WHERE id = ${selectedCardId} AND campaign_id = ${campaign.id}`
+    : []
+  const cards = withSelectedCard(ownedCards, selectedCard ?? null)
+
   const canEdit = session.role === 'configurator'
 
   return (
