@@ -2,7 +2,7 @@ import { notFound, redirect } from 'next/navigation'
 import { PageHead } from '@/components/ui'
 import { getSession } from '@/lib/auth/session'
 import { loadCampaign } from '@/lib/db/campaigns'
-import { listCards } from '@/lib/db/cards'
+import { listCardsForActivity } from '@/lib/db/cards'
 import { db } from '@/lib/db/client'
 import { QuizConfig } from '@/lib/quiz/schema'
 import { RepliesForm } from './RepliesForm'
@@ -40,7 +40,7 @@ export default async function QuizRepliesPage({ params }: {
     fallbackResultCode: '',
   }
 
-  const cardRows = await listCards(sql, campaign.id)
+  const cardRows = await listCardsForActivity(sql, row.id)
   const cards = cardRows.map((c) => ({ id: c.id, code: c.code }))
   const canEdit = session.role === 'configurator'
 
@@ -54,6 +54,17 @@ export default async function QuizRepliesPage({ params }: {
       </a>
 
       <PageHead code="M7-S06 · Quiz replies" title={`Replies: ${row.name}`} />
+
+      {canEdit && (
+        <div style={{ marginBottom: 14 }}>
+          <a
+            href={`/campaigns/${campaign.id}/cards/new?owner=${encodeURIComponent(row.id)}`}
+            style={{ fontSize: 12, color: 'var(--ink-3)' }}
+          >
+            + สร้างการ์ดใหม่สำหรับ quiz นี้
+          </a>
+        </div>
+      )}
 
       <RepliesForm campaignId={campaign.id} activityId={row.id} initial={draft} cards={cards} canEdit={canEdit} />
     </main>
