@@ -141,3 +141,40 @@ describe('deleteCard · ฐานข้อมูลจริง', () => {
     expect(await cardExists(cardId)).toBe(true)
   })
 })
+
+describe('card.owner_activity_id · cascade ลบ (migration 0017)', () => {
+  it('ลบ activity ที่เป็นเจ้าของการ์ด → การ์ดถูกลบตามไปด้วย', async () => {
+    const s = await scene()
+    const [activity] = await sql<{ id: string }[]>`
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
+      VALUES (${s.campaignId}, ${`quiz_${tag()}`}, 'ควิซทดสอบ', 'personality_quiz', NULL,
+              ${sql.json({
+                mode: 'duo', axes: [], questions: [], results: [], fallbackResultCode: '',
+              } as never)})
+      RETURNING id`
+    const [card] = await sql<{ id: string }[]>`
+      INSERT INTO card (campaign_id, code, owner_activity_id)
+      VALUES (${s.campaignId}, ${`owned_${tag()}`}, ${activity.id})
+      RETURNING id`
+
+    await sql`DELETE FROM activity WHERE id = ${activity.id}`
+
+    expect(await cardExists(card.id)).toBe(false)
+  })
+
+  it('การ์ดทั่วไป (owner_activity_id เป็น NULL) ไม่ถูกลบตอนลบ activity อื่น', async () => {
+    const s = await scene()
+    const cardId = await aCard(s.campaignId)
+    const [activity] = await sql<{ id: string }[]>`
+      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
+      VALUES (${s.campaignId}, ${`quiz_${tag()}`}, 'ควิซทดสอบ', 'personality_quiz', NULL,
+              ${sql.json({
+                mode: 'duo', axes: [], questions: [], results: [], fallbackResultCode: '',
+              } as never)})
+      RETURNING id`
+
+    await sql`DELETE FROM activity WHERE id = ${activity.id}`
+
+    expect(await cardExists(cardId)).toBe(true)
+  })
+})
