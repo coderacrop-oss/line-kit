@@ -53,6 +53,8 @@ const row = (patch: Partial<CardRow> = {}): CardRow => ({
   title_text: 'ยินดีด้วย {{attr.name}}',
   title_selector: null,
   used_by: [{ kind: 'keyword', label: 'คีย์เวิร์ด "เล่น"' }],
+  owner_activity_id: null,
+  owner_activity_name: null,
   ...patch,
 })
 

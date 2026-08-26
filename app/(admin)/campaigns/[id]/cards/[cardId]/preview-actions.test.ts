@@ -77,6 +77,7 @@ const screenFor = (over: Partial<CardEditorScreen> = {}): CardEditorScreen => ({
   card: {
     id: 'card-1', code: 'welcome', renderAs: 'flex_bubble', renderName: 'การ์ดเดี่ยว',
     hasImage: false, previewText: 'สวัสดี', usedBy: [], isOrphan: true,
+    ownerActivityId: null, ownerActivityName: null,
   },
   templateCode: null,
   hasSampleText: false,

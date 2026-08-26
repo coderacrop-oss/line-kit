@@ -40,6 +40,7 @@ const ImagemapPage = (await import('./page')).default
 const goodCard = (patch: Partial<CardView> = {}): CardView => ({
   id: 'card-1', code: 'promo', renderAs: 'imagemap', renderName: 'ริชเมสเสจ',
   hasImage: false, previewText: null, usedBy: [], isOrphan: true,
+  ownerActivityId: null, ownerActivityName: null,
   ...patch,
 })
 

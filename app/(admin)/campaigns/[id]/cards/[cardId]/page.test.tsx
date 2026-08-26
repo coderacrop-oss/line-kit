@@ -82,6 +82,7 @@ const CardEditPage = (await import('./page')).default
 const emptyCard = (over: Partial<CardEditorScreen['card']> = {}): CardEditorScreen['card'] => ({
   id: 'card-1', code: 'welcome', renderAs: 'flex_bubble', renderName: 'การ์ดเดี่ยว',
   hasImage: false, previewText: 'สวัสดี', usedBy: [], isOrphan: true,
+  ownerActivityId: null, ownerActivityName: null,
   ...over,
 })
 

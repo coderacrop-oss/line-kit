@@ -50,7 +50,8 @@ const signedInAs = (role: string, isActive = true) => {
 
 const orphanCard = (patch: Partial<CardView> = {}): CardView => ({
   id: 'card-1', code: 'welcome', renderAs: 'flex_bubble', renderName: 'การ์ดเดี่ยว',
-  hasImage: false, previewText: 'ยินดีต้อนรับ', usedBy: [], isOrphan: true, ...patch,
+  hasImage: false, previewText: 'ยินดีต้อนรับ', usedBy: [], isOrphan: true,
+  ownerActivityId: null, ownerActivityName: null, ...patch,
 })
 
 beforeEach(() => {
