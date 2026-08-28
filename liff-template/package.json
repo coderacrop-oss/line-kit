@@ -7,11 +7,15 @@
     "build": "next build",
     "start": "next start",
     "test": "vitest run --exclude \"**/*.integration.test.ts\"",
-    "typecheck": "tsc --noEmit"
+    "test:integration": "vitest run integration",
+    "test:all": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "db:reset": "psql -q postgres -c \"DROP DATABASE IF EXISTS liff_template_test\" -c \"CREATE DATABASE liff_template_test\" && psql -q -v ON_ERROR_STOP=1 -d liff_template_test -f db/schema.sql"
   },
   "dependencies": {
     "@line/liff": "^2.24.0",
     "next": "^15.5.0",
+    "postgres": "^3.4.9",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "zod": "^4.4.3"
