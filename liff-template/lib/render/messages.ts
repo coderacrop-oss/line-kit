@@ -224,3 +224,109 @@ export function renderDuoReminderPush(cfg: QuizConfig, data: { hoursSinceInvite:
     }),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Group renderers (Task 8)
+// ---------------------------------------------------------------------------
+
+/** group — push when the group's result completes; looks up the computed archetype by code (design doc §6 row 11). */
+export function renderGroupCompletePush(cfg: QuizConfig, data: { archetypeCode: string; memberCount: number }): FlexMessage {
+  const archetype = cfg.group?.archetypes.find((a) => a.code === data.archetypeCode)
+  const copy = cfg.templateCopy!.messages.groupComplete!
+  return {
+    type: 'flex',
+    altText: archetype?.title ?? copy.badge,
+    contents: bubble({
+      hero: heroImage(archetype?.imageUrl),
+      bodyContents: [
+        textBlock(copy.badge, { size: 'sm', weight: 'bold' }),
+        textBlock(archetype?.title ?? '', { size: 'xl', weight: 'bold' }),
+        textBlock(archetype?.body ?? '', { size: 'md' }),
+        textBlock(String(data.memberCount), { size: 'sm' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, '')],
+    }),
+  }
+}
+
+/** group — push when a new archetype tier unlocks; interpolates {archetype} (its title) into headlineTemplate (design doc §6 row 12a). */
+export function renderGroupUnlockPush(cfg: QuizConfig, data: { archetypeCode: string }): FlexMessage {
+  const archetype = cfg.group?.archetypes.find((a) => a.code === data.archetypeCode)
+  const copy = cfg.templateCopy!.messages.groupUnlock!
+  const headline = interpolate(copy.headlineTemplate, { archetype: archetype?.title ?? data.archetypeCode })
+  return {
+    type: 'flex',
+    altText: headline,
+    contents: bubble({
+      hero: heroImage(archetype?.imageUrl),
+      bodyContents: [
+        textBlock(headline, { size: 'lg', weight: 'bold' }),
+        textBlock(archetype?.body ?? '', { size: 'md' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, '')],
+    }),
+  }
+}
+
+/** group — reminder push while the group hasn't reached minMembers yet; interpolates {current}/{remaining} (design doc §6 row 12b). */
+export function renderGroupReminderPush(cfg: QuizConfig, data: { currentMembers: number; remaining: number }): FlexMessage {
+  const copy = cfg.templateCopy!.messages.groupReminder!
+  const headline = interpolate(copy.headlineTemplate, { current: data.currentMembers, remaining: data.remaining })
+  return {
+    type: 'flex',
+    altText: copy.badge,
+    contents: bubble({
+      bodyContents: [
+        textBlock(copy.badge, { size: 'sm', weight: 'bold' }),
+        textBlock(headline, { size: 'lg', weight: 'bold' }),
+        textBlock(copy.subText, { size: 'sm' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, '')],
+    }),
+  }
+}
+
+/**
+ * group — invite more people into the group; renders one avatar-shaped slot per member up to
+ * maxMembers, each present member showing their axis's label (looked up from cfg.axes) and each
+ * open slot showing a generic "?" placeholder — the one literal string in this file that isn't
+ * campaign copy, since an empty slot has no member to draw an axis label from (design doc §6 row
+ * 12c/§7's note on Matching/Group placeholders).
+ */
+export function renderGroupInviteCard(
+  cfg: QuizConfig,
+  data: { members: { axisId: string }[]; maxMembers: number; archetypeCode?: string },
+): FlexMessage {
+  const copy = cfg.templateCopy!.messages.groupInvite!
+  const archetype = data.archetypeCode ? cfg.group?.archetypes.find((a) => a.code === data.archetypeCode) : undefined
+  const header = archetype
+    ? interpolate(copy.headerCompleteTemplate, { archetype: archetype.title })
+    : interpolate(copy.headerIncompleteTemplate, { current: data.members.length, max: data.maxMembers })
+
+  const slots: Record<string, unknown>[] = []
+  for (let i = 0; i < data.maxMembers; i++) {
+    const member = data.members[i]
+    if (!member) {
+      slots.push(textBlock('?', { align: 'center' }))
+      continue
+    }
+    const axis = cfg.axes.find((a) => a.id === member.axisId)
+    slots.push(textBlock(axis?.label ?? member.axisId, { align: 'center' }))
+  }
+
+  return {
+    type: 'flex',
+    altText: header,
+    contents: bubble({
+      bodyContents: [
+        textBlock(header, { weight: 'bold', size: 'lg' }),
+        textBlock(copy.body, { size: 'md' }),
+        { type: 'box', layout: 'horizontal', contents: slots },
+      ],
+      footerContents: [
+        primaryButton(copy.ctaLabel, ''),
+        secondaryButton(copy.secondaryCtaLabel, ''),
+      ],
+    }),
+  }
+}

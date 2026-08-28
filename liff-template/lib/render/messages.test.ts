@@ -6,6 +6,10 @@ import {
   renderDuoPartnerAnsweredPush,
   renderDuoReminderPush,
   renderFollowMessage,
+  renderGroupCompletePush,
+  renderGroupInviteCard,
+  renderGroupReminderPush,
+  renderGroupUnlockPush,
   renderKeywordCard,
   renderKeywordCustom,
   renderKeywordText,
@@ -218,5 +222,63 @@ describe('renderDuoReminderPush', () => {
     expect(json).toContain('DUOREMIND_BADGE')
     expect(json).toContain('DUOREMIND_HEADLINE_12')
     expect(json).toContain('DUOREMIND_CTA')
+  })
+})
+
+describe('renderGroupCompletePush', () => {
+  it('looks up the archetype by archetypeCode and includes its title/body/imageUrl plus groupComplete copy and memberCount', () => {
+    const msg = renderGroupCompletePush(fullCfg, { archetypeCode: 'ARCH1', memberCount: 4 })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('ARCH1_TITLE')
+    expect(json).toContain('ARCH1_BODY')
+    expect(json).toContain('https://example.com/arch1.png')
+    expect(json).toContain('GROUPCOMPLETE_BADGE')
+    expect(json).toContain('GROUPCOMPLETE_CTA')
+    expect(json).toContain('4')
+  })
+})
+
+describe('renderGroupUnlockPush', () => {
+  it('interpolates the unlocked archetype\'s title into headlineTemplate', () => {
+    const msg = renderGroupUnlockPush(fullCfg, { archetypeCode: 'ARCH1' })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('GROUPUNLOCK_HEADLINE_ARCH1_TITLE')
+    expect(json).toContain('GROUPUNLOCK_CTA')
+  })
+})
+
+describe('renderGroupReminderPush', () => {
+  it('interpolates {current}/{remaining} into headlineTemplate and includes subText', () => {
+    const msg = renderGroupReminderPush(fullCfg, { currentMembers: 3, remaining: 2 })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('GROUPREMIND_BADGE')
+    expect(json).toContain('GROUPREMIND_HEADLINE_3_2')
+    expect(json).toContain('GROUPREMIND_SUBTEXT')
+    expect(json).toContain('GROUPREMIND_CTA')
+  })
+})
+
+describe('renderGroupInviteCard', () => {
+  it('shows each present member\'s axis label and interpolates the incomplete header when archetype is not yet computed', () => {
+    const msg = renderGroupInviteCard(fullCfg, { members: [{ axisId: 'ei' }, { axisId: 'sn' }], maxMembers: 4 })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('GROUPINVITE_INCOMPLETE_2_4')
+    expect(json).toContain('GROUPINVITE_BODY')
+    expect(json).toContain('GROUPINVITE_CTA')
+    expect(json).toContain('GROUPINVITE_CTA2')
+    expect(json).toContain('AXIS_EI_LABEL')
+    expect(json).toContain('AXIS_SN_LABEL')
+    // 2 open slots (4 max - 2 present) rendered as the generic placeholder
+    expect((json.match(/"\?"/g) ?? []).length).toBe(2)
+    expect(json).not.toContain('GROUPINVITE_COMPLETE')
+  })
+
+  it('shows the complete header (interpolating the archetype title) once archetypeCode is given', () => {
+    const msg = renderGroupInviteCard(fullCfg, { members: [{ axisId: 'ei' }, { axisId: 'sn' }], maxMembers: 2, archetypeCode: 'ARCH1' })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('GROUPINVITE_COMPLETE_ARCH1_TITLE')
+    expect(json).not.toContain('GROUPINVITE_INCOMPLETE')
+    // all slots filled: no "?" placeholders
+    expect((json.match(/"\?"/g) ?? []).length).toBe(0)
   })
 })
