@@ -158,6 +158,43 @@ describe('QuizConfig', () => {
     }
     expect(QuizConfig.safeParse(cfg).success).toBe(false)
   })
+
+  it('accepts an axis with all four optional extra fields set (labelEn/body/short/order)', () => {
+    const cfg = {
+      ...validConfig,
+      axes: [
+        { ...validConfig.axes[0], labelEn: 'THE THINKER', body: 'คำอธิบายยาว', short: 'นักคิด', order: '01' },
+        validConfig.axes[1],
+      ],
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('axis optional extra fields remain optional — a config with none of them set is still valid', () => {
+    // validConfig เดิมไม่ตั้งฟิลด์เหล่านี้เลยอยู่แล้ว — เคสนี้แค่ยืนยันตรงๆ ว่าไม่ได้กลายเป็น
+    // ฟิลด์บังคับโดยไม่ตั้งใจ
+    expect(QuizConfig.safeParse(validConfig).success).toBe(true)
+  })
+
+  it('rejects an axis labelEn longer than 40 characters', () => {
+    const cfg = { ...validConfig, axes: [{ ...validConfig.axes[0], labelEn: 'x'.repeat(41) }, validConfig.axes[1]] }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects an axis body longer than 400 characters', () => {
+    const cfg = { ...validConfig, axes: [{ ...validConfig.axes[0], body: 'x'.repeat(401) }, validConfig.axes[1]] }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects an axis short longer than 60 characters', () => {
+    const cfg = { ...validConfig, axes: [{ ...validConfig.axes[0], short: 'x'.repeat(61) }, validConfig.axes[1]] }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
+
+  it('rejects an axis order longer than 4 characters', () => {
+    const cfg = { ...validConfig, axes: [{ ...validConfig.axes[0], order: '12345' }, validConfig.axes[1]] }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+  })
 })
 
 describe('GroupConfig', () => {

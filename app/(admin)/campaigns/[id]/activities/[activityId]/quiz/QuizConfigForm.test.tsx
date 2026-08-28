@@ -100,6 +100,68 @@ describe('id ของคำถาม/ตัวเลือกใหม่ ไ�
   })
 })
 
+/**
+ * ขยายแถวแกนที่ระบุ (คลิกปุ่มยุบ/ขยายของมัน) — ใช้เฉพาะตอนแกนยังไม่ถูกขยายมาก่อน เช่น
+ * แกนที่มากับ `initial` ตอนโหลดหน้า เพราะ addAxis() เปิดแกนใหม่ให้อัตโนมัติอยู่แล้ว
+ * (ดูคอมเมนต์ "แกนใหม่เปิดให้แก้ทันที" ใน QuizConfigForm.tsx) — เรียกซ้ำกับแกนที่เปิดอยู่
+ * แล้วจะกลายเป็นการปิดมันแทน
+ */
+function expandAxis(container: HTMLElement, index: number): void {
+  const toggle = container.querySelector(`[data-axis="${index}"] button[aria-expanded]`) as HTMLElement
+  fireEvent.click(toggle)
+}
+
+describe('ฟิลด์เสริมของแกน (labelEn/body/short/imageUrl/order) — ปุ่ม toggle ระดับทั้งลิสต์', () => {
+  it('ปุ่ม "+ EN Title" เป็น toggle ระดับทั้งลิสต์ — มีผลไม่ว่าจะไปเปิดดูแกนไหนก็ตาม ไม่ใช่แค่แกนที่เปิดอยู่ตอนกด', () => {
+    // จอนี้ขยายได้ทีละแกน (accordion) — เทสต์นี้จึงพิสูจน์ "global" ด้วยการสลับไปเปิดแกนที่สอง
+    // แล้วเห็นช่อง EN Title โดยไม่ต้องกดปุ่มซ้ำ แทนที่จะเช็คว่าทั้งคู่โชว์พร้อมกัน (เป็นไปไม่ได้
+    // ในจอนี้เพราะเปิดได้ทีละแถว)
+    const { container } = draw()
+    fireEvent.click(screen.getByText('＋ เพิ่มแกน')) // แกน 0 — เปิดอัตโนมัติ
+    fireEvent.click(screen.getByText('＋ เพิ่มแกน')) // แกน 1 — เปิดอัตโนมัติ แกน 0 ถูกยุบกลับ
+
+    expect(screen.queryByLabelText('EN Title')).toBeNull()
+    fireEvent.click(screen.getByText('+ EN Title'))
+    expect(screen.getByLabelText('EN Title')).toBeDefined() // เห็นทันทีที่แกน 1 ซึ่งเปิดอยู่ตอนนี้
+
+    // สลับไปเปิดแกน 0 แทน — ไม่ต้องกดปุ่ม toggle ซ้ำ ก็ยังเห็นช่อง EN Title เหมือนกัน
+    expandAxis(container, 1) // ปิดแกน 1
+    expandAxis(container, 0) // เปิดแกน 0
+    expect(screen.getByLabelText('EN Title')).toBeDefined()
+  })
+
+  it('พิมพ์ค่าใน EN Title แล้วปิดปุ่ม toggle — ช่องหายไปแต่ค่าที่กรอกไว้ยังอยู่ใน config ที่จะส่ง', () => {
+    const { container } = draw()
+    fireEvent.click(screen.getByText('＋ เพิ่มแกน')) // แกนใหม่เปิดอยู่แล้วอัตโนมัติ
+    fireEvent.click(screen.getByText('+ EN Title'))
+
+    fireEvent.change(screen.getByLabelText('EN Title'), { target: { value: 'THE THINKER' } })
+    expect(readConfig(container).axes[0].labelEn).toBe('THE THINKER')
+
+    // ปิด toggle — ช่องกรอกหายไปจากจอ
+    fireEvent.click(screen.getByText('✓ EN Title'))
+    expect(screen.queryByLabelText('EN Title')).toBeNull()
+    // แต่ค่าที่กรอกไว้ก่อนหน้ายังอยู่ใน config ที่จะส่งจริง ไม่ได้ถูกลบทิ้ง
+    expect(readConfig(container).axes[0].labelEn).toBe('THE THINKER')
+
+    // เปิดใหม่ — ค่าเดิมยังอยู่ในช่องกรอก ไม่ได้หายไปตอนซ่อน
+    fireEvent.click(screen.getByText('+ EN Title'))
+    expect((screen.getByLabelText('EN Title') as HTMLInputElement).value).toBe('THE THINKER')
+  })
+
+  it('โหลด config ที่มีแกนซึ่งตั้ง short ไว้ก่อนแล้ว — ปุ่ม Short เปิดอยู่เองตั้งแต่โหลดหน้า ไม่ต้องกดเอง', () => {
+    const initial: QuizConfig = {
+      mode: 'solo', fallbackResultCode: '',
+      axes: [{ id: 'ei', label: 'E/I', poles: ['E', 'I'], short: 'นักคิด' }],
+      questions: [], results: [],
+    }
+    const { container } = draw(initial)
+    // แกนนี้มากับ initial ไม่ใช่แกนที่เพิ่งกด addAxis — ยังไม่ถูกขยาย ต้องเปิดเอง
+    expandAxis(container, 0)
+    expect((screen.getByLabelText('Short') as HTMLInputElement).value).toBe('นักคิด')
+  })
+})
+
 describe('เพิ่ม/ลบแถวของสามส่วนหลัก อัปเดตสถานะฟอร์มจริง', () => {
   it('เพิ่มแกน อัปเดตทั้งจำนวนแถวที่วาดและ config ที่จะส่ง', () => {
     const { container } = draw()
