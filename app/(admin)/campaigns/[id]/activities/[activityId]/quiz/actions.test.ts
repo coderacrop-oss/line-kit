@@ -5,11 +5,27 @@ let campaignStatus: 'draft' | 'published' | 'closed' | undefined = 'draft'
 // input_config ปัจจุบันของกิจกรรมที่ saveTemplateCopyAction โหลดสดๆ จาก DB มาผสานกับ
 // templateCopy ที่ส่งมา — undefined หมายถึงไม่พบกิจกรรมนี้เลย
 let currentActivityInputConfig: unknown
+// uploadQuizImage's ownership check (SELECT id FROM activity WHERE ... AND input_type =
+// 'personality_quiz') — false จำลองกิจกรรมที่ไม่มีจริง/ไม่ใช่ personality_quiz
+let quizActivityExists = true
 
 vi.mock('@/lib/auth/session', () => ({
   getSession: async () => (sessionRole ? { userId: 'u1', role: sessionRole } : null),
 }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+// storeOne (../../../assets/actions.ts) เขียนไฟล์จริงผ่าน assetStore() — ปลอมไว้เหมือนที่
+// cards/[cardId]/actions.test.ts ทำกับ uploadBlockImage กันไม่ให้เทสต์นี้เขียนไฟล์ลงดิสก์จริง
+vi.mock('@/lib/assets/store', async (importOriginal) => {
+  const real = await importOriginal<typeof import('@/lib/assets/store')>()
+  return {
+    ...real,
+    assetStore: () => ({
+      describe: 'ที่เก็บของเทสต์',
+      put: async (path: string, data: Uint8Array) => ({ storagePath: path, publicUrl: `/${path}` }),
+      get: async () => new Uint8Array(),
+    }),
+  }
+})
 
 // sql.json ต้องมีติดมาด้วย — actions.ts เรียก sql.json(config) จริงตามธรรมเนียม
 // เดียวกับทุกจอที่เขียนคอลัมน์ JSONB ในระบบนี้ (ดู lib/db/richmenu.ts,
@@ -32,20 +48,47 @@ const sqlMock = Object.assign(
     if (/SELECT input_config FROM activity/.test(text)) {
       return Promise.resolve(currentActivityInputConfig === undefined ? [] : [{ input_config: currentActivityInputConfig }])
     }
+    if (/SELECT id FROM activity\s+WHERE/.test(text)) {
+      return Promise.resolve(quizActivityExists ? [{ id: values[0] }] : [])
+    }
+    if (/INSERT INTO asset/.test(text)) {
+      return Promise.resolve([{ id: 'asset-1' }])
+    }
     return Promise.resolve(undefined)
   },
   { json: (value: unknown) => value },
 )
 vi.mock('@/lib/db/client', () => ({ db: () => sqlMock }))
 
-const { saveQuizConfigAction, saveTemplateCopyAction } = await import('./actions')
+const { saveQuizConfigAction, saveTemplateCopyAction, uploadQuizImage } = await import('./actions')
 
 beforeEach(() => {
   sessionRole = 'configurator'
   campaignStatus = 'draft'
   currentActivityInputConfig = undefined
+  quizActivityExists = true
 })
 afterEach(() => { vi.clearAllMocks() })
+
+/** PNG จริงขนาด 1024×678 · ผ่าน validateUpload ทุกเพดาน (กว้างอย่างน้อย 800px) */
+const pngFile = (name = 'a.png', width = 1024, height = 678): File => {
+  const head = [
+    0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a,
+    0, 0, 0, 13, 0x49, 0x48, 0x44, 0x52,
+    (width >>> 24) & 255, (width >>> 16) & 255, (width >>> 8) & 255, width & 255,
+    (height >>> 24) & 255, (height >>> 16) & 255, (height >>> 8) & 255, height & 255,
+    8, 6, 0, 0, 0,
+  ]
+  const data = new Uint8Array(Math.max(40_000, head.length))
+  data.set(head)
+  return new File([data], name, { type: 'image/png' })
+}
+
+const uploadForm = (file: File | null): FormData => {
+  const fd = new FormData()
+  if (file) fd.append('file', file)
+  return fd
+}
 
 function formData(fields: Record<string, string>): FormData {
   const fd = new FormData()
@@ -186,5 +229,30 @@ describe('saveTemplateCopyAction', () => {
     // ผ่านเพราะ merge บน currentActivityInputConfig (solo, ครบตาม schema) ไม่ใช่ก้อนที่ส่งมา
     // (ซึ่งถ้าใช้ตรงๆ จะ fail เพราะ duo mode ต้องมี templateCopy.invite/duoInvite/... ด้วย)
     expect(result.ok, result.ok ? '' : (result as { message: string }).message).toBe(true)
+  })
+})
+
+describe('uploadQuizImage', () => {
+  it('rejects a non-configurator', async () => {
+    sessionRole = 'content_editor'
+    const result = await uploadQuizImage('camp-1', 'act-1', uploadForm(pngFile()))
+    expect(result.ok).toBe(false)
+  })
+
+  it('rejects when the activity does not exist (or is not a personality_quiz)', async () => {
+    quizActivityExists = false
+    const result = await uploadQuizImage('camp-1', 'act-ghost', uploadForm(pngFile()))
+    expect(result.ok).toBe(false)
+    if (!result.ok) expect(result.message).toContain('ไม่พบกิจกรรมนี้')
+  })
+
+  it('rejects when no file was selected', async () => {
+    const result = await uploadQuizImage('camp-1', 'act-1', uploadForm(null))
+    expect(result.ok).toBe(false)
+  })
+
+  it('stores a valid image and returns its permanent URL — this is exactly what ends up in QuizAxis.imageUrl/QuizResultRule.imageUrl/GroupArchetype.imageUrl, and travels unchanged into an exported liff-template zip', async () => {
+    const result = await uploadQuizImage('camp-1', 'act-1', uploadForm(pngFile('portrait.png')))
+    expect(result).toEqual({ ok: true, url: expect.stringMatching(/portrait\.png$/) })
   })
 })

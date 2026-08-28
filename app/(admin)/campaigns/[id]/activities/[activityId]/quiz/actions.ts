@@ -4,9 +4,11 @@ import { revalidatePath } from 'next/cache'
 import { ZodError } from 'zod'
 import type { ActionResult } from '@/lib/actions/result'
 import { requireRole } from '@/lib/auth/require'
+import { assetStore } from '@/lib/assets/store'
 import { db } from '@/lib/db/client'
 import { QuizConfig } from '@/lib/quiz/schema'
 import { requireDraftCampaign } from '../../actions'
+import { storeOne } from '../../../assets/actions'
 
 // ZodError.message เป็น JSON ดิบยาวๆ ไม่ใช่ข้อความให้คนอ่าน — ต่อ .issues เป็นบรรทัดเดียว
 // อ่านง่ายแทน เหตุผลเดียวกับที่ทุกฟอร์มอื่นในระบบเขียน error message เองเป็นภาษาไทย
@@ -117,5 +119,52 @@ export async function saveTemplateCopyAction(
     return { ok: true }
   } catch (err) {
     return { ok: false, message: resultMessage(err, 'บันทึกไม่สำเร็จ — ลองใหม่') }
+  }
+}
+
+export type UploadQuizImageResult = { ok: true; url: string } | { ok: false; message: string }
+
+/**
+ * อัปโหลดภาพของแกน/ผลลัพธ์/archetype กลุ่มตรงจากฟอร์มควิซ — ท่อไปป์ไลน์เดียวกับ
+ * uploadBlockImage ของ ../../cards/[cardId]/actions.ts เป๊ะๆ ผ่าน storeOne ตัวเดียวกัน
+ * (วัดขนาดจริง → validateUpload → เขียนไฟล์ → แถวใหม่ใน asset) ภาพที่อัปโหลดทางนี้จึง
+ * โผล่ในคลังภาพของแคมเปญเหมือนอัปโหลดจากจอคลังภาพตรงๆ — ไม่ใช่ไฟล์ที่ลอยอยู่นอกคลัง
+ *
+ * คืน URL ถาวรกลับไปเฉยๆ ไม่แตะ input_config เลย — ผู้เรียก (ImageUrlUploadField) เอา URL
+ * นี้ไปเติมช่อง imageUrl ใน client state ต่อ ผู้ใช้ยังต้องกด "บันทึก" ของฟอร์มนั้นเองอยู่ดี
+ * เหมือนวางลิงก์เอง ต่างกันแค่ไม่ต้องออกไปหา URL จากที่อื่นมาวาง — URL ที่ได้เป็นลิงก์
+ * สาธารณะถาวรจาก assetStore() (Supabase Storage หรือ disk fallback) ใช้งานได้เหมือนกัน
+ * ไม่ว่าแคมเปญนี้จะ export เป็น LIFF template กี่ครั้งก็ตาม เพราะ export พา URL นี้ไปด้วย
+ * เฉยๆ ไม่ได้พาไฟล์จริงไปด้วย (LINE Flex message บังคับให้ image URL เป็นลิงก์สาธารณะ
+ * จริงอยู่แล้ว ฝังไฟล์เข้าไปตรงๆ ไม่ได้)
+ *
+ * คืน UploadQuizImageResult แทนการ throw — เหตุผลเดียวกับ uploadBlockImage: Next.js
+ * เซ็นเซอร์ข้อความ error ที่ throw ออกจาก Server Action ทิ้งเสมอในโปรดักชัน
+ */
+export async function uploadQuizImage(
+  campaignId: string, activityId: string, formData: FormData,
+): Promise<UploadQuizImageResult> {
+  try {
+    const session = await requireRole('configurator')
+    const sql = db()
+
+    const [row] = await sql<{ id: string }[]>`
+      SELECT id FROM activity
+       WHERE id = ${activityId} AND campaign_id = ${campaignId} AND input_type = 'personality_quiz'`
+    if (!row) throw new Error('ไม่พบกิจกรรมนี้')
+
+    const file = formData.get('file')
+    if (!(file instanceof File) || file.size === 0) throw new Error('ยังไม่ได้เลือกไฟล์')
+
+    const result = await storeOne(sql, assetStore(), file, {
+      campaignId, userId: session.userId, replacesId: null,
+    })
+    if (!result.ok) throw new Error(result.why)
+
+    revalidatePath(`/campaigns/${campaignId}/activities/${activityId}/quiz`)
+    revalidatePath(`/campaigns/${campaignId}/assets`)
+    return { ok: true, url: result.url }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'อัปโหลดภาพไม่สำเร็จ — ลองใหม่') }
   }
 }
