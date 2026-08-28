@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GroupConfig, QuizConfig, QuizReplies, TemplateCopy } from './schema'
+import { GroupConfig, QuizConfig, TemplateCopy } from './schema'
 
 const validConfig = {
   mode: 'solo' as const,
@@ -76,8 +76,8 @@ describe('QuizConfig', () => {
   /**
    * ด่านที่สองกัน id ชนกันแบบเงียบๆ — ตัวสร้าง id ฝั่งจอ (QuizConfigForm.tsx) กันไว้
    * ชั้นหนึ่งแล้ว แต่ config ที่มาจากทางอื่น (เช่น import/แก้ JSON มือในอนาคต) ต้องถูก
-   * กันที่นี่ด้วย — คำถาม/ตัวเลือกที่ id ซ้ำกันจะทำให้ lib/quiz/engine.ts จับคู่คำตอบผิด
-   * ตัวแบบเงียบๆ (options.find คืนตัวแรกที่ id ตรงเท่านั้น)
+   * กันที่นี่ด้วย — คำถาม/ตัวเลือกที่ id ซ้ำกันจะทำให้ผู้ให้คะแนนจับคู่คำตอบผิดตัวแบบ
+   * เงียบๆ (options.find คืนตัวแรกที่ id ตรงเท่านั้น)
    */
   it('rejects duplicate question ids', () => {
     const cfg = {
@@ -251,38 +251,6 @@ describe('GroupConfig', () => {
       group: validGroupConfig,
     }
     expect(QuizConfig.safeParse(cfg).success).toBe(true)
-  })
-})
-
-describe('QuizReplies', () => {
-  it('QuizConfig.replies is optional — a config with no replies field is still valid', () => {
-    const cfg = {
-      mode: 'duo' as const,
-      axes: [
-        { id: 'ei', label: 'E/I', poles: ['E', 'I'] as [string, string] },
-        { id: 'sn', label: 'S/N', poles: ['S', 'N'] as [string, string] },
-      ],
-      questions: [
-        { id: 'q1', text: 'q1', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
-        { id: 'q2', text: 'q2', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
-        { id: 'q3', text: 'q3', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
-      ],
-      results: [{ code: 'E', title: 't', body: 'b' }, { code: 'I', title: 't', body: 'b' }],
-      fallbackResultCode: 'E',
-    }
-    expect(QuizConfig.safeParse(cfg).success).toBe(true)
-  })
-
-  it('accepts a replies object with a valid duoMatchNotifyCardId (UUID)', () => {
-    expect(QuizReplies.safeParse({ duoMatchNotifyCardId: '123e4567-e89b-12d3-a456-426614174000' }).success).toBe(true)
-  })
-
-  it('accepts an empty replies object (no card configured yet)', () => {
-    expect(QuizReplies.safeParse({}).success).toBe(true)
-  })
-
-  it('rejects a duoMatchNotifyCardId that is not a valid UUID', () => {
-    expect(QuizReplies.safeParse({ duoMatchNotifyCardId: 'not-a-uuid' }).success).toBe(false)
   })
 })
 

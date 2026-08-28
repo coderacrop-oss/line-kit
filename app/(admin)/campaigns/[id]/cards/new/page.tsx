@@ -103,7 +103,7 @@ export default async function NewCardPage({ params, searchParams }: {
 
   const ownerSuffix = ownerActivityId ? `&owner=${encodeURIComponent(ownerActivityId)}` : ''
   const cardsHref = ownerActivityId
-    ? `/campaigns/${campaign.id}/activities/${ownerActivityId}/quiz/replies`
+    ? `/campaigns/${campaign.id}/activities/${ownerActivityId}/quiz`
     : `/campaigns/${campaign.id}/cards`
   const stepOneHref = (value: string) => `?send=${encodeURIComponent(value)}${ownerSuffix}`
   const stepTwoHref = (code: string) =>
@@ -116,7 +116,7 @@ export default async function NewCardPage({ params, searchParams }: {
   return (
     <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 1000, margin: '0 auto' }}>
       <a href={cardsHref} style={{ fontSize: 12, color: 'var(--ink-3)', display: 'inline-block', marginBottom: 10 }}>
-        {ownerActivityId ? '← กลับไป Replies' : '← การ์ดทั้งหมด'}
+        {ownerActivityId ? '← กลับไปตั้งค่าควิซ' : '← การ์ดทั้งหมด'}
       </a>
 
       <PageHead

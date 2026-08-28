@@ -81,7 +81,7 @@ export function computeDuoCoverage(cfg: Pick<QuizConfig, 'axes' | 'results'>): D
 }
 
 export type SoloCombo = {
-  /** typeCode ที่ dominantAxis() (lib/quiz/engine.ts) จะคำนวณได้จริงเมื่อผู้เล่นเอียงไปทางนี้ครบทุกแกน */
+  /** typeCode ที่ผู้ให้คะแนนจะคำนวณได้จริงเมื่อผู้เล่นเอียงไปทางนี้ครบทุกแกน */
   code: string
   /** ชื่อขั้วที่เลือกต่อแกน ตามลำดับแกน — ใช้แสดงคำอธิบายใต้รหัส */
   parts: string[]

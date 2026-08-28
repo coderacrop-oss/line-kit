@@ -70,12 +70,12 @@ export default async function CardEditPage({ params }: {
       <a
         href={
           screen.card.ownerActivityId
-            ? `/campaigns/${id}/activities/${screen.card.ownerActivityId}/quiz/replies`
+            ? `/campaigns/${id}/activities/${screen.card.ownerActivityId}/quiz`
             : `/campaigns/${id}/cards`
         }
         style={{ fontSize: 12, color: 'var(--ink-3)', display: 'inline-block', marginBottom: 10 }}
       >
-        {screen.card.ownerActivityId ? '← กลับไป Replies' : '← การ์ดทั้งหมด'}
+        {screen.card.ownerActivityId ? '← กลับไปตั้งค่าควิซ' : '← การ์ดทั้งหมด'}
       </a>
 
       <PageHead

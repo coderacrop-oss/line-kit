@@ -10,10 +10,9 @@ type ActivityRow = { id: string; name: string; input_type: string; input_config:
 
 /**
  * จอตั้งค่า templateCopy (branding/ข้อความสำหรับ LIFF template export) — แยกจาก
- * ../page.tsx (เนื้อหาควิซ) และ ../replies/page.tsx (การ์ดแจ้งเตือน duo) ด้วยเหตุผลเดียวกับ
- * ที่ replies แยกจาก quiz มาก่อน: คนละความรับผิดชอบ — จอนี้คือ "จะ export เทมเพลตแล้ว
- * หน้าตา/ข้อความของมันเป็นยังไง" ไม่ใช่ "ควิซให้คะแนนยังไง" (docs/superpowers/specs/
- * 2026-08-28-liff-template-export-design.md §10)
+ * ../page.tsx (เนื้อหาควิซ) ด้วยเหตุผลเดียวกับที่แยกความรับผิดชอบเสมอในระบบนี้ — จอนี้คือ
+ * "จะ export เทมเพลตแล้วหน้าตา/ข้อความของมันเป็นยังไง" ไม่ใช่ "ควิซให้คะแนนยังไง"
+ * (docs/superpowers/specs/2026-08-28-liff-template-export-design.md §10)
  */
 export default async function QuizTemplatePage({ params }: {
   params: Promise<{ id: string; activityId: string }>

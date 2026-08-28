@@ -5,7 +5,7 @@ import {
   CardCreateError, OPEN_SEND_TYPES,
   blocksFromTemplate, createCardFromTemplate, listCardTemplates,
 } from '../lib/cards/create'
-import { listCards, listCardsForActivity, listUnownedCards } from '../lib/db/cards'
+import { listCards, listUnownedCards } from '../lib/db/cards'
 import { DEFAULT_THEME } from '../lib/db/queries'
 import { configFor, loadPublishScreen } from '../lib/db/publish'
 import { validateForPublish } from '../lib/publish/validate'
@@ -432,27 +432,7 @@ describe('BR-37 · การ์ดที่สร้างจากเทมเ�
   })
 })
 
-describe('listCardsForActivity / listUnownedCards', () => {
-  it('listCardsForActivity คืนเฉพาะการ์ดที่เป็นของ activity นั้น', async () => {
-    const s = await scene()
-    const [activity] = await sql<{ id: string }[]>`
-      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
-      VALUES (${s.campaignId}, ${`quiz_${tag()}`}, 'ควิซ', 'personality_quiz', NULL,
-              ${sql.json({
-                mode: 'duo', axes: [], questions: [], results: [], fallbackResultCode: '',
-              } as never)})
-      RETURNING id`
-    const [owned] = await sql<{ id: string }[]>`
-      INSERT INTO card (campaign_id, code, owner_activity_id)
-      VALUES (${s.campaignId}, ${`owned_${tag()}`}, ${activity.id})
-      RETURNING id`
-    await sql`INSERT INTO card (campaign_id, code) VALUES (${s.campaignId}, ${`general_${tag()}`})`
-
-    const rows = await listCardsForActivity(sql, activity.id)
-
-    expect(rows.map((c) => c.id)).toEqual([owned.id])
-  })
-
+describe('listUnownedCards', () => {
   it('listUnownedCards ไม่รวมการ์ดที่เป็นของ activity ใดๆ', async () => {
     const s = await scene()
     const [activity] = await sql<{ id: string }[]>`

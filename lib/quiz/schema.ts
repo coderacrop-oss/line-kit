@@ -4,7 +4,7 @@ export const QuizAxis = z.object({
   id: z.string().min(1).max(30),
   label: z.string().min(1).max(24),
   // ทั้งสองขั้วต้องไม่ว่าง (deviation จากข้อความ plan เดิมที่ไม่ได้ระบุ .min ไว้) —
-  // solo type-code (lib/quiz/engine.ts dominantAxis) เอาตัวอักษรตัวแรกของขั้วที่เลือก
+  // solo type-code (คำนวณจากขั้วที่เลือกของแต่ละแกน) เอาตัวอักษรตัวแรกของขั้วที่เลือก
   // มาต่อกันเป็นรหัส ขั้วว่างจะได้ตัวอักษรว่าง/ผิดรูปที่แทบไม่มีวันตรงกับ results[].code
   // ไหนเลย ผู้เล่นจะได้ fallbackResultCode เงียบๆ ทุกครั้งโดยไม่มี error ที่ไหนฟ้อง
   poles: z.tuple([z.string().min(1).max(24), z.string().min(1).max(24)]),
@@ -45,9 +45,8 @@ export const QuizConfig = z.object({
   results: z.array(QuizResultRule).min(2),
   fallbackResultCode: z.string().min(1),
   group: z.lazy(() => GroupConfig).optional(),
-  replies: z.lazy(() => QuizReplies).optional(),
   // Branding/ข้อความสำหรับ LIFF template export (docs/superpowers/specs/
-  // 2026-08-28-liff-template-export-design.md §4.1) — optional field เสริมตามแบบ group/replies
+  // 2026-08-28-liff-template-export-design.md §4.1) — optional field เสริมตามแบบ group
   // ที่ไม่ได้ตั้งไว้แปลว่ากิจกรรมนี้ยังไม่เคย export เป็นเทมเพลต
   templateCopy: z.lazy(() => TemplateCopy).optional(),
 }).superRefine((cfg, ctx) => {
@@ -64,8 +63,9 @@ export const QuizConfig = z.object({
   /**
    * option id ต้องไม่ซ้ำกันภายในคำถามข้อเดียวกัน
    *
-   * lib/quiz/engine.ts จับคู่คำตอบด้วย `options.find(o => o.id === answer.optionId)`
-   * ซึ่งคืนตัวแรกที่ id ตรงกันเท่านั้น — option id ซ้ำที่หลุดผ่าน validation มาได้จะทำให้
+   * ผู้ให้คะแนน (ทั้งของ LineKit เองและของเทมเพลตที่ export ไป) จับคู่คำตอบด้วย
+   * `options.find(o => o.id === answer.optionId)` ซึ่งคืนตัวแรกที่ id ตรงกันเท่านั้น
+   * — option id ซ้ำที่หลุดผ่าน validation มาได้จะทำให้
    * คำตอบของผู้เล่นถูกนับคะแนนเป็นตัวเลือกอื่นที่ id ชนกันแทน โดยไม่มี error ที่ไหนฟ้อง
    * เลย ด่านนี้จึงกันไว้ตั้งแต่ตอนบันทึก ไม่ปล่อยให้ไปพังตอนเล่นจริง — เป็นด่านที่สองรอง
    * จากตัวสร้าง id ฝั่งจอ (QuizConfigForm.tsx) ที่กันไม่ให้ id ชนกันตั้งแต่ต้น เผื่อ config
@@ -187,11 +187,6 @@ export const GroupConfig = z.object({
   }
 })
 export type GroupConfig = z.infer<typeof GroupConfig>
-
-export const QuizReplies = z.object({
-  duoMatchNotifyCardId: z.string().uuid().optional(),  // การ์ดแจ้ง A ตอน B ตอบครบ
-})
-export type QuizReplies = z.infer<typeof QuizReplies>
 
 /**
  * Branding/ข้อความสำหรับ LIFF template export (docs/superpowers/specs/

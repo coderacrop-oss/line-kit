@@ -125,24 +125,6 @@ describe('deleteCard · ฐานข้อมูลจริง', () => {
     expect(await cardExists(cardId)).toBe(true)
   })
 
-  it('replies.duoMatchNotifyCardId ของกิจกรรมยังชี้มาหาการ์ดนี้อยู่ — ปฏิเสธ ไม่ใช่ป้ายว่าไม่มีใครใช้', async () => {
-    const s = await scene()
-    const cardId = await aCard(s.campaignId)
-    await sql`
-      INSERT INTO activity (campaign_id, code, name, input_type, resolve_method, input_config)
-      VALUES (${s.campaignId}, ${`quiz_${tag()}`}, 'ควิซทดสอบ', 'personality_quiz', NULL,
-              ${sql.json({
-                mode: 'duo', axes: [], questions: [], results: [], fallbackResultCode: '',
-                replies: { duoMatchNotifyCardId: cardId },
-              } as never)})`
-
-    const result = await deleteCard(s.campaignId, cardId)
-
-    expect(result.ok).toBe(false)
-    if (!result.ok) expect(result.message).toContain('การ์ดแจ้งเตือน')
-    expect(await cardExists(cardId)).toBe(true)
-  })
-
   it('ไม่พบการ์ดนี้ในแคมเปญนี้ ปฏิเสธก่อนแตะแถวไหนเลย', async () => {
     const s = await scene()
     const result = await deleteCard(s.campaignId, '00000000-0000-0000-0000-000000000000')

@@ -73,8 +73,8 @@ describe('GET quiz export route', () => {
 
   /**
    * Finding 4 — route นี้เคย 403 ทุก role ที่ไม่ใช่ 'configurator' ทั้งที่จอพี่น้องกันที่อ่าน
-   * ข้อมูลชุดเดียวกัน (quiz/page.tsx, quiz/replies/page.tsx) อนุญาตทุก session ที่ล็อกอิน
-   * แล้วดูได้อยู่แล้ว — route อ่านอย่างเดียวเหมือนกัน ไม่มีเหตุผลให้เข้มกว่า
+   * ข้อมูลชุดเดียวกัน (quiz/page.tsx) อนุญาตทุก session ที่ล็อกอินแล้วดูได้อยู่แล้ว — route
+   * อ่านอย่างเดียวเหมือนกัน ไม่มีเหตุผลให้เข้มกว่า
    */
   it.each(['content_editor', 'reporter'] as const)(
     'allows a non-configurator authenticated session (%s) to export — read-only, matches sibling pages',

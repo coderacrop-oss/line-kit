@@ -68,9 +68,6 @@ export default async function QuizConfigPage({ params }: {
         title={`ควิซบุคลิกภาพ: ${row.name}`}
         actions={
           <>
-            <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/replies`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-              Replies →
-            </a>
             <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/template`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
               เทมเพลต →
             </a>

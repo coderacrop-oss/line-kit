@@ -9,17 +9,16 @@ type ActivityRow = { id: string; name: string; input_type: string; input_config:
 
 /**
  * Export ควิซกิจกรรมนี้เป็น LIFF template แบบ standalone (.zip) — docs/superpowers/specs/
- * 2026-08-28-liff-template-export-design.md §9. อ่าน input_config ตรงๆ ไม่ผ่าน
- * loadQuizActivity() (lib/quiz/loadActivity.ts) เพราะฟังก์ชันนั้นเช็ค "live/published/
- * in-window" ซึ่งไม่เกี่ยวกับ export เลย — แอดมินต้อง export ควิซที่ยังไม่ publish ได้ด้วย
- * (เช่นเดียวกับ replies/template ตั้งค่าได้ตั้งแต่ก่อน publish)
+ * 2026-08-28-liff-template-export-design.md §9. อ่าน input_config ตรงๆ ไม่เช็ค "live/
+ * published/in-window" อะไรเลย เพราะไม่เกี่ยวกับ export — แอดมินต้อง export ควิซที่ยังไม่
+ * publish ได้ด้วย (เช่นเดียวกับ template ตั้งค่าได้ตั้งแต่ก่อน publish)
  *
  * อ่านอย่างเดียว ไม่แก้ไขอะไร จึงอนุญาตไม่ว่าแคมเปญจะ draft หรือ live ก็ตาม (ต่างจาก
  * saveQuizConfigAction ที่ requireDraftCampaign บล็อกไว้) — ต้องแค่ล็อกอินอยู่ก็พอ ไม่บังคับ
  * role 'configurator' เหมือนก่อนหน้านี้ (Finding 4 ของรีวิว): จอพี่น้องกันที่อ่านข้อมูลชุด
- * เดียวกันนี้ (../page.tsx M7-S05, ../replies/page.tsx M7-S06) อนุญาตทุก session ที่ล็อกอิน
- * แล้วดูได้อยู่แล้ว (canEdit แยกต่างหากจากการดู) — routeนี้ก็อ่านอย่างเดียวเหมือนกันทุก
- * ประการ ไม่มีเหตุผลให้เข้มกว่าจอที่แสดงข้อมูลเดียวกันบนหน้าจอ
+ * เดียวกันนี้ (../page.tsx M7-S05) อนุญาตทุก session ที่ล็อกอินแล้วดูได้อยู่แล้ว (canEdit
+ * แยกต่างหากจากการดู) — routeนี้ก็อ่านอย่างเดียวเหมือนกันทุกประการ ไม่มีเหตุผลให้เข้มกว่า
+ * จอที่แสดงข้อมูลเดียวกันบนหน้าจอ
  */
 export async function GET(_request: Request, { params }: {
   params: Promise<{ id: string; activityId: string }>

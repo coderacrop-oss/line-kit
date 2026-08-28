@@ -129,26 +129,9 @@ export function filterCards(
 }
 
 /**
- * เติมการ์ดที่เลือกไว้อยู่แล้วเข้าไปในลิสต์ ถ้ามันหลุดไปจากลิสต์นั้น
- *
- * ใช้กับจอ quiz replies: `duoMatchNotifyCardId` อาจถูกตั้งไว้ตั้งแต่ก่อนที่
- * owner_activity_id จะมีอยู่ในระบบ ตอนนั้นค่านี้ชี้ไปหาการ์ดทั่วไป (หรือแม้แต่การ์ด
- * ของ activity อื่น) ซึ่ง `listCardsForActivity` (ที่กรองเฉพาะการ์ดของ activity นี้)
- * จะไม่คืนมาให้ — ถ้าไม่เติมกลับเข้าไป dropdown จะว่างทั้งที่มีการตั้งค่าอยู่จริง
- * และการกดบันทึกแบบไม่ทันสังเกตจะล้างค่าที่ใช้งานได้จริงทิ้งไปเงียบๆ
- */
-export function withSelectedCard(
-  cards: readonly { id: string; code: string }[],
-  selected: { id: string; code: string } | null,
-): { id: string; code: string }[] {
-  if (!selected || cards.some((c) => c.id === selected.id)) return [...cards]
-  return [...cards, selected]
-}
-
-/**
  * ทุกทางที่การ์ดหนึ่งใบถูกส่งออกไปได้ ตามที่ schema เขียนไว้จริง
  *
- * Nine branches because there are nine, and leaving any of them out turns the
+ * Eight branches because there are eight, and leaving any of them out turns the
  * dashed "ไม่มีใครใช้" pill into an invitation to delete a card that a running
  * campaign still answers with. Four of them live inside JSONB the engine reads
  * — an outcome's cardId, an entry rule's cardId, a rich menu area's target —
@@ -198,11 +181,6 @@ function selectCards(sql: postgres.Sql, where: postgres.PendingQuery<CardRow[]>)
              WHERE a.campaign_id = c.campaign_id
                AND EXISTS (SELECT 1 FROM jsonb_array_elements(a.entry_rules) e
                             WHERE e->>'cardId' = c.id::text)
-             UNION
-            SELECT 'activity', a.name || ' · การ์ดแจ้งเตือน duo'
-              FROM activity a
-             WHERE a.campaign_id = c.campaign_id
-               AND a.input_config->'replies'->>'duoMatchNotifyCardId' = c.id::text
              UNION
             SELECT 'keyword', 'คีย์เวิร์ด "' || k.keyword || '"'
               FROM keyword_rule k
@@ -264,18 +242,6 @@ export async function loadCard(
   )
   const [row] = rows
   return row ? summarizeCard(row) : null
-}
-
-/**
- * การ์ดที่เป็นของ activity นี้เท่านั้น — ใช้โดยหน้า quiz replies (docs/superpowers/specs/
- * 2026-08-26-quiz-reply-card-scoping-design.md §4) การ์ดทั่วไป (owner_activity_id เป็น
- * NULL) ไม่โผล่ที่นี่ แม้จะอยู่แคมเปญเดียวกันก็ตาม
- */
-export async function listCardsForActivity(
-  sql: postgres.Sql, activityId: string,
-): Promise<CardView[]> {
-  const rows = await selectCards(sql, sql<CardRow[]>`WHERE c.owner_activity_id = ${activityId}`)
-  return rows.map(summarizeCard)
 }
 
 /**

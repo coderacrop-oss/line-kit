@@ -742,24 +742,11 @@
       ],
       "rejected": {}
     },
-    "M7-S06": {
-      "label": "M7-S06 การ์ดแจ้งเตือนตอนคู่ duo จับกันสำเร็จ",
-      "source": "app/(admin)/campaigns/[id]/activities/[activityId]/quiz/replies/page.tsx",
-      "origin": "local",
-      "originNote": "ต้นแบบไม่มีจอนี้เลย เหมือน M7-S05 — จอนี้เป็นส่วนต่อขยายของ personality_quiz (duo match notify, งานต่อเนื่องจาก Task 1-4 ที่เพิ่ม replies.duoMatchNotifyCardId และการ push แจ้ง A ตอน B ตอบครบ) แยกออกจาก M7-S05 เพราะเป็นคนละชั้นความรับผิดชอบ: axes/questions/results คือควิซคืออะไร ส่วนนี้คือระบบทำอะไรเมื่อคู่จับกันสำเร็จ ยึดธรรมเนียมหัวจอ/ลิงก์กลับของ M7-S05 เอง",
-      "landmarks": [
-        "code=\"M7-S06 · Quiz replies\"",
-        "← ตั้งค่าควิซ",
-        "row.input_type !== 'personality_quiz'",
-        "<RepliesForm campaignId={campaign.id} activityId={row.id} initial={draft} cards={cards} canEdit={canEdit} />"
-      ],
-      "rejected": {}
-    },
     "M14-S01": {
       "label": "M14-S01 ตั้งค่า templateCopy (LIFF template export)",
       "source": "app/(admin)/campaigns/[id]/activities/[activityId]/quiz/template/page.tsx",
       "origin": "local",
-      "originNote": "ต้นแบบไม่มีจอนี้เลย — เป็นส่วนต่อขยายของฟีเจอร์ export เทมเพลต LIFF standalone (docs/superpowers/specs/2026-08-28-liff-template-export-design.md §10) แยกจาก M7-S05/M7-S06 เพราะคนละความรับผิดชอบ: จอนี้คือ 'export เทมเพลตแล้วหน้าตา/ข้อความเป็นยังไง' ไม่ใช่ 'ควิซให้คะแนนยังไง' หรือ 'ระบบทำอะไรเมื่อคู่จับกันสำเร็จ' ยึดธรรมเนียมหัวจอ/ลิงก์กลับของ M7-S05/M7-S06 เอง",
+      "originNote": "ต้นแบบไม่มีจอนี้เลย — เป็นส่วนต่อขยายของฟีเจอร์ export เทมเพลต LIFF standalone (docs/superpowers/specs/2026-08-28-liff-template-export-design.md §10) แยกจาก M7-S05 เพราะคนละความรับผิดชอบ: จอนี้คือ 'export เทมเพลตแล้วหน้าตา/ข้อความเป็นยังไง' ไม่ใช่ 'ควิซให้คะแนนยังไง' ยึดธรรมเนียมหัวจอ/ลิงก์กลับของ M7-S05 เอง",
       "landmarks": [
         "code=\"M14-S01 · LIFF template export\"",
         "← ตั้งค่าควิซ",

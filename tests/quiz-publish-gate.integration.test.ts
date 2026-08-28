@@ -5,15 +5,13 @@ import type postgres from 'postgres'
 import { testDb } from '../lib/db/client'
 import { configFor, loadPublishScreen, snapshotOf, writePublish } from '../lib/db/publish'
 import { validateForPublish } from '../lib/publish/validate'
-import { createLiffApp } from '../lib/db/liffApps'
 import type { QuizConfig } from '../lib/quiz/schema'
 
 /**
  * Finding 1 ของรีวิวรอบสุดท้าย · จบครบ end-to-end จริง — ไม่ใช่แค่ unit test ของ
  * activityProblems()/checkPublish() (ซึ่งมีอยู่แล้วใน lib/db/activities.test.ts และ
  * lib/publish/validate.test.ts) และไม่ใช่การ INSERT campaign_channel(is_published=true)
- * ตรงๆ แบบที่ทุกเทสต์ควิซตัวอื่นทำ (quiz-liff-routes.integration.test.ts เป็นต้น) —
- * เทสต์เหล่านั้นทุกตัวเดินผ่านด่าน publish gate จริงไปไม่ได้ ก่อนแก้ Finding 1 เพราะ
+ * ตรงๆ — เทสต์เหล่านั้นทุกตัวเดินผ่านด่าน publish gate จริงไปไม่ได้ ก่อนแก้ Finding 1 เพราะ
  * personality_quiz ติดด่าน "ยังไม่มีผลลัพธ์สักอัน" เสมอ (resolve_config.outcomes ว่าง
  * เป็นค่าเริ่มต้นที่ไม่มีวันถูกเติม — เนื้อหาของควิซอยู่ใน input_config แทน) ซึ่งไม่มี
  * เทสต์ไหนในระบบเคยจับได้เพราะทุกตัวข้ามด่านนี้ไปด้วยการ seed is_published=true เอง
@@ -22,8 +20,7 @@ import type { QuizConfig } from '../lib/quiz/schema'
  * → กรอกเนื้อหาควิซผ่าน saveQuizConfigAction() (Server Action จริง) → เดิน
  * loadPublishScreen()/validateForPublish() ตัวเดียวกับที่จอ M1-S04 และ publish()
  * Server Action ใช้ → ยืนยันว่าไม่มีตัวบล็อกค้าง → writePublish() (DB writer ตัวจริง
- * ของ publish()) → ยืนยันว่า campaign_channel.is_published เป็น true จริง → ยิง
- * GET LIFF config endpoint จริง ยืนยันว่าได้ 200 พร้อม config
+ * ของ publish()) → ยืนยันว่า campaign_channel.is_published เป็น true จริง
  *
  * ข้ามเฉพาะขั้นยิงออกไปหา LINE จริง (runAtLine: no-op) เหมือนที่
  * tests/publish.integration.test.ts ทำอยู่แล้ว — นั่นเป็นเรื่องภายนอกระบบ
@@ -46,7 +43,6 @@ vi.mock('@/lib/db/client', async (importOriginal) => ({
 const { createActivity } = await import('../app/(admin)/campaigns/[id]/activities/actions')
 const { saveQuizConfigAction, saveTemplateCopyAction } =
   await import('../app/(admin)/campaigns/[id]/activities/[activityId]/quiz/actions')
-const { GET: getQuizConfig } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/route')
 
 const url = process.env.TEST_DATABASE_URL ?? 'postgres://localhost:5432/linekit_test'
 let sql: postgres.Sql
@@ -94,7 +90,7 @@ const validQuizConfig: QuizConfig = {
 }
 
 describe('quiz publish gate · end to end (Finding 1)', () => {
-  it('a personality_quiz activity, configured through the real screens, actually publishes and becomes reachable to LIFF', async () => {
+  it('a personality_quiz activity, configured through the real screens, actually publishes (Finding 1: the empty-outcomes gate no longer blocks it)', async () => {
     const t = tag()
 
     const [user] = await sql<{ id: string; email: string }[]>`
@@ -142,20 +138,6 @@ describe('quiz publish gate · end to end (Finding 1)', () => {
       INSERT INTO channel (name, channel_type, encrypted_token, encrypted_secret,
                            token_last4, key_version, created_by)
       VALUES (${`OA qpg ${t}`}, 'test', 'cipher', 'cipher', '9f2a', 1, ${user.id}) RETURNING id`
-
-    // ยังไม่ publish — ก่อนแก้ Finding 4 (is_enabled/date window) และก่อนมี
-    // campaign_channel.is_published เลย LIFF ต้องไม่เห็นควิซนี้
-    const liffApp = await createLiffApp(sql, {
-      name: 'Quiz publish gate LIFF', liffId: `2011-${t}`,
-      lineLoginChannelId: '2011037337', channelId: channel.id, apiKey: `sk_qpg_${t}`, createdBy: user.id,
-    })
-    const liffHeaders = { Authorization: `Bearer sk_qpg_${t}`, 'X-Line-User-Id': `U-qpg-${t}` }
-
-    const before = await getQuizConfig(
-      new Request('https://example.com', { headers: liffHeaders }),
-      { params: Promise.resolve({ liffId: liffApp.liffId, activityCode: activityRow.code }) },
-    )
-    expect(before.status, 'ยังไม่ publish — LIFF ต้องยังมองไม่เห็นควิซนี้').toBe(404)
 
     // ── ด่านตรวจจริง ตัวเดียวกับที่จอ M1-S04 และ publish() Server Action ใช้ ──
     const screen = await loadPublishScreen(sql, campaign.id)
@@ -220,17 +202,5 @@ describe('quiz publish gate · end to end (Finding 1)', () => {
     }))
     expect(quizConfigResult.ok).toBe(false)
     if (!quizConfigResult.ok) expect(quizConfigResult.message).toContain('BR-05')
-
-    // ── ตอนนี้ publish จริงแล้ว — LIFF ต้องเห็นควิซนี้และได้ config กลับมา ──
-    const after = await getQuizConfig(
-      new Request('https://example.com', { headers: liffHeaders }),
-      { params: Promise.resolve({ liffId: liffApp.liffId, activityCode: activityRow.code }) },
-    )
-    expect(after.status).toBe(200)
-    const body = await after.json()
-    expect(body.config.mode).toBe('solo')
-    expect(body.config.questions).toHaveLength(3)
-    // config สาธารณะต้องไม่มีคำตอบเฉลยหลุดไปด้วย (§8 ของ design spec)
-    expect(body.config).not.toHaveProperty('results')
   })
 })
