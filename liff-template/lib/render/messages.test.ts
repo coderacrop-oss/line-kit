@@ -1,6 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   interpolate,
+  renderDuoInviteCard,
+  renderDuoPairResultCard,
+  renderDuoPartnerAnsweredPush,
+  renderDuoReminderPush,
   renderFollowMessage,
   renderKeywordCard,
   renderKeywordCustom,
@@ -162,5 +166,57 @@ describe('renderSoloShareCard', () => {
     expect(json).toContain('RESULT_ES_TITLE')
     expect(json).toContain('RESULT_ES_BODY')
     expect(json).toContain('https://example.com/es.png')
+  })
+})
+
+describe('renderDuoInviteCard', () => {
+  it('interpolates {axisName} (looked up from cfg.axes by myAxisId) into titleTemplate/bodyTemplate, and uses shareUrl as the CTA target', () => {
+    const msg = renderDuoInviteCard(fullCfg, { myAxisId: 'ei', shareUrl: 'https://share.example/invite' })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('DUOINVITE_TITLE_AXIS_EI_LABEL')
+    expect(json).toContain('DUOINVITE_BODY_AXIS_EI_LABEL')
+    expect(json).toContain('DUOINVITE_CTA')
+    expect(json).toContain('https://share.example/invite')
+    // Must not leak the other axis's label
+    expect(json).not.toContain('AXIS_SN_LABEL')
+  })
+
+  it('looks up a different axis correctly when myAxisId differs', () => {
+    const msg = renderDuoInviteCard(fullCfg, { myAxisId: 'sn', shareUrl: 'https://share.example/invite2' })
+    expect(JSON.stringify(msg)).toContain('DUOINVITE_TITLE_AXIS_SN_LABEL')
+  })
+})
+
+describe('renderDuoPartnerAnsweredPush', () => {
+  it('includes the runtime partnerName, the partner\'s axis label, and duoPartnerAnswered copy', () => {
+    const msg = renderDuoPartnerAnsweredPush(fullCfg, { partnerName: 'PARTNER_DISPLAY_NAME', partnerAxisId: 'sn' })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('PARTNER_DISPLAY_NAME')
+    expect(json).toContain('AXIS_SN_LABEL')
+    expect(json).toContain('DUOPARTNER_BADGE')
+    expect(json).toContain('DUOPARTNER_CTA')
+  })
+})
+
+describe('renderDuoPairResultCard', () => {
+  it('includes the matched result copy, the runtime heroImageUrl, and an interpolated rank line', () => {
+    const msg = renderDuoPairResultCard(fullCfg, { resultCode: 'IN', heroImageUrl: 'https://hero.example/composited.png', rank: 3 })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('RESULT_IN_TITLE')
+    expect(json).toContain('RESULT_IN_BODY')
+    expect(json).toContain('DUOPAIR_BADGE')
+    expect(json).toContain('DUOPAIR_RANK_3')
+    expect(json).toContain('DUOPAIR_CTA')
+    expect(json).toContain('https://hero.example/composited.png')
+  })
+})
+
+describe('renderDuoReminderPush', () => {
+  it('interpolates {hours} into headlineTemplate', () => {
+    const msg = renderDuoReminderPush(fullCfg, { hoursSinceInvite: 12 })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('DUOREMIND_BADGE')
+    expect(json).toContain('DUOREMIND_HEADLINE_12')
+    expect(json).toContain('DUOREMIND_CTA')
   })
 })

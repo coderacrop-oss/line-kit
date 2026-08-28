@@ -144,3 +144,83 @@ export function renderSoloShareCard(cfg: QuizConfig, data: { resultCode: string 
     }),
   }
 }
+
+// ---------------------------------------------------------------------------
+// Duo renderers (Task 7)
+// ---------------------------------------------------------------------------
+
+/** duo — invite a buddy; interpolates {axisName} (the inviter's strongest axis) into the copy (design doc §6 row 7). */
+export function renderDuoInviteCard(cfg: QuizConfig, data: { myAxisId: string; shareUrl: string }): FlexMessage {
+  const axis = cfg.axes.find((a) => a.id === data.myAxisId)
+  const vars = { axisName: axis?.label ?? data.myAxisId }
+  const invite = cfg.templateCopy!.messages.duoInvite!
+  const title = interpolate(invite.titleTemplate, vars)
+  const body = interpolate(invite.bodyTemplate, vars)
+  return {
+    type: 'flex',
+    altText: title,
+    contents: bubble({
+      bodyContents: [
+        textBlock(title, { weight: 'bold', size: 'lg' }),
+        textBlock(body, { size: 'md' }),
+      ],
+      footerContents: [primaryButton(invite.ctaLabel, data.shareUrl)],
+    }),
+  }
+}
+
+/** duo — push telling the inviter their buddy has answered (design doc §6 row 8). partnerName/partnerAxisId are runtime, not config. */
+export function renderDuoPartnerAnsweredPush(cfg: QuizConfig, data: { partnerName: string; partnerAxisId: string }): FlexMessage {
+  const axis = cfg.axes.find((a) => a.id === data.partnerAxisId)
+  const copy = cfg.templateCopy!.messages.duoPartnerAnswered!
+  return {
+    type: 'flex',
+    altText: copy.badge,
+    contents: bubble({
+      bodyContents: [
+        textBlock(copy.badge, { size: 'sm', weight: 'bold' }),
+        textBlock(data.partnerName, { size: 'lg', weight: 'bold' }),
+        textBlock(axis?.label ?? data.partnerAxisId, { size: 'md' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, '')],
+    }),
+  }
+}
+
+/** duo — full pair result card; heroImageUrl is a pre-composited runtime image, not something this renderer builds (design doc §6 row 9). */
+export function renderDuoPairResultCard(cfg: QuizConfig, data: { resultCode: string; heroImageUrl: string; rank: number }): FlexMessage {
+  const result = cfg.results.find((r) => r.code === data.resultCode)
+  const copy = cfg.templateCopy!.messages.duoPairResult!
+  const rankLine = interpolate(copy.rankLineTemplate, { rank: data.rank })
+  return {
+    type: 'flex',
+    altText: result?.title ?? copy.badge,
+    contents: bubble({
+      hero: heroImage(data.heroImageUrl),
+      bodyContents: [
+        textBlock(copy.badge, { size: 'sm', weight: 'bold' }),
+        textBlock(result?.title ?? '', { size: 'xl', weight: 'bold' }),
+        textBlock(rankLine, { size: 'sm' }),
+        textBlock(result?.body ?? '', { size: 'md' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, '')],
+    }),
+  }
+}
+
+/** duo — reminder push when the buddy hasn't matched yet; interpolates {hours} (design doc §6 row 10). */
+export function renderDuoReminderPush(cfg: QuizConfig, data: { hoursSinceInvite: number }): FlexMessage {
+  const copy = cfg.templateCopy!.messages.duoReminder!
+  const headline = interpolate(copy.headlineTemplate, { hours: data.hoursSinceInvite })
+  return {
+    type: 'flex',
+    altText: copy.badge,
+    contents: bubble({
+      bodyContents: [
+        textBlock(copy.badge, { size: 'sm', weight: 'bold' }),
+        textBlock(headline, { size: 'lg', weight: 'bold' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, '')],
+    }),
+  }
+}
