@@ -39,7 +39,7 @@ export function loadTemplateConfig(raw: unknown): TemplateConfig {
  * ever been exported from a real campaign. Not pure (touches fs) — deliberately outside
  * lib/engine/ and lib/render/, which must stay pure.
  */
-export function readTemplateConfigFromDisk(configDir = join(__dirname, '..', 'config')): TemplateConfig {
+export function readTemplateConfigFromDisk(configDir = join(process.cwd(), 'config')): TemplateConfig {
   const realPath = join(configDir, 'quiz.config.json')
   const samplePath = join(configDir, 'quiz.config.sample.json')
   const path = existsSync(realPath) ? realPath : samplePath
