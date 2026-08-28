@@ -34,9 +34,9 @@
     ],
     "results": [
       { "code": "ES", "title": "Sample result ES", "body": "Sample result body for ES." },
-      { "code": "EN", "title": "Sample result EN", "body": "Sample result body for EN." },
+      { "code": "EI", "title": "Sample result EI", "body": "Sample result body for EI." },
       { "code": "IS", "title": "Sample result IS", "body": "Sample result body for IS." },
-      { "code": "IN", "title": "Sample result IN", "body": "Sample result body for IN." }
+      { "code": "II", "title": "Sample result II", "body": "Sample result body for II." }
     ],
     "fallbackResultCode": "ES",
     "templateCopy": {
