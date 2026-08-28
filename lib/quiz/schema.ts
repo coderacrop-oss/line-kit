@@ -126,6 +126,7 @@ export const QuizConfig = z.object({
       if (!tc.messages.duoInvite) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoInvite'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoInvite' })
       if (!tc.messages.duoPartnerAnswered) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoPartnerAnswered'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoPartnerAnswered' })
       if (!tc.messages.duoPairResult) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoPairResult'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoPairResult' })
+      if (!tc.messages.duoReminder) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoReminder'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoReminder' })
     }
     if (cfg.mode === 'solo' && !tc.messages.soloShare) {
       ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'soloShare'], message: 'โหมด solo ต้องตั้งค่า templateCopy.messages.soloShare' })

@@ -106,6 +106,7 @@ export const QuizConfig = z.object({
       if (!tc.messages.duoInvite) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoInvite'], message: 'duo mode requires templateCopy.messages.duoInvite' })
       if (!tc.messages.duoPartnerAnswered) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoPartnerAnswered'], message: 'duo mode requires templateCopy.messages.duoPartnerAnswered' })
       if (!tc.messages.duoPairResult) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoPairResult'], message: 'duo mode requires templateCopy.messages.duoPairResult' })
+      if (!tc.messages.duoReminder) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoReminder'], message: 'duo mode requires templateCopy.messages.duoReminder' })
     }
     if (cfg.mode === 'solo' && !tc.messages.soloShare) {
       ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'soloShare'], message: 'solo mode requires templateCopy.messages.soloShare' })

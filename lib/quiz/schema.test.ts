@@ -344,6 +344,36 @@ describe('templateCopy', () => {
       expect(paths).toContain('templateCopy.messages.duoInvite')
       expect(paths).toContain('templateCopy.messages.duoPartnerAnswered')
       expect(paths).toContain('templateCopy.messages.duoPairResult')
+      expect(paths).toContain('templateCopy.messages.duoReminder')
+    }
+  })
+
+  /**
+   * renderDuoReminderPush (liff-template/lib/render/messages.ts) do non-null assertion
+   * (`cfg.templateCopy!.messages.duoReminder!`) — เคยพังจริงตอน runtime ถ้าแอดมินกรอก
+   * duo-required อื่นครบแต่ลืมช่องนี้ ตอนนี้ต้องบังคับผ่าน schema ก่อนจะเดินไปถึง render
+   * เลย ไม่ใช่พึ่ง non-null assertion เฉยๆ
+   */
+  it('rejects a duo config whose templateCopy is missing only duoReminder, with a clear message', () => {
+    const cfg = {
+      ...soloBase, mode: 'duo' as const,
+      templateCopy: {
+        ...baseTemplateCopy,
+        invite: { shareTitle: 'ชวนเพื่อน', shareBodyTemplate: 'มาทำแบบทดสอบกับฉันสิ ฉันได้ {axisName}' },
+        messages: {
+          ...baseTemplateCopy.messages,
+          duoInvite: { titleTemplate: 'ชวนเพื่อนมา {axisName}', bodyTemplate: 'กดเลย', ctaLabel: 'ชวนเลย' },
+          duoPartnerAnswered: { badge: 'คู่ของคุณตอบแล้ว', ctaLabel: 'ดูผล' },
+          duoPairResult: { badge: 'ผลคู่', rankLineTemplate: 'อันดับ {rank}', ctaLabel: 'ดูผลเต็ม' },
+        },
+      },
+    }
+    const result = QuizConfig.safeParse(cfg)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'templateCopy.messages.duoReminder')
+      expect(issue).toBeDefined()
+      expect(issue?.message).toMatch(/duoReminder/)
     }
   })
 
@@ -358,6 +388,7 @@ describe('templateCopy', () => {
           duoInvite: { titleTemplate: 'ชวนเพื่อนมา {axisName}', bodyTemplate: 'กดเลย', ctaLabel: 'ชวนเลย' },
           duoPartnerAnswered: { badge: 'คู่ของคุณตอบแล้ว', ctaLabel: 'ดูผล' },
           duoPairResult: { badge: 'ผลคู่', rankLineTemplate: 'อันดับ {rank}', ctaLabel: 'ดูผลเต็ม' },
+          duoReminder: { badge: 'ยังไม่จับคู่', headlineTemplate: 'เตือนอีกครั้ง', ctaLabel: 'ไปจับคู่' },
         },
       },
     }
