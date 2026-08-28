@@ -168,12 +168,30 @@ function ScoreDial({ axisLabel, poles, value, disabled, onChange }: {
   )
 }
 
+/**
+ * ฟิลด์เสริมของแกนที่ซ่อนไว้เป็นค่าเริ่มต้น — โชว์ทีละอันเมื่อกดปุ่ม "+" (ดู
+ * AXIS_EXTRA_FIELDS/toggleAxisField ใน QuizConfigForm) พอร์ตจาก pattern เดียวกับที่
+ * KimLIFF ใช้ในจอตั้งแกนบุคลิก (อ่านโค้ดอ้างอิงเท่านั้น ไม่มีการแก้ไขที่นั่น) — สลับปิด/เปิด
+ * เป็นการซ่อน/โชว์ช่องกรอกเฉยๆ ไม่ได้ลบค่าที่กรอกไว้ (ค่ายังอยู่ใน draft.axes ต่อไป แค่ไม่มี
+ * input ให้เห็น/แก้จนกว่าจะเปิดใหม่)
+ */
+export type AxisExtraField = 'labelEn' | 'body' | 'short' | 'imageUrl' | 'order'
+
+export const AXIS_EXTRA_FIELDS: { key: AxisExtraField; label: string }[] = [
+  { key: 'labelEn', label: 'EN Title' },
+  { key: 'body', label: 'เนื้อหา (Body)' },
+  { key: 'short', label: 'Short' },
+  { key: 'imageUrl', label: 'รูปภาพ (Image URL)' },
+  { key: 'order', label: 'ลำดับ (Order)' },
+]
+
 /** แถวหนึ่งแกน — แสดงเป็น chip ที่ยุบ/ขยายได้ ปุ่มลบอยู่บนแถบ chip เสมอ (ไม่ต้องขยายก่อนถึงจะลบได้) */
-function AxisRow({ axis, index, canEdit, expanded, onToggle, onChange, onRemove }: {
+function AxisRow({ axis, index, canEdit, expanded, activeExtraFields, onToggle, onChange, onRemove }: {
   axis: QuizAxis
   index: number
   canEdit: boolean
   expanded: boolean
+  activeExtraFields: ReadonlySet<AxisExtraField>
   onToggle: () => void
   onChange: (patch: Partial<QuizAxis>) => void
   onRemove: () => void
@@ -225,6 +243,49 @@ function AxisRow({ axis, index, canEdit, expanded, onToggle, onChange, onRemove 
               />
             </Field>
           </div>
+
+          {activeExtraFields.has('labelEn') && (
+            <Field id={`axis-label-en-${index}`} label="EN Title" hint="ชื่อแกนเป็นภาษาอังกฤษ ไม่บังคับ">
+              <input
+                value={axis.labelEn ?? ''} maxLength={40} disabled={!canEdit}
+                onChange={(e) => onChange({ labelEn: e.target.value.trim() === '' ? undefined : e.target.value })}
+              />
+            </Field>
+          )}
+          {activeExtraFields.has('body') && (
+            <Field id={`axis-body-${index}`} label="เนื้อหา (Body)" hint="คำอธิบายยาว ไม่บังคับ">
+              <textarea
+                value={axis.body ?? ''} maxLength={400} disabled={!canEdit}
+                onChange={(e) => onChange({ body: e.target.value.trim() === '' ? undefined : e.target.value })}
+                style={{ minHeight: 64, resize: 'vertical' }}
+              />
+            </Field>
+          )}
+          {activeExtraFields.has('short') && (
+            <Field id={`axis-short-${index}`} label="Short" hint="ข้อความสั้นๆ แสดงบน chip ของแกนนี้ ไม่บังคับ">
+              <input
+                value={axis.short ?? ''} maxLength={60} disabled={!canEdit}
+                onChange={(e) => onChange({ short: e.target.value.trim() === '' ? undefined : e.target.value })}
+              />
+            </Field>
+          )}
+          {activeExtraFields.has('imageUrl') && (
+            <Field id={`axis-image-${index}`} label="รูปภาพ (ไม่บังคับ)" hint="ใส่ URL รูป ไม่ใส่ก็ได้">
+              <input
+                value={axis.imageUrl ?? ''} disabled={!canEdit}
+                onChange={(e) => onChange({ imageUrl: e.target.value.trim() === '' ? undefined : e.target.value })}
+              />
+            </Field>
+          )}
+          {activeExtraFields.has('order') && (
+            <Field id={`axis-order-${index}`} label="ลำดับ (Order)" hint={'เช่น "01" — ใช้จัดลำดับการแสดงผล ไม่บังคับ'}>
+              <input
+                value={axis.order ?? ''} maxLength={4} disabled={!canEdit}
+                onChange={(e) => onChange({ order: e.target.value.trim() === '' ? undefined : e.target.value })}
+                style={{ fontFamily: 'var(--mono)', width: 80 }}
+              />
+            </Field>
+          )}
         </div>
       )}
     </div>
@@ -730,6 +791,24 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
   const [viewMode, setViewMode] = useState<'setup' | 'play'>('setup')
   const [expandedAxis, setExpandedAxis] = useState<number | null>(null)
   const [selectedResultCode, setSelectedResultCode] = useState<string | null>(null)
+  // เริ่มด้วยฟิลด์ที่มีค่าอยู่แล้วในแกนไหนก็ได้ให้เปิดโชว์ทันที (ไม่ต้องกดปุ่มเองถ้าเคยกรอกไว้
+  // ก่อนหน้านี้แล้ว) — ตัวสถานะนี้เป็นระดับ "ทั้งลิสต์แกน" ไม่ใช่ต่อแกน กดปุ่มครั้งเดียวมีผลกับ
+  // ทุกแกนพร้อมกัน ตรงตาม pattern อ้างอิงที่พอร์ตมา
+  const [activeAxisFields, setActiveAxisFields] = useState<Set<AxisExtraField>>(() => {
+    const active = new Set<AxisExtraField>()
+    for (const field of AXIS_EXTRA_FIELDS) {
+      if (initial.axes.some((axis) => Boolean(axis[field.key]))) active.add(field.key)
+    }
+    return active
+  })
+  function toggleAxisField(key: AxisExtraField) {
+    setActiveAxisFields((prev) => {
+      const next = new Set(prev)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
+      return next
+    })
+  }
 
   const submitted = sanitizeForSubmit(draft)
   const validation = QuizConfig.safeParse(submitted)
@@ -923,6 +1002,34 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                 <Panel>
                   <BlockHead n={1} title="ตั้งแกนบุคลิก (Axes)" note={`อย่างน้อย 2 แกน อย่างมาก 6 แกน · ตอนนี้มี ${draft.axes.length}`} />
                   <Block>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+                      <span style={smallLabelStyle}>ฟิลด์เพิ่มเติมที่จะส่งไป LIFF</span>
+                      <div style={chipRowStyle}>
+                        {AXIS_EXTRA_FIELDS.map((field) => {
+                          const active = activeAxisFields.has(field.key)
+                          return (
+                            <button
+                              key={field.key}
+                              type="button"
+                              disabled={!canEdit}
+                              aria-pressed={active}
+                              onClick={() => toggleAxisField(field.key)}
+                              style={{
+                                ...chipStyle,
+                                background: active ? 'var(--ink)' : 'var(--panel)',
+                                color: active ? 'var(--panel)' : 'var(--ink)',
+                              }}
+                            >
+                              {active ? '✓' : '+'} {field.label}
+                            </button>
+                          )
+                        })}
+                      </div>
+                      <span style={noteStyle}>
+                        ปิดฟิลด์ไม่ได้ลบค่าที่กรอกไว้ — แค่ซ่อน/ไม่ส่งช่องนั้นชั่วคราว เปิดใหม่เมื่อไหร่ค่าเดิมยังอยู่
+                      </span>
+                    </div>
+
                     {draft.axes.map((axis, index) => (
                       <AxisRow
                         key={index}
@@ -930,6 +1037,7 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                         index={index}
                         canEdit={canEdit}
                         expanded={expandedAxis === index}
+                        activeExtraFields={activeAxisFields}
                         onToggle={() => setExpandedAxis((current) => (current === index ? null : index))}
                         onChange={(patch) => updateAxis(index, patch)}
                         onRemove={() => removeAxis(index)}

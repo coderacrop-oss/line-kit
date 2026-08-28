@@ -12,6 +12,10 @@ export const QuizAxis = z.object({
   label: z.string().min(1).max(24),
   poles: z.tuple([z.string().min(1).max(24), z.string().min(1).max(24)]),
   imageUrl: z.string().url().optional(),
+  labelEn: z.string().max(40).optional(),
+  body: z.string().max(400).optional(),
+  short: z.string().max(60).optional(),
+  order: z.string().max(4).optional(),
 })
 export type QuizAxis = z.infer<typeof QuizAxis>
 
