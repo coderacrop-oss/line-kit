@@ -75,7 +75,9 @@ export default async function QuizConfigPage({ params }: {
               href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/export`}
               fallbackFileName={`${row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'quiz'}-liff-template.zip`}
             />
-            <Badge tone="mute">{draft.mode === 'duo' ? 'โหมดคู่ · Duo' : 'โหมดเดี่ยว · Solo'}</Badge>
+            {/* สีต่างกันตามโหมด (ไม่ใช่ tone="mute" เทาเหมือนกันหมด) ให้เห็นชัดตั้งแต่แวบแรกว่า
+                กิจกรรมนี้เป็นโหมดไหน — info=เดี่ยว, ok=คู่ (แค่ให้แยกกันชัด ไม่ได้แปลว่าคู่ "ดีกว่า") */}
+            <Badge tone={draft.mode === 'duo' ? 'ok' : 'info'}>{draft.mode === 'duo' ? 'โหมดคู่ · Duo' : 'โหมดเดี่ยว · Solo'}</Badge>
             {!canEdit && <Badge tone="mute">ดูอย่างเดียว</Badge>}
           </>
         }

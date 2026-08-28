@@ -44,6 +44,60 @@ describe('QuizConfig', () => {
     expect(QuizConfig.safeParse(validConfig).success).toBe(true)
   })
 
+  /**
+   * QuizConfigForm.tsx แสดง issue.message ตรง ๆ ในกล่อง "สถานะ" — ฟิลด์ 4 ตัวนี้เคยปล่อยให้
+   * zod ใช้ข้อความ default ("Invalid input") ซึ่งไม่บอกว่าต้องแก้อะไร ทดสอบว่ามีข้อความไทย
+   * ที่อ่านรู้เรื่องแทนที่ default แล้ว
+   */
+  it('too few axes surfaces a readable Thai message, not the generic zod default', () => {
+    const result = QuizConfig.safeParse({ ...validConfig, axes: [validConfig.axes[0]] })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'axes')
+      expect(issue?.message).toBe('ต้องมีอย่างน้อย 2 แกน')
+    }
+  })
+
+  it('too many axes surfaces a readable Thai message', () => {
+    const extraAxis = { id: 'x', label: 'X', poles: ['a', 'b'] as [string, string] }
+    const result = QuizConfig.safeParse({
+      ...validConfig,
+      axes: [validConfig.axes[0], validConfig.axes[1], extraAxis, extraAxis, extraAxis, extraAxis, extraAxis],
+    })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'axes')
+      expect(issue?.message).toBe('มีแกนได้มากที่สุด 6 แกน')
+    }
+  })
+
+  it('too few questions surfaces a readable Thai message', () => {
+    const result = QuizConfig.safeParse({ ...validConfig, questions: validConfig.questions.slice(0, 2) })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'questions')
+      expect(issue?.message).toBe('ต้องมีอย่างน้อย 3 คำถาม')
+    }
+  })
+
+  it('too few results surfaces a readable Thai message', () => {
+    const result = QuizConfig.safeParse({ ...validConfig, results: [validConfig.results[0]] })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'results')
+      expect(issue?.message).toBe('ต้องมีอย่างน้อย 2 ผลลัพธ์')
+    }
+  })
+
+  it('a blank fallbackResultCode surfaces a readable Thai message', () => {
+    const result = QuizConfig.safeParse({ ...validConfig, fallbackResultCode: '' })
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const issue = result.error.issues.find((i) => i.path.join('.') === 'fallbackResultCode')
+      expect(issue?.message).toBe('ต้องเลือกผลลัพธ์สำรอง (fallbackResultCode)')
+    }
+  })
+
   it('rejects duplicate axis ids', () => {
     const cfg = { ...validConfig, axes: [validConfig.axes[0], validConfig.axes[0]] }
     expect(QuizConfig.safeParse(cfg).success).toBe(false)
