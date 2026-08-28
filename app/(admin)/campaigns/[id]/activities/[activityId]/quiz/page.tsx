@@ -70,6 +70,12 @@ export default async function QuizConfigPage({ params }: {
             <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/replies`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
               Replies →
             </a>
+            <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/template`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+              เทมเพลต →
+            </a>
+            <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/export`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
+              ↓ Export .zip
+            </a>
             <Badge tone="mute">{draft.mode === 'duo' ? 'โหมดคู่ · Duo' : 'โหมดเดี่ยว · Solo'}</Badge>
             {!canEdit && <Badge tone="mute">ดูอย่างเดียว</Badge>}
           </>
