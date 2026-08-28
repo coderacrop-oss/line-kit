@@ -2,7 +2,11 @@ import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 
-const PURE_DIRS = ['lib/engine', 'lib/render', 'lib/match']
+// liff-template/lib/engine · liff-template/lib/render เพิ่มเข้ามาสำหรับ LIFF template
+// export (docs/superpowers/specs/2026-08-28-liff-template-export-design.md §3) — โค้ดใน
+// สองโฟลเดอร์นี้ถูกก็อปเข้า zip ไปรันในโปรเจกต์อื่นที่ไม่มี LineKit อยู่เลย จะพึ่ง I/O
+// ของ LineKit ไม่ได้ตั้งแต่ต้น เหมือน lib/engine/lib/render/lib/match เดิมทุกประการ
+const PURE_DIRS = ['lib/engine', 'lib/render', 'lib/match', 'liff-template/lib/engine', 'liff-template/lib/render']
 
 /** Anything on this list can reach the network, the database, or the framework. */
 const FORBIDDEN: Array<[string, RegExp]> = [
