@@ -288,10 +288,12 @@ export function renderGroupReminderPush(cfg: QuizConfig, data: { currentMembers:
 
 /**
  * group — invite more people into the group; renders one avatar-shaped slot per member up to
- * maxMembers, each present member showing their axis's label (looked up from cfg.axes) and each
- * open slot showing a generic "?" placeholder — the one literal string in this file that isn't
- * campaign copy, since an empty slot has no member to draw an axis label from (design doc §6 row
- * 12c/§7's note on Matching/Group placeholders).
+ * maxMembers, each present member showing their axis's short chip label when set (falling back
+ * to the full label — matches QuizAxis.short's stated purpose as "the one-liner shown on axis
+ * chips," and this slot literally is one) and each open slot showing a generic "?" placeholder —
+ * the one literal string in this file that isn't campaign copy, since an empty slot has no
+ * member to draw an axis label from (design doc §6 row 12c/§7's note on Matching/Group
+ * placeholders).
  */
 export function renderGroupInviteCard(
   cfg: QuizConfig,
@@ -311,7 +313,7 @@ export function renderGroupInviteCard(
       continue
     }
     const axis = cfg.axes.find((a) => a.id === member.axisId)
-    slots.push(textBlock(axis?.label ?? member.axisId, { align: 'center' }))
+    slots.push(textBlock(axis?.short ?? axis?.label ?? member.axisId, { align: 'center' }))
   }
 
   return {

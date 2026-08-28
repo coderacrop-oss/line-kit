@@ -2,6 +2,11 @@ export interface GroupMemberSlot {
   participantId: string
   displayName: string
   axisLabel: string
+  /** Preferred over `axisLabel` when the caller has it — QuizAxis.short is the compact
+   * one-liner meant for exactly this kind of chip-sized slot. */
+  axisShort?: string
+  /** Portrait shown in the member's avatar circle instead of their initial, when set. */
+  axisImageUrl?: string
 }
 
 export interface GroupArchetypeDisplay {
@@ -20,8 +25,9 @@ export interface GroupProps {
 /**
  * Group lobby: one avatar-shaped slot per member up to `maxMembers`, mirroring
  * `renderGroupInviteCard`'s layout for the LINE push version of this same idea — a
- * present member shows `displayName`/`axisLabel`, an open slot shows a generic "?"
- * placeholder (never a campaign-specific default).
+ * present member shows `displayName` plus `axisShort` (falling back to `axisLabel`) and,
+ * when set, `axisImageUrl` as their avatar instead of an initial; an open slot shows a
+ * generic "?" placeholder (never a campaign-specific default).
  */
 export function Group({ members, maxMembers, archetype, onInvite }: GroupProps) {
   const openSlots = Math.max(0, maxMembers - members.length)
@@ -55,21 +61,29 @@ export function Group({ members, maxMembers, archetype, onInvite }: GroupProps) 
               gap: 4,
             }}
           >
-            <div
-              style={{
-                width: 56,
-                height: 56,
-                borderRadius: '50%',
-                background: '#eee',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-              }}
-            >
-              {member.displayName.charAt(0)}
-            </div>
+            {member.axisImageUrl ? (
+              <img
+                src={member.axisImageUrl}
+                alt={member.axisShort ?? member.axisLabel}
+                style={{ width: 56, height: 56, borderRadius: '50%', objectFit: 'cover' }}
+              />
+            ) : (
+              <div
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: '50%',
+                  background: '#eee',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {member.displayName.charAt(0)}
+              </div>
+            )}
             <span>{member.displayName}</span>
-            <span>{member.axisLabel}</span>
+            <span>{member.axisShort ?? member.axisLabel}</span>
           </div>
         ))}
 

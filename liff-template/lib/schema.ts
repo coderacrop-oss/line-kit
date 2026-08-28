@@ -12,6 +12,10 @@ export const QuizAxis = z.object({
   label: z.string().min(1).max(24),
   poles: z.tuple([z.string().min(1).max(24), z.string().min(1).max(24)]),
   imageUrl: z.string().url().optional(),
+  // short/imageUrl/body are rendered by app/screens/PairResult.tsx, app/screens/Group.tsx, and
+  // renderGroupInviteCard. labelEn/order are stored and validated but not rendered anywhere in
+  // this template by design — there's no i18n switch for labelEn to serve, and no screen lists
+  // or sorts a catalog of all axes for order to apply to. Revisit if either of those appear.
   labelEn: z.string().max(40).optional(),
   body: z.string().max(400).optional(),
   short: z.string().max(60).optional(),

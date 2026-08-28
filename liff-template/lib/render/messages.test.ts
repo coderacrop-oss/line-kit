@@ -281,4 +281,20 @@ describe('renderGroupInviteCard', () => {
     // all slots filled: no "?" placeholders
     expect((json.match(/"\?"/g) ?? []).length).toBe(0)
   })
+
+  it('prefers an axis\'s short chip label over its full label when set', () => {
+    const cfgWithShort: QuizConfig = {
+      ...fullCfg,
+      axes: [
+        { ...fullCfg.axes[0], short: 'AXIS_EI_SHORT' },
+        fullCfg.axes[1],
+      ],
+    }
+    const msg = renderGroupInviteCard(cfgWithShort, { members: [{ axisId: 'ei' }, { axisId: 'sn' }], maxMembers: 2 })
+    const json = JSON.stringify(msg)
+    expect(json).toContain('AXIS_EI_SHORT')
+    expect(json).not.toContain('AXIS_EI_LABEL')
+    // the 'sn' axis has no `short` set — still falls back to its label
+    expect(json).toContain('AXIS_SN_LABEL')
+  })
 })
