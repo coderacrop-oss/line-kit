@@ -5,7 +5,7 @@ import type { FormEvent } from 'react'
 import { useRouter } from 'next/navigation'
 import { Button, ErrorModal, Field, Note, Panel } from '@/components/ui'
 import { QuizConfig } from '@/lib/quiz/schema'
-import { saveQuizConfigAction } from '../actions'
+import { saveTemplateCopyAction } from '../actions'
 
 export type TemplateCopyFormProps = {
   campaignId: string
@@ -190,7 +190,7 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
     const formData = new FormData()
     formData.set('config', JSON.stringify(submittable))
     try {
-      const result = await saveQuizConfigAction(campaignId, activityId, formData)
+      const result = await saveTemplateCopyAction(campaignId, activityId, formData)
       if (result.ok) {
         setSavedTick((n) => n + 1)
         router.refresh()

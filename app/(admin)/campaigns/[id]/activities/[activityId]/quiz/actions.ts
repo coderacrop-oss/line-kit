@@ -63,3 +63,59 @@ export async function saveQuizConfigAction(
     return { ok: false, message: resultMessage(err, 'บันทึกไม่สำเร็จ — ลองใหม่') }
   }
 }
+
+/**
+ * บันทึกเฉพาะ templateCopy (แบรนด์/ข้อความสำหรับ LIFF template export) — แยก action ออกจาก
+ * saveQuizConfigAction โดยตั้งใจ ไม่เรียก requireDraftCampaign() (Finding 3 ของรีวิว)
+ *
+ * templateCopy เป็น metadata ของเทมเพลตแบบ standalone ที่ export แยกออกไปต่างหาก ไม่ใช่ config
+ * ที่ engine ใช้ตัดสินผลของผู้เล่นที่กำลังเล่นแคมเปญนี้อยู่จริง (ตรงข้ามกับ mode/axes/
+ * questions/results/group ที่ saveQuizConfigAction คุมและต้องบล็อกตอน publish แล้วเพราะ
+ * design spec §2 กังวลไว้ว่าแก้กติการะหว่างมีคน duo เล่นค้างอยู่จะทำให้ผลเพี้ยน) — แก้
+ * templateCopy หลัง publish ไม่กระทบผู้เล่นที่กำลังเล่นอยู่เลยแม้แต่น้อย เพราะเทมเพลตที่ export
+ * ไปแล้วเป็นโปรเจกต์แยกที่ไม่ผูกกับแคมเปญนี้อีกต่อไป
+ *
+ * ไม่เชื่อ axes/questions/results/group ที่มากับ FormData (แม้ TemplateCopyForm.tsx จะส่ง
+ * QuizConfig ทั้งก้อนมาเหมือน saveQuizConfigAction ก็ตาม) — อ่านเฉพาะ .templateCopy ออกมา
+ * แล้วเอาไปวางทับบน input_config ปัจจุบันที่โหลดจาก DB สดๆ ตรงนี้เท่านั้น กัน action ที่ไม่มี
+ * ด่าน BR-05 ตัวนี้ถูกใช้เป็นทางลัดแก้เนื้อหาควิซจริงหลัง publish โดยไม่ได้ตั้งใจ
+ */
+export async function saveTemplateCopyAction(
+  campaignId: string, activityId: string, formData: FormData,
+): Promise<ActionResult> {
+  try {
+    await requireRole('configurator')
+    const sql = db()
+
+    const raw = String(formData.get('config') ?? '')
+    let parsedJson: unknown
+    try {
+      parsedJson = JSON.parse(raw)
+    } catch {
+      throw new Error('บันทึกไม่สำเร็จ — โครงสร้างข้อมูลเสีย ลองรีเฟรชหน้าแล้วแก้ใหม่')
+    }
+    const submittedTemplateCopy = (parsedJson as { templateCopy?: unknown } | null)?.templateCopy
+
+    const [row] = await sql<{ input_config: unknown }[]>`
+      SELECT input_config FROM activity
+       WHERE id = ${activityId} AND campaign_id = ${campaignId} AND input_type = 'personality_quiz'`
+    if (!row) throw new Error('ไม่พบกิจกรรมนี้')
+
+    const currentParsed = QuizConfig.safeParse(row.input_config)
+    if (!currentParsed.success) {
+      throw new Error('บันทึกไม่สำเร็จ — เนื้อหาควิซปัจจุบันยังไม่ผ่าน validation ตั้งค่าเนื้อหาควิซให้ครบก่อนตั้งค่าเทมเพลต')
+    }
+
+    const config = QuizConfig.parse({ ...currentParsed.data, templateCopy: submittedTemplateCopy })
+
+    await sql`
+      UPDATE activity SET input_config = ${sql.json(config as never)}
+       WHERE id = ${activityId} AND campaign_id = ${campaignId} AND input_type = 'personality_quiz'`
+
+    revalidatePath(`/campaigns/${campaignId}/activities/${activityId}/quiz`)
+    revalidatePath(`/campaigns/${campaignId}/activities/${activityId}/quiz/template`)
+    return { ok: true }
+  } catch (err) {
+    return { ok: false, message: resultMessage(err, 'บันทึกไม่สำเร็จ — ลองใหม่') }
+  }
+}

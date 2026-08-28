@@ -2,6 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 let sessionRole: 'configurator' | 'content_editor' | null = 'configurator'
 let campaignStatus: 'draft' | 'published' | 'closed' | undefined = 'draft'
+// input_config ปัจจุบันของกิจกรรมที่ saveTemplateCopyAction โหลดสดๆ จาก DB มาผสานกับ
+// templateCopy ที่ส่งมา — undefined หมายถึงไม่พบกิจกรรมนี้เลย
+let currentActivityInputConfig: unknown
 
 vi.mock('@/lib/auth/session', () => ({
   getSession: async () => (sessionRole ? { userId: 'u1', role: sessionRole } : null),
@@ -17,12 +20,17 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 // ต้องตอบคำถาม "SELECT id, status FROM campaign WHERE id = ..." ด้วยตอนนี้ —
 // saveQuizConfigAction เรียก requireDraftCampaign() ก่อนเขียนเสมอตั้งแต่แก้ Finding 3
 // (ก่อนหน้านี้ action นี้ข้าม BR-05 ไปเฉยๆ ทั้งที่ action อื่นทุกตัวที่เขียน
-// input_config ของกิจกรรมเรียกด่านนี้ก่อนหมด)
+// input_config ของกิจกรรมเรียกด่านนี้ก่อนหมด) — และ "SELECT input_config FROM activity
+// WHERE ..." ที่ saveTemplateCopyAction ใหม่ (Finding 3 ของรีวิวรอบนี้) ใช้โหลด config
+// ปัจจุบันสดๆ แทนที่จะเชื่อ axes/questions/results ที่มากับ client
 const sqlMock = Object.assign(
   (strings: TemplateStringsArray, ...values: unknown[]) => {
     const text = strings.join(' ? ')
     if (/FROM campaign WHERE/.test(text)) {
       return Promise.resolve(campaignStatus ? [{ id: values[0], status: campaignStatus }] : [])
+    }
+    if (/SELECT input_config FROM activity/.test(text)) {
+      return Promise.resolve(currentActivityInputConfig === undefined ? [] : [{ input_config: currentActivityInputConfig }])
     }
     return Promise.resolve(undefined)
   },
@@ -30,9 +38,13 @@ const sqlMock = Object.assign(
 )
 vi.mock('@/lib/db/client', () => ({ db: () => sqlMock }))
 
-const { saveQuizConfigAction } = await import('./actions')
+const { saveQuizConfigAction, saveTemplateCopyAction } = await import('./actions')
 
-beforeEach(() => { sessionRole = 'configurator'; campaignStatus = 'draft' })
+beforeEach(() => {
+  sessionRole = 'configurator'
+  campaignStatus = 'draft'
+  currentActivityInputConfig = undefined
+})
 afterEach(() => { vi.clearAllMocks() })
 
 function formData(fields: Record<string, string>): FormData {
@@ -94,5 +106,85 @@ describe('saveQuizConfigAction', () => {
   it('saves a valid config', async () => {
     const result = await saveQuizConfigAction('camp-1', 'act-1', formData({ config: JSON.stringify(validConfig) }))
     expect(result).toEqual({ ok: true })
+  })
+})
+
+const validSoloTemplateCopy = {
+  brand: { name: 'Test brand' },
+  intro: { title: 't', body: 'b', ctaLabel: 'c' },
+  friendGate: { title: 't', body: 'b', ctaLabel: 'c' },
+  openInLine: { title: 't', body: 'b' },
+  rewards: { milestones: [] },
+  messages: {
+    resultCard: { eyebrow: 'e', ctaLabel: 'c' },
+    keywordCard: { title: 't', body: 'b', ctaLabel: 'c' },
+    soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+  },
+}
+
+describe('saveTemplateCopyAction', () => {
+  it('rejects a non-configurator', async () => {
+    sessionRole = 'content_editor'
+    currentActivityInputConfig = validConfig
+    const result = await saveTemplateCopyAction('camp-1', 'act-1', formData({
+      config: JSON.stringify({ templateCopy: validSoloTemplateCopy }),
+    }))
+    expect(result.ok).toBe(false)
+  })
+
+  it('rejects when the activity does not exist', async () => {
+    currentActivityInputConfig = undefined
+    const result = await saveTemplateCopyAction('camp-1', 'act-ghost', formData({
+      config: JSON.stringify({ templateCopy: validSoloTemplateCopy }),
+    }))
+    expect(result.ok).toBe(false)
+  })
+
+  it('rejects an invalid templateCopy with a specific validation message', async () => {
+    currentActivityInputConfig = validConfig
+    const result = await saveTemplateCopyAction('camp-1', 'act-1', formData({
+      config: JSON.stringify({ templateCopy: { ...validSoloTemplateCopy, brand: { name: '' } } }),
+    }))
+    expect(result.ok).toBe(false)
+  })
+
+  it('saves templateCopy on a draft campaign', async () => {
+    currentActivityInputConfig = validConfig
+    const result = await saveTemplateCopyAction('camp-1', 'act-1', formData({
+      config: JSON.stringify({ templateCopy: validSoloTemplateCopy }),
+    }))
+    expect(result).toEqual({ ok: true })
+  })
+
+  /**
+   * Finding 3 ของรีวิวรอบนี้ — templateCopy เป็น metadata ของเทมเพลตแบบ standalone ที่ export
+   * แยกไปต่างหาก ไม่ใช่ config ที่กระทบผู้เล่นที่กำลังเล่นแคมเปญนี้อยู่จริงเหมือน
+   * mode/axes/questions/results ที่ saveQuizConfigAction คุม — action นี้จึงต้อง "ไม่" บล็อก
+   * ด้วย BR-05 (requireDraftCampaign) ต่างจาก saveQuizConfigAction ข้างบนโดยตั้งใจ แม้แคมเปญ
+   * จะ published/live อยู่แล้วก็ตาม
+   */
+  it('saves templateCopy even when the campaign is published/live — not blocked by BR-05, unlike saveQuizConfigAction', async () => {
+    campaignStatus = 'published'
+    currentActivityInputConfig = validConfig
+    const result = await saveTemplateCopyAction('camp-1', 'act-1', formData({
+      config: JSON.stringify({ templateCopy: validSoloTemplateCopy }),
+    }))
+    expect(result.ok, result.ok ? '' : (result as { message: string }).message).toBe(true)
+  })
+
+  it('ignores axes/questions/results/mode in the submitted payload — merges templateCopy onto the current DB config instead of trusting the client for quiz content', async () => {
+    currentActivityInputConfig = validConfig
+    const tamperedPayload = {
+      mode: 'duo', // แตกต่างจาก currentActivityInputConfig.mode ('solo') โดยตั้งใจ
+      axes: [],
+      questions: [],
+      results: [],
+      fallbackResultCode: 'nope',
+      templateCopy: validSoloTemplateCopy,
+    }
+    const result = await saveTemplateCopyAction('camp-1', 'act-1', formData({ config: JSON.stringify(tamperedPayload) }))
+    // ผ่านเพราะ merge บน currentActivityInputConfig (solo, ครบตาม schema) ไม่ใช่ก้อนที่ส่งมา
+    // (ซึ่งถ้าใช้ตรงๆ จะ fail เพราะ duo mode ต้องมี templateCopy.invite/duoInvite/... ด้วย)
+    expect(result.ok, result.ok ? '' : (result as { message: string }).message).toBe(true)
   })
 })

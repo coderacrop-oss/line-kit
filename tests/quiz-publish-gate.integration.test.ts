@@ -44,7 +44,7 @@ vi.mock('@/lib/db/client', async (importOriginal) => ({
 }))
 
 const { createActivity } = await import('../app/(admin)/campaigns/[id]/activities/actions')
-const { saveQuizConfigAction } =
+const { saveQuizConfigAction, saveTemplateCopyAction } =
   await import('../app/(admin)/campaigns/[id]/activities/[activityId]/quiz/actions')
 const { GET: getQuizConfig } = await import('../app/api/liff/[liffId]/quiz/[activityCode]/route')
 
@@ -187,6 +187,39 @@ describe('quiz publish gate · end to end (Finding 1)', () => {
     const [campaignRow] = await sql<{ status: string }[]>`
       SELECT status FROM campaign WHERE id = ${campaign.id}`
     expect(campaignRow.status).toBe('published')
+
+    // ── Finding 3 ของรีวิว liff-template export — templateCopy ต้องแก้ได้แม้แคมเปญ
+    // published/live แล้ว (ต่างจาก mode/axes/questions/results ที่ saveQuizConfigAction
+    // คุมและ requireDraftCampaign บล็อกไว้ตาม BR-05) เพราะเป็น metadata ของเทมเพลตแบบ
+    // standalone ที่ export แยกไปต่างหาก ไม่กระทบผู้เล่นที่กำลังเล่นแคมเปญนี้อยู่จริงเลย
+    const templateCopyResult = await saveTemplateCopyAction(campaign.id, activityRow.id, form({
+      config: JSON.stringify({
+        templateCopy: {
+          brand: { name: 'Published campaign brand' },
+          intro: { title: 't', body: 'b', ctaLabel: 'c' },
+          friendGate: { title: 't', body: 'b', ctaLabel: 'c' },
+          openInLine: { title: 't', body: 'b' },
+          rewards: { milestones: [] },
+          messages: {
+            resultCard: { eyebrow: 'e', ctaLabel: 'c' },
+            keywordCard: { title: 't', body: 'b', ctaLabel: 'c' },
+            soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+          },
+        },
+      }),
+    }))
+    expect(
+      templateCopyResult.ok,
+      templateCopyResult.ok ? '' : (templateCopyResult as { message: string }).message,
+    ).toBe(true)
+
+    // ยืนยันด้วยว่า saveQuizConfigAction (เนื้อหาควิซจริง) ยังคงถูก BR-05 บล็อกอยู่เหมือนเดิม
+    // — การแยก action ให้ templateCopy ไม่ได้เผลอปลดล็อกฝั่งเนื้อหาควิซไปด้วย
+    const quizConfigResult = await saveQuizConfigAction(campaign.id, activityRow.id, form({
+      config: JSON.stringify(validQuizConfig),
+    }))
+    expect(quizConfigResult.ok).toBe(false)
+    if (!quizConfigResult.ok) expect(quizConfigResult.message).toContain('BR-05')
 
     // ── ตอนนี้ publish จริงแล้ว — LIFF ต้องเห็นควิซนี้และได้ config กลับมา ──
     const after = await getQuizConfig(

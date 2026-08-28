@@ -10,12 +10,12 @@ afterEach(cleanup)
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 
-const saveQuizConfigAction = vi.fn(
+const saveTemplateCopyAction = vi.fn(
   async (_campaignId: string, _activityId: string, _formData: FormData) => ({ ok: true as const }),
 )
 vi.mock('../actions', () => ({
-  saveQuizConfigAction: (campaignId: string, activityId: string, formData: FormData) =>
-    saveQuizConfigAction(campaignId, activityId, formData),
+  saveTemplateCopyAction: (campaignId: string, activityId: string, formData: FormData) =>
+    saveTemplateCopyAction(campaignId, activityId, formData),
 }))
 
 /**
@@ -152,11 +152,11 @@ describe('TemplateCopyForm', () => {
     expect(screen.queryByDisplayValue('group complete badge')).toBeNull()
   })
 
-  it('submits the whole QuizConfig via saveQuizConfigAction with templateCopy carried through', async () => {
+  it('submits the whole QuizConfig via saveTemplateCopyAction (its own save path, not saveQuizConfigAction) with templateCopy carried through', async () => {
     render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
     fireEvent.click(screen.getByText('บันทึกเทมเพลต'))
-    await waitFor(() => expect(saveQuizConfigAction).toHaveBeenCalledTimes(1))
-    const [savedCampaignId, savedActivityId, formData] = saveQuizConfigAction.mock.calls[0]
+    await waitFor(() => expect(saveTemplateCopyAction).toHaveBeenCalledTimes(1))
+    const [savedCampaignId, savedActivityId, formData] = saveTemplateCopyAction.mock.calls[0]
     expect(savedCampaignId).toBe('c1')
     expect(savedActivityId).toBe('a1')
     const saved = JSON.parse(String(formData.get('config')))
