@@ -44,10 +44,13 @@ export type QuizResultRule = z.infer<typeof QuizResultRule>
 
 export const QuizConfig = z.object({
   mode: z.enum(['solo', 'duo']),
-  axes: z.array(QuizAxis).min(2).max(6),
-  questions: z.array(QuizQuestion).min(3).max(10),
-  results: z.array(QuizResultRule).min(2),
-  fallbackResultCode: z.string().min(1),
+  // ข้อความกำหนดเองตรงนี้ต้องตรงกับ LineKit/lib/quiz/schema.ts เสมอ (ไฟล์นี้เป็นสำเนา
+  // vendored ของ schema เดียวกัน) — ช่วยให้ config ที่ export มาแล้วบูตไม่ผ่านบนเทมเพลตนี้
+  // (เช่นแอดมินแก้ไฟล์ config มือ) ก็ยังได้ข้อความที่อ่านรู้เรื่องเหมือนตอนแก้ใน LineKit
+  axes: z.array(QuizAxis).min(2, 'ต้องมีอย่างน้อย 2 แกน').max(6, 'มีแกนได้มากที่สุด 6 แกน'),
+  questions: z.array(QuizQuestion).min(3, 'ต้องมีอย่างน้อย 3 คำถาม').max(10, 'มีคำถามได้มากที่สุด 10 ข้อ'),
+  results: z.array(QuizResultRule).min(2, 'ต้องมีอย่างน้อย 2 ผลลัพธ์'),
+  fallbackResultCode: z.string().min(1, 'ต้องเลือกผลลัพธ์สำรอง (fallbackResultCode)'),
   group: z.lazy(() => GroupConfig).optional(),
   replies: z.lazy(() => QuizReplies).optional(),
   templateCopy: z.lazy(() => TemplateCopy).optional(),

@@ -341,6 +341,47 @@ describe('แถบข้าง — ภาพรวมและสถานะ v
     draw(validSoloDraft)
     expect(screen.getByText('✓ พร้อมใช้ — บันทึกได้')).toBeDefined()
   })
+
+  /**
+   * ตัวเลขในภาพรวม (STATUS_TONES.ok/.warn) ต้องสอดคล้องกับเลขวงกลมของ BlockHead แต่ละ step
+   * (เกณฑ์เดียวกัน) — ทดสอบทั้งสองด้าน กันไม่ให้สถานะไม่ตรงกันระหว่างสองที่ที่บอกเรื่องเดียวกัน
+   */
+  it('ตัวเลขภาพรวมเป็นสี ok เมื่อครบเกณฑ์ขั้นต่ำ (validSoloDraft ครบทั้ง 3)', () => {
+    draw(validSoloDraft)
+    expect(screen.getByText('2 แกน').style.color).toBe('rgb(12, 74, 37)')
+    expect(screen.getByText('3 คำถาม').style.color).toBe('rgb(12, 74, 37)')
+    expect(screen.getByText('2 ผลลัพธ์').style.color).toBe('rgb(12, 74, 37)')
+  })
+
+  it('ตัวเลขภาพรวมเป็นสี warn เมื่อยังไม่ครบเกณฑ์ขั้นต่ำ (emptyDraft มี 0 ทั้งหมด)', () => {
+    draw() // emptyDraft
+    expect(screen.getByText('0 แกน').style.color).toBe('rgb(90, 58, 0)')
+    expect(screen.getByText('0 คำถาม').style.color).toBe('rgb(90, 58, 0)')
+    expect(screen.getByText('0 ผลลัพธ์').style.color).toBe('rgb(90, 58, 0)')
+  })
+
+  /** เลขวงกลมของแต่ละ step (BlockHead) ต้องเขียวเมื่อ step นั้นครบเกณฑ์แล้วเช่นกัน */
+  it('เลขวงกลม step 1/2/3 เป็นพื้นเขียว (STATUS_TONES.ok) เมื่อ step นั้นครบเกณฑ์แล้ว', () => {
+    const { container } = draw(validSoloDraft)
+    const circle = (n: string) =>
+      [...container.querySelectorAll('span')].find(
+        (el) => el.textContent === n && el.style.borderRadius === '50%',
+      )
+    expect(circle('1')?.style.background).toBe('rgb(22, 163, 74)')
+    expect(circle('2')?.style.background).toBe('rgb(22, 163, 74)')
+    expect(circle('3')?.style.background).toBe('rgb(22, 163, 74)')
+  })
+
+  it('เลขวงกลม step ยังเป็นสีเทาเดิม (var(--ink)) เมื่อ step ยังไม่ครบเกณฑ์ — ไม่ใช้แดง', () => {
+    const { container } = draw() // emptyDraft: 0 แกน/0 คำถาม/0 ผลลัพธ์
+    const circle = (n: string) =>
+      [...container.querySelectorAll('span')].find(
+        (el) => el.textContent === n && el.style.borderRadius === '50%',
+      )
+    expect(circle('1')?.style.background).toBe('var(--ink)')
+    expect(circle('2')?.style.background).toBe('var(--ink)')
+    expect(circle('3')?.style.background).toBe('var(--ink)')
+  })
 })
 
 /**

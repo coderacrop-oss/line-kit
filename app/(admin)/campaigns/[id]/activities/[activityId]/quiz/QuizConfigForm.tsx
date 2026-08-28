@@ -62,7 +62,12 @@ const CELL_TONE: Record<CoverageKind, { bg: string; border: string; fg: string }
   missing: { bg: 'var(--panel)', border: 'var(--rule)', fg: 'var(--ink-3)' },
 }
 
-function BlockHead({ n, title, note }: { n?: number; title: string; note: string }) {
+/**
+ * `complete` ระบายเลขวงกลมเป็นสีเขียว (STATUS_TONES.ok) เมื่อขั้นตอนนี้ถึงเกณฑ์ขั้นต่ำของ
+ * schema แล้ว (เช่น ≥2 แกน) — ไม่ครบไม่ใช้สีแดง/warn เพราะ "ยังไม่เริ่ม" ไม่ใช่ error ยัง
+ * เป็นสีเทาเดิม (var(--ink)) ต่อไปเหมือนสถานะกลาง ๆ
+ */
+function BlockHead({ n, title, note, complete }: { n?: number; title: string; note: string; complete?: boolean }) {
   return (
     <div style={{
       padding: '13px 18px', borderBottom: '1px solid var(--rule)',
@@ -71,7 +76,8 @@ function BlockHead({ n, title, note }: { n?: number; title: string; note: string
       {n !== undefined && (
         <span style={{
           display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-          width: 22, height: 22, borderRadius: '50%', background: 'var(--ink)', color: 'var(--panel)',
+          width: 22, height: 22, borderRadius: '50%',
+          background: complete ? STATUS_TONES.ok.border : 'var(--ink)', color: 'var(--panel)',
           fontSize: 11, fontWeight: 700, flexShrink: 0,
         }}>
           {n}
@@ -722,10 +728,18 @@ function Sidebar({ draft, validation, duoCoverage, soloCoverage }: {
     <div style={{ position: 'sticky', top: 20, display: 'flex', flexDirection: 'column', gap: 14 }}>
       <Panel style={{ padding: 16 }}>
         <div style={{ fontSize: 12, fontWeight: 600, marginBottom: 10 }}>ภาพรวม</div>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12, color: 'var(--ink-2)' }}>
-          <span>{draft.axes.length} แกน</span>
-          <span>{draft.questions.length} คำถาม</span>
-          <span>{draft.results.length} ผลลัพธ์</span>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, fontSize: 12 }}>
+          {/* สีเดียวกับเลขวงกลมของ BlockHead แต่ละ step (เกณฑ์เดียวกัน — ครบ 2 แกน/3 คำถาม/
+              2 ผลลัพธ์) กันไม่ให้ตัวเลขตรงนี้กับวงกลม step บอกสถานะไม่ตรงกัน */}
+          <span style={{ color: draft.axes.length >= 2 ? STATUS_TONES.ok.fg : STATUS_TONES.warn.fg }}>
+            {draft.axes.length} แกน
+          </span>
+          <span style={{ color: draft.questions.length >= 3 ? STATUS_TONES.ok.fg : STATUS_TONES.warn.fg }}>
+            {draft.questions.length} คำถาม
+          </span>
+          <span style={{ color: draft.results.length >= 2 ? STATUS_TONES.ok.fg : STATUS_TONES.warn.fg }}>
+            {draft.results.length} ผลลัพธ์
+          </span>
         </div>
       </Panel>
 
@@ -1000,7 +1014,11 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                 </Panel>
 
                 <Panel>
-                  <BlockHead n={1} title="ตั้งแกนบุคลิก (Axes)" note={`อย่างน้อย 2 แกน อย่างมาก 6 แกน · ตอนนี้มี ${draft.axes.length}`} />
+                  <BlockHead
+                    n={1} title="ตั้งแกนบุคลิก (Axes)"
+                    note={`อย่างน้อย 2 แกน อย่างมาก 6 แกน · ตอนนี้มี ${draft.axes.length}`}
+                    complete={draft.axes.length >= 2}
+                  />
                   <Block>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       <span style={smallLabelStyle}>ฟิลด์เพิ่มเติมที่จะส่งไป LIFF</span>
@@ -1056,6 +1074,7 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                     n={2}
                     title="เขียนคำถาม (Questions)"
                     note={`อย่างน้อย 3 ข้อ อย่างมาก 10 ข้อ · ตัวเลือกข้อละ 2–6 · ตอนนี้มี ${draft.questions.length}`}
+                    complete={draft.questions.length >= 3}
                   />
                   <Block>
                     {draft.questions.map((question, index) => (
@@ -1078,7 +1097,11 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                 </Panel>
 
                 <Panel>
-                  <BlockHead n={3} title="ตั้งผลลัพธ์ (Results)" note={`อย่างน้อย 2 แบบ · ตอนนี้มี ${draft.results.length}`} />
+                  <BlockHead
+                    n={3} title="ตั้งผลลัพธ์ (Results)"
+                    note={`อย่างน้อย 2 แบบ · ตอนนี้มี ${draft.results.length}`}
+                    complete={draft.results.length >= 2}
+                  />
                   <Block>
                     {draft.mode === 'duo' ? (
                       <DuoMatrix coverage={duoCoverage} results={draft.results} canEdit={canEdit} onCellClick={handleDuoCellClick} />

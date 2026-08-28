@@ -51,10 +51,15 @@ export type QuizResultRule = z.infer<typeof QuizResultRule>
 
 export const QuizConfig = z.object({
   mode: z.enum(['solo', 'duo']),
-  axes: z.array(QuizAxis).min(2).max(6),
-  questions: z.array(QuizQuestion).min(3).max(10),
-  results: z.array(QuizResultRule).min(2),
-  fallbackResultCode: z.string().min(1),
+  // ข้อความกำหนดเองบน .min()/.max() ของ 4 ฟิลด์นี้ (ต่างจาก field อื่นในไฟล์นี้ที่ปล่อยให้
+  // zod ใช้ข้อความ default) เพราะ 4 ฟิลด์นี้เป็นจุดที่ QuizConfigForm.tsx เอา
+  // `issue.message` ไปแสดงตรงๆ ในกล่อง "สถานะ" ที่คนตั้งค่าเห็นทุกครั้ง — ข้อความ default ของ
+  // zod ("Invalid input") ไม่บอกว่าต้องแก้อะไร ในขณะที่ field อื่นๆ (เช่นภายใน QuizAxis/
+  // QuizQuestion) ไม่ได้โผล่ตรงๆ แบบนี้
+  axes: z.array(QuizAxis).min(2, 'ต้องมีอย่างน้อย 2 แกน').max(6, 'มีแกนได้มากที่สุด 6 แกน'),
+  questions: z.array(QuizQuestion).min(3, 'ต้องมีอย่างน้อย 3 คำถาม').max(10, 'มีคำถามได้มากที่สุด 10 ข้อ'),
+  results: z.array(QuizResultRule).min(2, 'ต้องมีอย่างน้อย 2 ผลลัพธ์'),
+  fallbackResultCode: z.string().min(1, 'ต้องเลือกผลลัพธ์สำรอง (fallbackResultCode)'),
   group: z.lazy(() => GroupConfig).optional(),
   // Branding/ข้อความสำหรับ LIFF template export (docs/superpowers/specs/
   // 2026-08-28-liff-template-export-design.md §4.1) — optional field เสริมตามแบบ group
