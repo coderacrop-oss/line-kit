@@ -57,9 +57,32 @@ export function PairResult({ result, axisA, axisB, rank }: PairResultProps) {
       <p>{result.body}</p>
 
       <div style={{ display: 'flex', gap: 16 }}>
-        <span>{axisA.label}</span>
-        <span>{axisB.label}</span>
+        <AxisChip axis={axisA} />
+        <AxisChip axis={axisB} />
       </div>
+    </div>
+  )
+}
+
+/**
+ * One participant's axis identity within a pair result — short chip label preferred over the
+ * full label (QuizAxis.short exists precisely for compact spots like this one), an optional
+ * portrait next to it, and an optional short blurb underneath. All three are omitted cleanly
+ * when unset — this is supplementary detail, not required content, so there's no placeholder
+ * treatment here the way there is for the main result image above.
+ */
+function AxisChip({ axis }: { axis: QuizAxis }) {
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4 }}>
+      {axis.imageUrl ? (
+        <img
+          src={axis.imageUrl}
+          alt={axis.short ?? axis.label}
+          style={{ width: 40, height: 40, objectFit: 'cover', borderRadius: '50%' }}
+        />
+      ) : null}
+      <span>{axis.short ?? axis.label}</span>
+      {axis.body ? <span style={{ fontSize: '0.85em', color: '#666' }}>{axis.body}</span> : null}
     </div>
   )
 }

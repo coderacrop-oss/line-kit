@@ -59,4 +59,31 @@ describe('Group', () => {
 
     expect(onInvite).toHaveBeenCalledTimes(1)
   })
+
+  it('prefers axisShort over axisLabel when set, falls back to axisLabel when unset', () => {
+    const withShort: GroupMemberSlot[] = [
+      { ...members[0], axisShort: 'MARKER_SHORT_ONE' },
+      members[1],
+    ]
+    const { getByText, queryByText } = render(<Group members={withShort} maxMembers={4} />)
+
+    expect(getByText('MARKER_SHORT_ONE')).toBeTruthy()
+    expect(queryByText('MARKER_AXIS_ONE')).toBeNull()
+    // member two has no axisShort — still falls back to axisLabel
+    expect(getByText('MARKER_AXIS_TWO')).toBeTruthy()
+  })
+
+  it('renders an axisImageUrl portrait instead of the initial-letter circle when set', () => {
+    const withImage: GroupMemberSlot[] = [
+      { ...members[0], axisImageUrl: 'https://example.test/member-one.png' },
+      members[1],
+    ]
+    const { getAllByRole, getAllByText } = render(<Group members={withImage} maxMembers={4} />)
+
+    const images = getAllByRole('img') as HTMLImageElement[]
+    expect(images.some((img) => img.src === 'https://example.test/member-one.png')).toBe(true)
+    expect(images).toHaveLength(1)
+    // only member two's initial-letter circle remains — member one's got replaced by the image
+    expect(getAllByText('M')).toHaveLength(1)
+  })
 })

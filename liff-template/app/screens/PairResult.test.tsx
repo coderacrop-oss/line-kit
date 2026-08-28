@@ -53,4 +53,37 @@ describe('PairResult', () => {
     const withoutRank = render(<PairResult result={result} axisA={axisA} axisB={axisB} />)
     expect(withoutRank.queryByText('#2')).toBeNull()
   })
+
+  it('prefers axis.short over axis.label when set, falls back to label when unset', () => {
+    const shortAxisA: QuizAxis = { ...axisA, short: 'MARKER_AXIS_A_SHORT' }
+    const { getByText, queryByText } = render(
+      <PairResult result={result} axisA={shortAxisA} axisB={axisB} />,
+    )
+
+    expect(getByText('MARKER_AXIS_A_SHORT')).toBeTruthy()
+    expect(queryByText('MARKER_AXIS_A_LABEL')).toBeNull()
+    // axisB has no `short` — still falls back to its label
+    expect(getByText('MARKER_AXIS_B_LABEL')).toBeTruthy()
+  })
+
+  it('renders an axis portrait when axis.imageUrl is set, omits it when unset', () => {
+    const withImage: QuizAxis = { ...axisA, imageUrl: 'https://example.test/axis-a.png' }
+    const { getAllByRole } = render(<PairResult result={result} axisA={withImage} axisB={axisB} />)
+
+    const images = getAllByRole('img') as HTMLImageElement[]
+    expect(images.some((img) => img.src === 'https://example.test/axis-a.png')).toBe(true)
+    // only one axis portrait rendered — axisB has no imageUrl
+    expect(images).toHaveLength(1)
+  })
+
+  it('renders axis.body as a blurb under the axis label when set, omits it when unset', () => {
+    const withBody: QuizAxis = { ...axisA, body: 'MARKER_AXIS_A_BODY' }
+    const { getByText, queryByText } = render(
+      <PairResult result={result} axisA={withBody} axisB={axisB} />,
+    )
+
+    expect(getByText('MARKER_AXIS_A_BODY')).toBeTruthy()
+    // axisB has no body — nothing extra rendered for it
+    expect(queryByText(/MARKER_AXIS_B.*BODY/)).toBeNull()
+  })
 })
