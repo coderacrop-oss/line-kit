@@ -6,6 +6,7 @@ import { TemplateCopyForm } from './TemplateCopyForm'
 import { QuizConfig, TemplateCopy } from '@/lib/quiz/schema'
 
 afterEach(cleanup)
+afterEach(() => { saveTemplateCopyAction.mockClear() })
 
 const refresh = vi.fn()
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
@@ -172,5 +173,100 @@ describe('TemplateCopyForm', () => {
     }
     render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={invalidConfig} canEdit />)
     expect(screen.getByText(/ยังบันทึกไม่ได้/)).toBeDefined()
+  })
+
+  /**
+   * Finding 6 — customFlexJson ที่ JSON.parse ไม่ผ่านต้องถูกปฏิเสธด้วย error ชัดเจนตอนบันทึก
+   * ไม่ใช่เก็บ string ดิบไว้เงียบๆ แล้วไปพังทีหลังตอน render จริง (renderKeywordCustom)
+   */
+  describe('customFlexJson validation', () => {
+    function customFlexJsonField(container: HTMLElement): HTMLTextAreaElement {
+      return container.querySelector('[data-field="templateCopy.messages.keywordCard.customFlexJson"]') as HTMLTextAreaElement
+    }
+
+    it('rejects saving with a clear inline error when customFlexJson is invalid JSON', async () => {
+      const { container } = render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      fireEvent.change(customFlexJsonField(container), { target: { value: '{not valid json' } })
+
+      // ปุ่มบันทึกต้องถูก disable ทันทีตราบใดที่ยังมี error นี้ค้างอยู่
+      expect(screen.getByText('บันทึกเทมเพลต')).toHaveProperty('disabled', true)
+
+      fireEvent.click(screen.getByText('บันทึกเทมเพลต'))
+      await waitFor(() => expect(screen.getByText(/JSON ที่ถูกต้อง/)).toBeDefined())
+      expect(saveTemplateCopyAction).not.toHaveBeenCalled()
+    })
+
+    it('rejects saving when customFlexJson parses but is not an object (e.g. an array)', async () => {
+      const { container } = render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      fireEvent.change(customFlexJsonField(container), { target: { value: '["not", "an", "object"]' } })
+
+      fireEvent.click(screen.getByText('บันทึกเทมเพลต'))
+      await waitFor(() => expect(screen.getByText(/ต้องเป็น object/)).toBeDefined())
+      expect(saveTemplateCopyAction).not.toHaveBeenCalled()
+    })
+
+    it('round-trips a valid Flex JSON object through to the saved payload', async () => {
+      const { container } = render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      const flex = { type: 'flex', altText: 'custom', contents: { type: 'bubble' } }
+      fireEvent.change(customFlexJsonField(container), { target: { value: JSON.stringify(flex) } })
+
+      fireEvent.click(screen.getByText('บันทึกเทมเพลต'))
+      await waitFor(() => expect(saveTemplateCopyAction).toHaveBeenCalledTimes(1))
+      const [, , formData] = saveTemplateCopyAction.mock.calls[0]
+      const saved = JSON.parse(String(formData.get('config')))
+      expect(saved.templateCopy.messages.keywordCard.customFlexJson).toEqual(flex)
+    })
+
+    it('leaving customFlexJson empty is valid (falls back to the generic keyword card)', async () => {
+      const { container } = render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      expect(customFlexJsonField(container).value).toBe('')
+
+      fireEvent.click(screen.getByText('บันทึกเทมเพลต'))
+      await waitFor(() => expect(saveTemplateCopyAction).toHaveBeenCalledTimes(1))
+      const [, , formData] = saveTemplateCopyAction.mock.calls[0]
+      const saved = JSON.parse(String(formData.get('config')))
+      expect(saved.templateCopy.messages.keywordCard.customFlexJson).toBeUndefined()
+    })
+  })
+
+  /**
+   * Finding 8 — เคลียร์ค่าเดิมแล้วพิมพ์เลขใหม่หลายหลักต้องไม่ถูกบังคับกลับเป็น 1 ทุก
+   * keystroke (Number('') || 1 เดิมทำให้พิมพ์ต่อไม่ได้เลยตั้งแต่ตัวแรกที่ลบ)
+   */
+  describe('milestone triggerCount clear-and-retype', () => {
+    it('allows clearing the field and typing a new multi-digit number without snapping back to 1', () => {
+      render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      const input = screen.getByLabelText('milestone-0-triggerCount') as HTMLInputElement
+      expect(input.value).toBe('1')
+
+      fireEvent.change(input, { target: { value: '' } })
+      expect(input.value).toBe('') // ไม่ snap กลับเป็น 1 ทันที
+
+      fireEvent.change(input, { target: { value: '2' } })
+      expect(input.value).toBe('2')
+      fireEvent.change(input, { target: { value: '25' } })
+      expect(input.value).toBe('25') // พิมพ์เลขหลายหลักต่อได้ตามปกติ ไม่ถูกตัดกลับ
+    })
+
+    it('normalizes an empty field back to 1 on blur', () => {
+      render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      const input = screen.getByLabelText('milestone-0-triggerCount') as HTMLInputElement
+
+      fireEvent.change(input, { target: { value: '' } })
+      fireEvent.blur(input)
+      expect(input.value).toBe('1')
+    })
+
+    it('sends the normalized numeric triggerCount to saveTemplateCopyAction even mid-edit', async () => {
+      render(<TemplateCopyForm campaignId="c1" activityId="a1" initial={fullConfig} canEdit />)
+      const input = screen.getByLabelText('milestone-0-triggerCount') as HTMLInputElement
+      fireEvent.change(input, { target: { value: '25' } })
+
+      fireEvent.click(screen.getByText('บันทึกเทมเพลต'))
+      await waitFor(() => expect(saveTemplateCopyAction).toHaveBeenCalledTimes(1))
+      const [, , formData] = saveTemplateCopyAction.mock.calls[0]
+      const saved = JSON.parse(String(formData.get('config')))
+      expect(saved.templateCopy.rewards.milestones[0].triggerCount).toBe(25)
+    })
   })
 })

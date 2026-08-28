@@ -214,8 +214,11 @@ export const TemplateMessagesCopy = z.object({
     body: z.string().max(300),
     ctaLabel: z.string().min(1).max(30),
     // escape hatch: Flex JSON ดิบที่แอดมินกรอกเองเต็มที่ — จุดเดียวที่ยอมรับเนื้อหาไม่มีชนิด
-    // ตายตัวโดยเจตนา (ดู render layer §6 ข้อ 5 renderKeywordCustom)
-    customFlexJson: z.unknown().optional(),
+    // ตายตัวโดยเจตนา (ดู render layer §6 ข้อ 5 renderKeywordCustom) แต่อย่างน้อยต้องเป็น
+    // object shape (ไม่ใช่ string/array/number) — renderKeywordCustom คืนค่านี้ตรงๆ เป็น
+    // FlexMessage ดังนั้น string ที่ JSON.parse ล้มเหลวมาแล้ว (เก็บดิบไว้โดย
+    // TemplateCopyForm.tsx เดิม) ต้องไม่ผ่าน schema มาถึงจุดนี้เลย (Finding 6 ของรีวิว)
+    customFlexJson: z.record(z.string(), z.unknown()).optional(),
   }),
   soloShare: z.object({ badge: z.string().max(30), ctaLabel: z.string().min(1).max(30), secondaryCtaLabel: z.string().min(1).max(30) }).optional(),
   duoInvite: z.object({ titleTemplate: z.string().min(1).max(120), bodyTemplate: z.string().max(400), ctaLabel: z.string().min(1).max(30) }).optional(),

@@ -187,7 +187,9 @@ export const TemplateMessagesCopy = z.object({
     title: z.string().min(1).max(80),
     body: z.string().max(300),
     ctaLabel: z.string().min(1).max(30),
-    customFlexJson: z.unknown().optional(),
+    // must be an object shape (not string/array/number) — renderKeywordCustom returns this
+    // verbatim as a FlexMessage.
+    customFlexJson: z.record(z.string(), z.unknown()).optional(),
   }),
   soloShare: z.object({ badge: z.string().max(30), ctaLabel: z.string().min(1).max(30), secondaryCtaLabel: z.string().min(1).max(30) }).optional(),
   duoInvite: z.object({ titleTemplate: z.string().min(1).max(120), bodyTemplate: z.string().max(400), ctaLabel: z.string().min(1).max(30) }).optional(),

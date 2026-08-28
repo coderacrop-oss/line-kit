@@ -449,4 +449,42 @@ describe('templateCopy', () => {
     const cfgOk = { ...soloBase, axes: [{ ...soloBase.axes[0], imageUrl: 'https://example.com/ei.png' }, soloBase.axes[1]] }
     expect(QuizConfig.safeParse(cfgOk).success).toBe(true)
   })
+
+  /**
+   * Finding 6 ของรีวิว — customFlexJson เดิมเป็น z.unknown() เฉยๆ ยอมรับได้ทุกอย่างรวมถึง
+   * string ที่ JSON.parse ล้มเหลวมาแล้ว (TemplateCopyForm.tsx เก็บ string ดิบไว้เงียบๆ)
+   * ตอนนี้อย่างน้อยต้องบังคับเป็น object shape (renderKeywordCustom คืนค่านี้ตรงๆ เป็น
+   * FlexMessage — ต้องเป็น object ไม่ใช่ string/array/number ตั้งแต่ระดับ schema)
+   */
+  it('customFlexJson accepts a Flex JSON object', () => {
+    const cfg = {
+      ...soloBase,
+      templateCopy: {
+        ...baseTemplateCopy,
+        messages: {
+          ...baseTemplateCopy.messages,
+          soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+          keywordCard: { ...baseTemplateCopy.messages.keywordCard, customFlexJson: { type: 'flex', altText: 'x', contents: {} } },
+        },
+      },
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('customFlexJson rejects non-object values (string, array, number)', () => {
+    for (const badValue of ['not-json-parseable-string', ['array', 'not', 'object'], 42]) {
+      const cfg = {
+        ...soloBase,
+        templateCopy: {
+          ...baseTemplateCopy,
+          messages: {
+            ...baseTemplateCopy.messages,
+            soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+            keywordCard: { ...baseTemplateCopy.messages.keywordCard, customFlexJson: badValue },
+          },
+        },
+      }
+      expect(QuizConfig.safeParse(cfg).success, `should reject ${JSON.stringify(badValue)}`).toBe(false)
+    }
+  })
 })

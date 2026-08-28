@@ -450,6 +450,42 @@ describe('templateCopy', () => {
     const cfgOk = { ...soloBase, axes: [{ ...soloBase.axes[0], imageUrl: 'https://example.com/ei.png' }, soloBase.axes[1]] }
     expect(QuizConfig.safeParse(cfgOk).success).toBe(true)
   })
+
+  /**
+   * Finding 6 — customFlexJson must be an object shape now, not any unknown value.
+   * renderKeywordCustom returns this verbatim as a FlexMessage.
+   */
+  it('customFlexJson accepts a Flex JSON object', () => {
+    const cfg = {
+      ...soloBase,
+      templateCopy: {
+        ...baseTemplateCopy,
+        messages: {
+          ...baseTemplateCopy.messages,
+          soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+          keywordCard: { ...baseTemplateCopy.messages.keywordCard, customFlexJson: { type: 'flex', altText: 'x', contents: {} } },
+        },
+      },
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('customFlexJson rejects non-object values (string, array, number)', () => {
+    for (const badValue of ['not-json-parseable-string', ['array', 'not', 'object'], 42]) {
+      const cfg = {
+        ...soloBase,
+        templateCopy: {
+          ...baseTemplateCopy,
+          messages: {
+            ...baseTemplateCopy.messages,
+            soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+            keywordCard: { ...baseTemplateCopy.messages.keywordCard, customFlexJson: badValue },
+          },
+        },
+      }
+      expect(QuizConfig.safeParse(cfg).success, `should reject ${JSON.stringify(badValue)}`).toBe(false)
+    }
+  })
 })
 
 describe('TemplateConfig', () => {

@@ -14,7 +14,9 @@ export type TemplateCopyFormProps = {
   canEdit: boolean
 }
 
-type Milestone = { key: string; label: string; icon?: string; triggerCount: number }
+// triggerCount ยอมเป็น string ระหว่างพิมพ์ (รวมค่าว่างกลางทาง) โดยตั้งใจ — Finding 8 ของ
+// รีวิว, ดูคอมเมนต์ normalizeTriggerCount() ด้านล่าง
+type Milestone = { key: string; label: string; icon?: string; triggerCount: number | string }
 
 /**
  * โครง templateCopy ฉบับกรอกครบทุกช่อง (รวมกลุ่มที่ optional ในสคีมา เช่น
@@ -109,18 +111,50 @@ function includeIfFilled<T extends Record<string, unknown>>(obj: T): T | undefin
   return hasAny ? obj : undefined
 }
 
-function toSubmittableTemplateCopy(d: DraftTemplateCopy): NonNullable<QuizConfig['templateCopy']> {
-  let customFlexJson: unknown
-  if (d.messages.keywordCard.customFlexJson.trim() !== '') {
-    try { customFlexJson = JSON.parse(d.messages.keywordCard.customFlexJson) } catch { customFlexJson = d.messages.keywordCard.customFlexJson }
+/**
+ * แยกวิเคราะห์ customFlexJson ออกมาต่างหาก (แทนที่จะ parse เงียบๆ ข้างใน
+ * toSubmittableTemplateCopy แล้วเก็บ string ดิบไว้เมื่อ parse ไม่ผ่านแบบเดิม — Finding 6
+ * ของรีวิว) คืน { value } เมื่อเป็น JSON object ที่ valid, หรือ { error } เป็นข้อความชัดเจน
+ * เมื่อ parse ไม่ผ่านหรือ parse ผ่านแต่ไม่ใช่ object (เช่น array/string/number เดี่ยวๆ) —
+ * ผู้เรียก (handleSubmit) ต้องปฏิเสธการบันทึกทันทีเมื่อได้ error กลับมา ไม่ใช่เงียบๆ ปล่อยผ่าน
+ */
+function parseCustomFlexJson(raw: string): { value?: Record<string, unknown>; error?: string } {
+  const trimmed = raw.trim()
+  if (trimmed === '') return {}
+  let parsed: unknown
+  try {
+    parsed = JSON.parse(trimmed)
+  } catch {
+    return { error: 'Flex JSON กำหนดเองไม่ใช่ JSON ที่ถูกต้อง — ตรวจสอบวงเล็บ/เครื่องหมายคำพูด/คอมม่าอีกครั้ง' }
   }
+  if (typeof parsed !== 'object' || parsed === null || Array.isArray(parsed)) {
+    return { error: 'Flex JSON กำหนดเองต้องเป็น object (เช่น {"type":"flex",...}) ไม่ใช่ array/ข้อความ/ตัวเลขเดี่ยวๆ' }
+  }
+  return { value: parsed as Record<string, unknown> }
+}
+
+/**
+ * ด่านรางวัล (triggerCount) ยอมให้พิมพ์ค่ากลางทาง (รวมค่างว่างระหว่างลบเลขเก่าเพื่อพิมพ์
+ * ใหม่) ได้โดยไม่ถูกบังคับกลับเป็น 1 ทุก keystroke (Finding 8 ของรีวิว) — normalize ค่าจริง
+ * ที่จะส่งเข้า schema ตรงนี้แทน ที่จุดเดียวตอนประกอบ submittable ก่อนบันทึกจริง
+ */
+function normalizeTriggerCount(raw: number | string): number {
+  const n = typeof raw === 'number' ? raw : Number(raw)
+  return Number.isFinite(n) && n >= 1 ? Math.trunc(n) : 1
+}
+
+function toSubmittableTemplateCopy(
+  d: DraftTemplateCopy, customFlexJson: Record<string, unknown> | undefined,
+): NonNullable<QuizConfig['templateCopy']> {
   return {
     brand: { name: d.brand.name, ...(d.brand.primaryColor.trim() !== '' ? { primaryColor: d.brand.primaryColor } : {}) },
     intro: d.intro,
     friendGate: d.friendGate,
     openInLine: d.openInLine,
     ...(includeIfFilled(d.invite) ? { invite: d.invite } : {}),
-    rewards: d.rewards,
+    rewards: {
+      milestones: d.rewards.milestones.map((m) => ({ ...m, triggerCount: normalizeTriggerCount(m.triggerCount) })),
+    },
     messages: {
       resultCard: d.messages.resultCard,
       keywordCard: {
@@ -157,7 +191,10 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
   const [busy, setBusy] = useState(false)
   const [savedTick, setSavedTick] = useState(0)
 
-  const submittable: QuizConfig = { ...config, templateCopy: toSubmittableTemplateCopy(draft) }
+  const { value: customFlexJson, error: customFlexJsonError } =
+    parseCustomFlexJson(draft.messages.keywordCard.customFlexJson)
+
+  const submittable: QuizConfig = { ...config, templateCopy: toSubmittableTemplateCopy(draft, customFlexJson) }
   const validation = QuizConfig.safeParse(submittable)
 
   const isDuo = config.mode === 'duo'
@@ -186,6 +223,13 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
   async function handleSubmit(event: FormEvent<HTMLFormElement>): Promise<void> {
     event.preventDefault()
     setError(null)
+    // Finding 6 — customFlexJson ที่ JSON.parse ไม่ผ่าน (หรือ parse ผ่านแต่ไม่ใช่ object) ต้อง
+    // ปฏิเสธการบันทึกทันทีด้วยข้อความชัดเจน ไม่ใช่เงียบๆ เก็บ string ดิบที่ผิดไว้แล้วไปพังตอน
+    // render/ส่งจริงทีหลัง (renderKeywordCustom)
+    if (customFlexJsonError) {
+      setError(customFlexJsonError)
+      return
+    }
     setBusy(true)
     const formData = new FormData()
     formData.set('config', JSON.stringify(submittable))
@@ -272,7 +316,11 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
             <Field id="tc-kw-cta" label="ข้อความปุ่มการ์ดคีย์เวิร์ด">
               <Text dataField="templateCopy.messages.keywordCard.ctaLabel" value={draft.messages.keywordCard.ctaLabel} onChange={(v) => updateMessage('keywordCard', { ...draft.messages.keywordCard, ctaLabel: v })} />
             </Field>
-            <Field id="tc-kw-custom" label="Flex JSON กำหนดเอง (ไม่บังคับ — เว้นว่าง = ใช้การ์ดทั่วไปด้านบน)">
+            <Field
+              id="tc-kw-custom"
+              label="Flex JSON กำหนดเอง (ไม่บังคับ — เว้นว่าง = ใช้การ์ดทั่วไปด้านบน)"
+              error={customFlexJsonError}
+            >
               <Text multiline dataField="templateCopy.messages.keywordCard.customFlexJson" value={draft.messages.keywordCard.customFlexJson} onChange={(v) => updateMessage('keywordCard', { ...draft.messages.keywordCard, customFlexJson: v })} />
             </Field>
           </Panel>
@@ -405,7 +453,11 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
                 <input aria-label={`milestone-${i}-icon`} placeholder="icon" value={m.icon ?? ''} onChange={(e) => updateMilestone(i, { icon: e.target.value || undefined })} />
                 <input
                   aria-label={`milestone-${i}-triggerCount`} type="number" placeholder="triggerCount" value={m.triggerCount}
-                  onChange={(e) => updateMilestone(i, { triggerCount: Number(e.target.value) || 1 })}
+                  // ไม่ coerce/default ทุก keystroke (Finding 8) — ปล่อยให้ค่ากลางทาง (รวมค่าว่าง
+                  // ระหว่างลบเลขเก่าเพื่อพิมพ์ใหม่) ค้างอยู่ในช่องได้ก่อน ค่อย normalize จริง
+                  // ตอน blur (ด้านล่าง) หรือก่อนบันทึกจริง (toSubmittableTemplateCopy)
+                  onChange={(e) => updateMilestone(i, { triggerCount: e.target.value })}
+                  onBlur={() => updateMilestone(i, { triggerCount: normalizeTriggerCount(m.triggerCount) })}
                 />
                 <Button type="button" variant="ghost" onClick={() => removeMilestone(i)}>ลบ</Button>
               </div>
@@ -413,13 +465,13 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
             <Button type="button" onClick={addMilestone}>+ เพิ่มด่านรางวัล</Button>
           </Panel>
 
-          {validation.success ? (
+          {validation.success && !customFlexJsonError ? (
             <Note tone="ok">กรอกครบและถูกต้องตาม schema แล้ว — บันทึกได้</Note>
           ) : (
             <Note tone="warn">
               <div style={{ fontWeight: 600, marginBottom: 6 }}>ยังบันทึกไม่ได้ — มีข้อผิดพลาดดังนี้</div>
               <ul style={{ margin: 0, paddingLeft: 18, display: 'flex', flexDirection: 'column', gap: 3 }}>
-                {validation.error.issues.map((issue, i) => (
+                {!validation.success && validation.error.issues.map((issue, i) => (
                   <li key={i}>{issue.path.join('.') || '(ทั้งก้อน)'}: {issue.message}</li>
                 ))}
               </ul>
@@ -429,7 +481,7 @@ export function TemplateCopyForm({ campaignId, activityId, initial, canEdit }: T
           {canEdit && (
             <div style={{ display: 'flex', justifyContent: 'flex-end', alignItems: 'center', gap: 10 }}>
               {savedTick > 0 && !busy && <span style={{ fontSize: 11, color: 'var(--ink-3)' }}>บันทึกล่าสุดแล้ว</span>}
-              <Button type="submit" disabled={!validation.success}>บันทึกเทมเพลต</Button>
+              <Button type="submit" disabled={!validation.success || Boolean(customFlexJsonError)}>บันทึกเทมเพลต</Button>
             </div>
           )}
           {busy && <p aria-live="polite">กำลังบันทึก…</p>}
