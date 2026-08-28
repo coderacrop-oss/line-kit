@@ -1,0 +1,146 @@
+import type { QuizConfig } from '../schema'
+import type { FlexBubble, FlexMessage } from './types'
+
+/**
+ * Twelve pure Flex/text-message renderers (design doc §6). Every visible string comes from
+ * cfg.templateCopy / cfg.results / cfg.group.archetypes / the runtime `data` argument — never a
+ * hardcoded campaign-specific default (design doc's "mistake #1 to avoid"). The only literal
+ * strings in this file are generic technical labels with no campaign meaning (e.g. the "?" open
+ * group-member-slot placeholder, added in the group-renderers slice).
+ *
+ * Every function below assumes cfg.templateCopy and its mode/group-specific sub-fields are
+ * present — the same "caller's responsibility" convention lib/quiz/groupEngine.ts documents for
+ * `cfg.group!` — because by the time a campaign is exported, lib/quiz/schema.ts's superRefine
+ * (§4.1) has already required them for the modes/features this campaign actually uses.
+ */
+
+/** Simple `{key}` placeholder substitution — no template-engine dependency (design doc §6). */
+export function interpolate(template: string, vars: Record<string, string | number>): string {
+  let out = template
+  for (const [key, value] of Object.entries(vars)) {
+    out = out.replaceAll(`{${key}}`, String(value))
+  }
+  return out
+}
+
+function textBlock(text: string, opts: Record<string, unknown> = {}): Record<string, unknown> {
+  return { type: 'text', text, wrap: true, ...opts }
+}
+
+function primaryButton(label: string, uri: string): Record<string, unknown> {
+  return { type: 'button', style: 'primary', action: { type: 'uri', label, uri } }
+}
+
+function secondaryButton(label: string, uri: string): Record<string, unknown> {
+  return { type: 'button', style: 'secondary', action: { type: 'uri', label, uri } }
+}
+
+function bubble(opts: { hero?: Record<string, unknown>; bodyContents: Record<string, unknown>[]; footerContents?: Record<string, unknown>[] }): FlexBubble {
+  const out: FlexBubble = {
+    type: 'bubble',
+    body: { type: 'box', layout: 'vertical', spacing: 'md', contents: opts.bodyContents },
+  }
+  if (opts.hero) out.hero = opts.hero
+  if (opts.footerContents && opts.footerContents.length > 0) {
+    out.footer = { type: 'box', layout: 'vertical', spacing: 'sm', contents: opts.footerContents }
+  }
+  return out
+}
+
+function heroImage(url: string | undefined): Record<string, unknown> | undefined {
+  return url ? { type: 'image', url, size: 'full', aspectMode: 'cover' } : undefined
+}
+
+// ---------------------------------------------------------------------------
+// Shared + solo renderers (Task 6)
+// ---------------------------------------------------------------------------
+
+/** follow event — constant copy from templateCopy.intro, no runtime data (design doc §6 row 1). */
+export function renderFollowMessage(cfg: QuizConfig): FlexMessage {
+  const intro = cfg.templateCopy!.intro
+  return {
+    type: 'flex',
+    altText: intro.title,
+    contents: bubble({
+      bodyContents: [
+        textBlock(intro.title, { weight: 'bold', size: 'lg' }),
+        textBlock(intro.body, { size: 'md' }),
+      ],
+      footerContents: [primaryButton(intro.ctaLabel, '')],
+    }),
+  }
+}
+
+/** quiz finished — the computed resultCode's copy + a share link (design doc §6 row 2). */
+export function renderResultCard(cfg: QuizConfig, data: { resultCode: string; shareUrl: string }): FlexMessage {
+  const result = cfg.results.find((r) => r.code === data.resultCode)
+  const copy = cfg.templateCopy!.messages.resultCard
+  return {
+    type: 'flex',
+    altText: result?.title ?? copy.eyebrow,
+    contents: bubble({
+      hero: heroImage(result?.imageUrl),
+      bodyContents: [
+        textBlock(copy.eyebrow, { size: 'sm', weight: 'bold' }),
+        textBlock(result?.title ?? '', { size: 'xl', weight: 'bold' }),
+        textBlock(result?.body ?? '', { size: 'md' }),
+      ],
+      footerContents: [primaryButton(copy.ctaLabel, data.shareUrl)],
+    }),
+  }
+}
+
+/** keyword reply — plain-text variant (design doc §6 row 3). */
+export function renderKeywordText(cfg: QuizConfig): FlexMessage {
+  const kw = cfg.templateCopy!.messages.keywordCard
+  return { type: 'text', text: `${kw.title}\n${kw.body}` }
+}
+
+/** keyword reply — generic card variant, linking into the LIFF app (design doc §6 row 4). */
+export function renderKeywordCard(cfg: QuizConfig, data: { liffUrl: string }): FlexMessage {
+  const kw = cfg.templateCopy!.messages.keywordCard
+  return {
+    type: 'flex',
+    altText: kw.title,
+    contents: bubble({
+      bodyContents: [
+        textBlock(kw.title, { weight: 'bold', size: 'lg' }),
+        textBlock(kw.body, { size: 'md' }),
+      ],
+      footerContents: [primaryButton(kw.ctaLabel, data.liffUrl)],
+    }),
+  }
+}
+
+/**
+ * keyword reply — escape hatch (design doc §6 row 5): returns
+ * templateCopy.messages.keywordCard.customFlexJson verbatim when the admin has authored raw Flex
+ * JSON, falling back to renderKeywordCard's own output otherwise (plan Task 6's back-fill note).
+ */
+export function renderKeywordCustom(cfg: QuizConfig, data: { liffUrl: string }): FlexMessage {
+  const custom = cfg.templateCopy!.messages.keywordCard.customFlexJson
+  if (custom) return custom as FlexMessage
+  return renderKeywordCard(cfg, data)
+}
+
+/** solo mode — share card for the player's own result (design doc §6 row 6). */
+export function renderSoloShareCard(cfg: QuizConfig, data: { resultCode: string }): FlexMessage {
+  const result = cfg.results.find((r) => r.code === data.resultCode)
+  const share = cfg.templateCopy!.messages.soloShare!
+  return {
+    type: 'flex',
+    altText: share.badge,
+    contents: bubble({
+      hero: heroImage(result?.imageUrl),
+      bodyContents: [
+        textBlock(share.badge, { size: 'sm', weight: 'bold' }),
+        textBlock(result?.title ?? '', { size: 'xl', weight: 'bold' }),
+        textBlock(result?.body ?? '', { size: 'md' }),
+      ],
+      footerContents: [
+        primaryButton(share.ctaLabel, ''),
+        secondaryButton(share.secondaryCtaLabel, ''),
+      ],
+    }),
+  }
+}
