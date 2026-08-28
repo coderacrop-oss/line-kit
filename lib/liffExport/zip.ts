@@ -24,7 +24,42 @@ export function zipFiles(files: AssembledFile[]): Readable {
 
   // finalize() ปิดสัญญาณว่าไม่มีไฟล์เพิ่มแล้ว — archiver ต้องมีสัญญาณนี้ก่อนจะ flush
   // ไฟล์สุดท้าย/central directory ออกมาให้ครบ ไม่งั้น stream จะค้างไม่จบ
-  void archive.finalize()
+  //
+  // ต้อง .catch() promise ที่คืนมาเสมอ — archiver reject มันเมื่อเกิด error ภายใน
+  // (zlib/module error) ถ้าไม่มีใคร catch เลยจะเป็น unhandled promise rejection ที่ทำให้
+  // process ทั้งตัวล่มได้ (Finding 1 ของรีวิว) error เดียวกันนี้ archiver เองก็ re-emit เป็น
+  // 'error' event บน `archive` (Readable ที่ฟังก์ชันนี้คืนกลับไป) อยู่แล้วผ่าน
+  // _onModuleError — นั่นคือช่องทางที่ผู้เรียกใช้จริง (zipToBuffer ด้านล่าง) ฟังแทน จึง
+  // แค่กัน unhandled rejection เงียบๆ ตรงนี้พอ ไม่ต้อง handle ซ้ำอีกที
+  archive.finalize().catch(() => {})
 
   return archive
+}
+
+/**
+ * ประกอบไฟล์เป็น zip buffer เดียวเต็มก้อน (รอจนกว่า archive จะ finalize เสร็จจริง) แทนที่จะ
+ * คืน stream ให้ผู้เรียกไปจัดการเอง — export/route.ts (Task 14) ใช้ตัวนี้แทน zipFiles() ตรงๆ
+ * เพื่อให้ await/catch ความล้มเหลวระหว่างสร้าง zip ได้จริงก่อนตัดสินใจ status code ของ
+ * response (กัน response 200 ที่ตัดจบเป็น zip เสียครึ่งๆ กลางๆ เงียบๆ เมื่อ finalize()
+ * ล้มเหลวกลางทาง — Finding 1) ไฟล์ export ของเทมเพลตนี้ไม่ได้ใหญ่พอที่การ buffer เต็มก้อน
+ * ก่อนตอบกลับจะเป็นปัญหาจริง (ยังไม่มีการเขียนลงดิสก์ระหว่างทางเหมือนเดิม)
+ */
+export function zipToBuffer(files: AssembledFile[]): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const archive = zipFiles(files)
+    const chunks: Buffer[] = []
+    let settled = false
+
+    archive.on('data', (chunk: Buffer) => chunks.push(chunk))
+    archive.on('error', (err: Error) => {
+      if (settled) return
+      settled = true
+      reject(err)
+    })
+    archive.on('end', () => {
+      if (settled) return
+      settled = true
+      resolve(Buffer.concat(chunks))
+    })
+  })
 }

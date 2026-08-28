@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { zipFiles } from './zip'
+import { zipFiles, zipToBuffer } from './zip'
 
 // อ่าน Readable stream ทั้งก้อนเป็น Buffer เดียว — ใช้ยืนยันผล zipFiles ในเทสต์นี้เท่านั้น
 async function collectStream(stream: NodeJS.ReadableStream): Promise<Buffer> {
@@ -21,6 +21,19 @@ describe('zipFiles', () => {
     const buf = await collectStream(stream)
 
     // PK\x03\x04 — local file header signature ของ zip format
+    expect(buf.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
+    expect(buf.length).toBeGreaterThan(files.reduce((sum, f) => sum + f.content.length, 0))
+  })
+})
+
+describe('zipToBuffer', () => {
+  it('resolves with the same zip bytes zipFiles would stream, fully buffered', async () => {
+    const files = [
+      { path: 'hello.txt', content: Buffer.from('hello world') },
+      { path: 'nested/dir/file.json', content: Buffer.from(JSON.stringify({ a: 1 })) },
+    ]
+
+    const buf = await zipToBuffer(files)
     expect(buf.subarray(0, 4)).toEqual(Buffer.from([0x50, 0x4b, 0x03, 0x04]))
     expect(buf.length).toBeGreaterThan(files.reduce((sum, f) => sum + f.content.length, 0))
   })
