@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { GroupConfig, QuizConfig, QuizReplies } from './schema'
+import { GroupConfig, QuizConfig, QuizReplies, TemplateCopy } from './schema'
 
 const validConfig = {
   mode: 'solo' as const,
@@ -283,5 +283,139 @@ describe('QuizReplies', () => {
 
   it('rejects a duoMatchNotifyCardId that is not a valid UUID', () => {
     expect(QuizReplies.safeParse({ duoMatchNotifyCardId: 'not-a-uuid' }).success).toBe(false)
+  })
+})
+
+describe('templateCopy', () => {
+  const soloBase = {
+    mode: 'solo' as const,
+    axes: [
+      { id: 'ei', label: 'E/I', poles: ['E', 'I'] as [string, string] },
+      { id: 'sn', label: 'S/N', poles: ['S', 'N'] as [string, string] },
+    ],
+    questions: [
+      { id: 'q1', text: 'q1', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+      { id: 'q2', text: 'q2', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+      { id: 'q3', text: 'q3', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+    ],
+    results: [{ code: 'E', title: 't', body: 'b' }, { code: 'I', title: 't', body: 'b' }],
+    fallbackResultCode: 'E',
+  }
+
+  const baseTemplateCopy = {
+    brand: { name: 'ทดสอบ' },
+    intro: { title: 'เริ่มเลย', body: 'ทำแบบทดสอบ', ctaLabel: 'เริ่ม' },
+    friendGate: { title: 'เพิ่มเพื่อนก่อน', body: 'แอดเราเป็นเพื่อนก่อนเล่นนะ', ctaLabel: 'เพิ่มเพื่อน' },
+    openInLine: { title: 'เปิดใน LINE', body: 'กรุณาเปิดลิงก์นี้ในแอป LINE' },
+    rewards: { milestones: [] },
+    messages: {
+      resultCard: { eyebrow: 'ผลของคุณ', ctaLabel: 'ดูผล' },
+      keywordCard: { title: 'มาเล่นกัน', body: 'พิมพ์คำนี้เพื่อเริ่ม', ctaLabel: 'เริ่มเลย' },
+    },
+  }
+
+  it('accepts a solo config whose templateCopy includes messages.soloShare', () => {
+    const cfg = {
+      ...soloBase,
+      templateCopy: {
+        ...baseTemplateCopy,
+        messages: { ...baseTemplateCopy.messages, soloShare: { badge: 'ผลของฉัน', ctaLabel: 'แชร์', secondaryCtaLabel: 'เล่นอีกที' } },
+      },
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('rejects a solo config whose templateCopy is missing messages.soloShare', () => {
+    const cfg = { ...soloBase, templateCopy: baseTemplateCopy }
+    const result = QuizConfig.safeParse(cfg)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      expect(result.error.issues.some((i) => i.path.join('.') === 'templateCopy.messages.soloShare')).toBe(true)
+    }
+  })
+
+  it('rejects a duo config whose templateCopy is missing invite + duo message keys', () => {
+    const cfg = { ...soloBase, mode: 'duo' as const, templateCopy: baseTemplateCopy }
+    const result = QuizConfig.safeParse(cfg)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'))
+      expect(paths).toContain('templateCopy.invite')
+      expect(paths).toContain('templateCopy.messages.duoInvite')
+      expect(paths).toContain('templateCopy.messages.duoPartnerAnswered')
+      expect(paths).toContain('templateCopy.messages.duoPairResult')
+    }
+  })
+
+  it('accepts a duo config whose templateCopy includes all required duo fields', () => {
+    const cfg = {
+      ...soloBase, mode: 'duo' as const,
+      templateCopy: {
+        ...baseTemplateCopy,
+        invite: { shareTitle: 'ชวนเพื่อน', shareBodyTemplate: 'มาทำแบบทดสอบกับฉันสิ ฉันได้ {axisName}' },
+        messages: {
+          ...baseTemplateCopy.messages,
+          duoInvite: { titleTemplate: 'ชวนเพื่อนมา {axisName}', bodyTemplate: 'กดเลย', ctaLabel: 'ชวนเลย' },
+          duoPartnerAnswered: { badge: 'คู่ของคุณตอบแล้ว', ctaLabel: 'ดูผล' },
+          duoPairResult: { badge: 'ผลคู่', rankLineTemplate: 'อันดับ {rank}', ctaLabel: 'ดูผลเต็ม' },
+        },
+      },
+    }
+    expect(QuizConfig.safeParse(cfg).success).toBe(true)
+  })
+
+  it('rejects a config with group.enabled whose templateCopy is missing group message keys', () => {
+    const cfg = {
+      ...soloBase,
+      templateCopy: {
+        ...baseTemplateCopy,
+        messages: { ...baseTemplateCopy.messages, soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' } },
+      },
+      group: {
+        enabled: true, minMembers: 2, maxMembers: 10, resultLocksAt: 0,
+        archetypes: [{ code: 'fb', title: 't', body: 'b', minGroupSize: 2, fallback: true }],
+        fallbackArchetype: 'fb',
+      },
+    }
+    const result = QuizConfig.safeParse(cfg)
+    expect(result.success).toBe(false)
+    if (!result.success) {
+      const paths = result.error.issues.map((i) => i.path.join('.'))
+      expect(paths).toContain('templateCopy.messages.groupComplete')
+      expect(paths).toContain('templateCopy.messages.groupUnlock')
+      expect(paths).toContain('templateCopy.messages.groupReminder')
+      expect(paths).toContain('templateCopy.messages.groupInvite')
+    }
+  })
+
+  it('QuizConfig.templateCopy is optional — a config with no templateCopy is still valid', () => {
+    expect(QuizConfig.safeParse(soloBase).success).toBe(true)
+  })
+
+  it('TemplateCopy standalone: accepts a fully populated object', () => {
+    expect(TemplateCopy.safeParse({
+      ...baseTemplateCopy,
+      invite: { shareTitle: 'x', shareBodyTemplate: 'y' },
+      rewards: { milestones: [{ key: 'm1', label: 'ด่านแรก', triggerCount: 1 }] },
+      messages: {
+        ...baseTemplateCopy.messages,
+        soloShare: { badge: 'b', ctaLabel: 'c', secondaryCtaLabel: 'd' },
+        duoInvite: { titleTemplate: 't', bodyTemplate: 'b', ctaLabel: 'c' },
+        duoPartnerAnswered: { badge: 'b', ctaLabel: 'c' },
+        duoPairResult: { badge: 'b', rankLineTemplate: 'r', ctaLabel: 'c' },
+        duoReminder: { badge: 'b', headlineTemplate: 'h', ctaLabel: 'c' },
+        groupComplete: { badge: 'b', ctaLabel: 'c' },
+        groupUnlock: { headlineTemplate: 'h', ctaLabel: 'c' },
+        groupReminder: { badge: 'b', headlineTemplate: 'h', subText: 's', ctaLabel: 'c' },
+        groupInvite: { headerCompleteTemplate: 'a', headerIncompleteTemplate: 'b', body: 'c', ctaLabel: 'd', secondaryCtaLabel: 'e' },
+      },
+    }).success).toBe(true)
+  })
+
+  it('QuizAxis.imageUrl is optional and validated as a URL when present', () => {
+    const cfg = { ...soloBase, axes: [{ ...soloBase.axes[0], imageUrl: 'not-a-url' }, soloBase.axes[1]] }
+    expect(QuizConfig.safeParse(cfg).success).toBe(false)
+    const cfgOk = { ...soloBase, axes: [{ ...soloBase.axes[0], imageUrl: 'https://example.com/ei.png' }, soloBase.axes[1]] }
+    expect(QuizConfig.safeParse(cfgOk).success).toBe(true)
   })
 })

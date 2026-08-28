@@ -8,6 +8,10 @@ export const QuizAxis = z.object({
   // มาต่อกันเป็นรหัส ขั้วว่างจะได้ตัวอักษรว่าง/ผิดรูปที่แทบไม่มีวันตรงกับ results[].code
   // ไหนเลย ผู้เล่นจะได้ fallbackResultCode เงียบๆ ทุกครั้งโดยไม่มี error ที่ไหนฟ้อง
   poles: z.tuple([z.string().min(1).max(24), z.string().min(1).max(24)]),
+  // ภาพการ์ดของแกนนี้ ใช้โดยจอ Matching ของเทมเพลต LIFF export (docs/superpowers/specs/
+  // 2026-08-28-liff-template-export-design.md §7) — ไม่ตั้งไว้ = จอแสดง placeholder ทั่วไป
+  // ไม่ใช่ hardcode ภาพของแคมเปญใดแคมเปญหนึ่ง
+  imageUrl: z.string().url().optional(),
 })
 export type QuizAxis = z.infer<typeof QuizAxis>
 
@@ -42,6 +46,10 @@ export const QuizConfig = z.object({
   fallbackResultCode: z.string().min(1),
   group: z.lazy(() => GroupConfig).optional(),
   replies: z.lazy(() => QuizReplies).optional(),
+  // Branding/ข้อความสำหรับ LIFF template export (docs/superpowers/specs/
+  // 2026-08-28-liff-template-export-design.md §4.1) — optional field เสริมตามแบบ group/replies
+  // ที่ไม่ได้ตั้งไว้แปลว่ากิจกรรมนี้ยังไม่เคย export เป็นเทมเพลต
+  templateCopy: z.lazy(() => TemplateCopy).optional(),
 }).superRefine((cfg, ctx) => {
   const axisIds = new Set(cfg.axes.map((a) => a.id))
   if (axisIds.size !== cfg.axes.length) {
@@ -103,6 +111,32 @@ export const QuizConfig = z.object({
       }
     }
   }
+
+  /**
+   * templateCopy เป็น optional ทั้งก้อน (กิจกรรมที่ยังไม่เคย export ก็ valid ปกติ) แต่ถ้าตั้งไว้
+   * แล้ว ฟิลด์ข้อความบางตัวต้องมีค่าตาม mode/group ที่เปิดใช้งานจริง — ไม่งั้น export (Task 13/14)
+   * จะได้เทมเพลตที่มีจอ/การ์ดบางใบไม่มีข้อความให้แสดง (docs/superpowers/specs/
+   * 2026-08-28-liff-template-export-design.md §4.1). แต่ละกฎ addIssue path ชี้ตรงจุดที่ขาด
+   * เพื่อให้ TemplateCopyForm ชี้ error ที่ควบคุมตรงนั้นได้ (ไม่ใช่แค่ "templateCopy ผิด" เฉยๆ)
+   */
+  if (cfg.templateCopy) {
+    const tc = cfg.templateCopy
+    if (cfg.mode === 'duo') {
+      if (!tc.invite) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'invite'], message: 'โหมด duo ต้องตั้งค่า templateCopy.invite' })
+      if (!tc.messages.duoInvite) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoInvite'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoInvite' })
+      if (!tc.messages.duoPartnerAnswered) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoPartnerAnswered'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoPartnerAnswered' })
+      if (!tc.messages.duoPairResult) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'duoPairResult'], message: 'โหมด duo ต้องตั้งค่า templateCopy.messages.duoPairResult' })
+    }
+    if (cfg.mode === 'solo' && !tc.messages.soloShare) {
+      ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'soloShare'], message: 'โหมด solo ต้องตั้งค่า templateCopy.messages.soloShare' })
+    }
+    if (cfg.group?.enabled) {
+      if (!tc.messages.groupComplete) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'groupComplete'], message: 'เปิดผลลัพธ์กลุ่มแล้วต้องตั้งค่า templateCopy.messages.groupComplete' })
+      if (!tc.messages.groupUnlock) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'groupUnlock'], message: 'เปิดผลลัพธ์กลุ่มแล้วต้องตั้งค่า templateCopy.messages.groupUnlock' })
+      if (!tc.messages.groupReminder) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'groupReminder'], message: 'เปิดผลลัพธ์กลุ่มแล้วต้องตั้งค่า templateCopy.messages.groupReminder' })
+      if (!tc.messages.groupInvite) ctx.addIssue({ code: 'custom', path: ['templateCopy', 'messages', 'groupInvite'], message: 'เปิดผลลัพธ์กลุ่มแล้วต้องตั้งค่า templateCopy.messages.groupInvite' })
+    }
+  }
 })
 export type QuizConfig = z.infer<typeof QuizConfig>
 
@@ -157,3 +191,56 @@ export const QuizReplies = z.object({
   duoMatchNotifyCardId: z.string().uuid().optional(),  // การ์ดแจ้ง A ตอน B ตอบครบ
 })
 export type QuizReplies = z.infer<typeof QuizReplies>
+
+/**
+ * Branding/ข้อความสำหรับ LIFF template export (docs/superpowers/specs/
+ * 2026-08-28-liff-template-export-design.md §4.1/§6/§7) — ทุกฟิลด์ที่จอ/การ์ดของเทมเพลตต้อง
+ * แสดงข้อความมาจากที่นี่เท่านั้น (ยกเว้น label ทางเทคนิคล้วนๆ เช่น "Loading…") ห้ามมี
+ * เนื้อหาแคมเปญ hardcode อยู่ในโค้ดเรนเดอร์/จอเลยแม้แต่ตัวเดียว (กันข้อผิดพลาดข้อ 1 ของ KimLIFF)
+ */
+export const RewardMilestone = z.object({
+  key: z.string().min(1).max(30),
+  label: z.string().min(1).max(60),
+  icon: z.string().max(10).optional(),
+  triggerCount: z.number().int().min(1),
+})
+export type RewardMilestone = z.infer<typeof RewardMilestone>
+
+export const TemplateMessagesCopy = z.object({
+  resultCard: z.object({ eyebrow: z.string().max(40), ctaLabel: z.string().min(1).max(30) }),
+  keywordCard: z.object({
+    title: z.string().min(1).max(80),
+    body: z.string().max(300),
+    ctaLabel: z.string().min(1).max(30),
+    // escape hatch: Flex JSON ดิบที่แอดมินกรอกเองเต็มที่ — จุดเดียวที่ยอมรับเนื้อหาไม่มีชนิด
+    // ตายตัวโดยเจตนา (ดู render layer §6 ข้อ 5 renderKeywordCustom)
+    customFlexJson: z.unknown().optional(),
+  }),
+  soloShare: z.object({ badge: z.string().max(30), ctaLabel: z.string().min(1).max(30), secondaryCtaLabel: z.string().min(1).max(30) }).optional(),
+  duoInvite: z.object({ titleTemplate: z.string().min(1).max(120), bodyTemplate: z.string().max(400), ctaLabel: z.string().min(1).max(30) }).optional(),
+  duoPartnerAnswered: z.object({ badge: z.string().max(30), ctaLabel: z.string().min(1).max(30) }).optional(),
+  duoPairResult: z.object({ badge: z.string().max(30), rankLineTemplate: z.string().max(120), ctaLabel: z.string().min(1).max(30) }).optional(),
+  duoReminder: z.object({ badge: z.string().max(30), headlineTemplate: z.string().min(1).max(120), ctaLabel: z.string().min(1).max(30) }).optional(),
+  groupComplete: z.object({ badge: z.string().max(30), ctaLabel: z.string().min(1).max(30) }).optional(),
+  groupUnlock: z.object({ headlineTemplate: z.string().min(1).max(120), ctaLabel: z.string().min(1).max(30) }).optional(),
+  groupReminder: z.object({ badge: z.string().max(30), headlineTemplate: z.string().min(1).max(120), subText: z.string().max(200), ctaLabel: z.string().min(1).max(30) }).optional(),
+  groupInvite: z.object({
+    headerCompleteTemplate: z.string().min(1).max(120), headerIncompleteTemplate: z.string().min(1).max(120),
+    body: z.string().max(300), ctaLabel: z.string().min(1).max(30), secondaryCtaLabel: z.string().min(1).max(30),
+  }).optional(),
+})
+export type TemplateMessagesCopy = z.infer<typeof TemplateMessagesCopy>
+
+export const TemplateCopy = z.object({
+  brand: z.object({
+    name: z.string().min(1).max(40),
+    primaryColor: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  }),
+  intro: z.object({ title: z.string().min(1).max(80), body: z.string().max(400), ctaLabel: z.string().min(1).max(30) }),
+  friendGate: z.object({ title: z.string().min(1).max(80), body: z.string().max(400), ctaLabel: z.string().min(1).max(30) }),
+  openInLine: z.object({ title: z.string().min(1).max(80), body: z.string().max(400) }),
+  invite: z.object({ shareTitle: z.string().min(1).max(80), shareBodyTemplate: z.string().max(300) }).optional(),
+  rewards: z.object({ milestones: z.array(RewardMilestone).default([]) }),
+  messages: TemplateMessagesCopy,
+})
+export type TemplateCopy = z.infer<typeof TemplateCopy>
