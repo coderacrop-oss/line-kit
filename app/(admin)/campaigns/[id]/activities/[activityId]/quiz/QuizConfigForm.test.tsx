@@ -245,3 +245,147 @@ describe('fallbackResultCode รีเซ็ตเองเมื่อผลล
     expect(readConfig(container).fallbackResultCode).toBe(second.code)
   })
 })
+
+/**
+ * แถบข้าง (sidebar) — ภาพรวม + สถานะ validate ต้องสดตาม draft เสมอ ไม่ต้องกดปุ่มตรวจ
+ * (docs/superpowers/specs/2026-08-28-quiz-config-ux-redesign-design.md หลักการข้อ 2/6)
+ */
+describe('แถบข้าง — ภาพรวมและสถานะ validate สดตาม draft', () => {
+  const validSoloDraft: QuizConfig = {
+    mode: 'solo',
+    axes: [{ id: 'ei', label: 'E/I', poles: ['E', 'I'] }, { id: 'sn', label: 'S/N', poles: ['S', 'N'] }],
+    questions: [
+      { id: 'q1', text: 'q1', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+      { id: 'q2', text: 'q2', options: [{ id: 'a', label: 'A', scores: { sn: 1 } }, { id: 'b', label: 'B', scores: { sn: -1 } }] },
+      { id: 'q3', text: 'q3', options: [{ id: 'a', label: 'A', scores: { ei: 1 } }, { id: 'b', label: 'B', scores: { ei: -1 } }] },
+    ],
+    results: [{ code: 'ES', title: 't', body: 'b' }, { code: 'IN', title: 't', body: 'b' }],
+    fallbackResultCode: 'ES',
+  }
+
+  it('นับจำนวนแกน/คำถาม/ผลลัพธ์ตรงกับ draft', () => {
+    draw(validSoloDraft)
+    expect(screen.getByText('2 แกน')).toBeDefined()
+    expect(screen.getByText('3 คำถาม')).toBeDefined()
+    expect(screen.getByText('2 ผลลัพธ์')).toBeDefined()
+  })
+
+  it('config ที่ยังไม่ครบ (safeParse ล้มเหลว) — สถานะบอก "ขาด N อย่าง"', () => {
+    draw() // emptyDraft
+    expect(screen.getByText(/^✕ ขาด \d+ อย่าง$/)).toBeDefined()
+  })
+
+  it('config ที่ครบและถูกต้องตาม schema — สถานะบอกพร้อมใช้', () => {
+    draw(validSoloDraft)
+    expect(screen.getByText('✓ พร้อมใช้ — บันทึกได้')).toBeDefined()
+  })
+})
+
+/**
+ * ScoreDial — คะแนนต่อแกนต่อตัวเลือกเป็นปุ่มคลิก ไม่ใช่ number input ดิบ (หลักการข้อ 3)
+ */
+describe('ScoreDial — คลิกตั้งคะแนนของตัวเลือก', () => {
+  it('คลิกปุ่ม +2 ของแกนหนึ่ง อัปเดตคะแนนตัวเลือกนั้นให้เป็น 2', () => {
+    const { container } = draw()
+    fireEvent.click(screen.getByText('＋ เพิ่มแกน'))
+    fireEvent.click(screen.getByText('＋ เพิ่มคำถาม'))
+    const axisId = readConfig(container).axes[0].id
+
+    // คำถามใหม่มีสองตัวเลือกเริ่มต้น ทั้งคู่มี dial ของแกนเดียวกัน (ป้ายเดียวกัน) — เอาอันแรก
+    // ซึ่งคือ dial ของตัวเลือกแรก
+    const [dial] = screen.getAllByRole('group', { name: `คะแนนของแกน ${axisId}` })
+    fireEvent.click(within(dial).getByRole('button', { name: 'ตั้งคะแนนเป็น +2' }))
+
+    const option = readConfig(container).questions[0].options[0]
+    expect(option.scores[axisId]).toBe(2)
+  })
+
+  it('ไม่มีการกรอกตัวเลข — ไม่มี number input ดิบเหลืออยู่ในฟอร์มเลย', () => {
+    const { container } = draw()
+    fireEvent.click(screen.getByText('＋ เพิ่มแกน'))
+    fireEvent.click(screen.getByText('＋ เพิ่มคำถาม'))
+    expect(container.querySelectorAll('input[type="number"]')).toHaveLength(0)
+  })
+})
+
+/**
+ * กริดผลลัพธ์โหมด duo — คลิก cell ว่างสร้างผลลัพธ์พร้อม pair เติมไว้ให้แล้ว ไม่ใช่ปุ่ม
+ * "+ เพิ่มผลลัพธ์" ตัวเดียวที่ต้องมาเลือก pair เองทีหลัง (หลักการข้อ 4)
+ */
+describe('กริดผลลัพธ์ (โหมด duo)', () => {
+  const duoDraft: QuizConfig = {
+    mode: 'duo',
+    axes: [{ id: 'ei', label: 'E/I', poles: ['E', 'I'] }, { id: 'sn', label: 'S/N', poles: ['S', 'N'] }],
+    questions: [], results: [], fallbackResultCode: '',
+  }
+
+  it('คลิก cell ว่างของคู่แกนหนึ่ง สร้างผลลัพธ์ใหม่ที่ pair ตรงกับคู่ที่คลิก', () => {
+    const { container } = draw(duoDraft)
+    // คู่ (E/I × S/N) ไม่สนลำดับ จึงมีสอง cell ที่ label เดียวกัน (มุมสะท้อนกันของเมทริกซ์) —
+    // คลิกอันแรกก็พอ ทั้งคู่ชี้ pair เดียวกัน
+    fireEvent.click(screen.getAllByRole('button', { name: 'คู่ E/I × S/N' })[0])
+    const results = readConfig(container).results
+    expect(results).toHaveLength(1)
+    expect(new Set(results[0].pair)).toEqual(new Set(['ei', 'sn']))
+  })
+
+  it('คลิก cell เส้นทแยงมุม (แกนคู่กับตัวเอง) ก็สร้างผลลัพธ์ได้ — เป็นคู่ที่ถูกต้องตาม engine', () => {
+    const { container } = draw(duoDraft)
+    fireEvent.click(screen.getByRole('button', { name: 'คู่ E/I × E/I' }))
+    const results = readConfig(container).results
+    expect(results).toHaveLength(1)
+    expect(results[0].pair).toEqual(['ei', 'ei'])
+  })
+})
+
+/**
+ * checklist ผลลัพธ์โหมด solo — คลิกช่องรหัสที่ยังไม่มี สร้างผลลัพธ์ด้วยรหัสนั้นตรงๆ
+ */
+describe('checklist ผลลัพธ์ (โหมด solo)', () => {
+  const soloDraft: QuizConfig = {
+    mode: 'solo',
+    axes: [{ id: 'ei', label: 'E/I', poles: ['E', 'I'] }],
+    questions: [], results: [], fallbackResultCode: '',
+  }
+
+  it('คลิกรหัสที่ยังไม่มี (เช่น "E") สร้างผลลัพธ์ใหม่ด้วยรหัสนั้น', () => {
+    const { container } = draw(soloDraft)
+    fireEvent.click(screen.getByRole('button', { name: 'รหัส E' }))
+    const results = readConfig(container).results
+    expect(results).toHaveLength(1)
+    expect(results[0].code).toBe('E')
+  })
+})
+
+/**
+ * โหมด "ลองเล่น" (Play) — เป็น stub บอกตรงๆ ว่ายังไม่พร้อมใช้งาน ไม่ใช่ตัวจำลองจริง (บอก
+ * ไว้ชัดเจนในรายงานเช่นกัน — ดู design note §5)
+ */
+describe('โหมด ลองเล่น (Play) — ยังเป็น stub', () => {
+  it('สลับไปโหมดลองเล่น ซ่อนฟอร์มตั้งค่า และบอกตรงๆ ว่ายังไม่พร้อมใช้งาน', () => {
+    draw()
+    fireEvent.click(screen.getByRole('button', { name: '▶ ลองเล่น' }))
+    expect(screen.getByText('ยังไม่พร้อมใช้งานในรอบนี้')).toBeDefined()
+    expect(screen.queryByText('＋ เพิ่มแกน')).toBeNull()
+  })
+
+  it('สลับกลับไปตั้งค่า ฟอร์มกลับมาเหมือนเดิม', () => {
+    draw()
+    fireEvent.click(screen.getByRole('button', { name: '▶ ลองเล่น' }))
+    fireEvent.click(screen.getByRole('button', { name: '📐 ตั้งค่า' }))
+    expect(screen.getByText('＋ เพิ่มแกน')).toBeDefined()
+  })
+})
+
+/**
+ * "⚙️ ตั้งค่าเพิ่มเติม" (GroupConfigEditor) ต้องถูกยุบไว้เป็นค่าเริ่มต้น — เป็นของที่แก้ไม่บ่อย
+ * (หลักการข้อ 5)
+ */
+describe('ตั้งค่าเพิ่มเติม (group config) — ยุบไว้เป็นค่าเริ่มต้น', () => {
+  it('รายละเอียด details ปิดอยู่ตอนเปิดจอครั้งแรก', () => {
+    const { container } = draw()
+    const details = container.querySelector('details')
+    expect(details).not.toBeNull()
+    expect(details?.open).toBe(false)
+  })
+})

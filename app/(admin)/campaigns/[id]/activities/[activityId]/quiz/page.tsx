@@ -55,7 +55,7 @@ export default async function QuizConfigPage({ params }: {
   const canEdit = session.role === 'configurator'
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 760, margin: '0 auto' }}>
+    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 1180, margin: '0 auto' }}>
       <a
         href={`/campaigns/${campaign.id}/activities`}
         style={{ fontSize: 12, color: 'var(--ink-3)' }}
