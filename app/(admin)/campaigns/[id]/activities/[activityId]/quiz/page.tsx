@@ -4,6 +4,7 @@ import { getSession } from '@/lib/auth/session'
 import { loadCampaign } from '@/lib/db/campaigns'
 import { db } from '@/lib/db/client'
 import { QuizConfig } from '@/lib/quiz/schema'
+import { ExportButton } from './ExportButton'
 import { QuizConfigForm } from './QuizConfigForm'
 
 type ActivityRow = { id: string; name: string; input_type: string; input_config: unknown }
@@ -73,9 +74,10 @@ export default async function QuizConfigPage({ params }: {
             <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/template`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
               เทมเพลต →
             </a>
-            <a href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/export`} style={{ fontSize: 12, color: 'var(--ink-3)' }}>
-              ↓ Export .zip
-            </a>
+            <ExportButton
+              href={`/campaigns/${campaign.id}/activities/${row.id}/quiz/export`}
+              fallbackFileName={`${row.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'quiz'}-liff-template.zip`}
+            />
             <Badge tone="mute">{draft.mode === 'duo' ? 'โหมดคู่ · Duo' : 'โหมดเดี่ยว · Solo'}</Badge>
             {!canEdit && <Badge tone="mute">ดูอย่างเดียว</Badge>}
           </>
