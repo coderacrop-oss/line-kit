@@ -45,7 +45,7 @@ export async function GET(_request: Request, { params }: {
 
   let files
   try {
-    files = assembleTemplateFiles(parsed.data)
+    files = await assembleTemplateFiles(parsed.data)
   } catch (err) {
     return Response.json({ error: err instanceof Error ? err.message : 'Export failed' }, { status: 400 })
   }
