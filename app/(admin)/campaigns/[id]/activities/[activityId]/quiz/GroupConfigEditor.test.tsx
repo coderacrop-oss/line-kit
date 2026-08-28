@@ -20,7 +20,7 @@ const fullGroup: GroupConfig = {
 
 describe('GroupConfigEditor', () => {
   it('shows only the enable checkbox when group is undefined', () => {
-    render(<GroupConfigEditor group={undefined} axes={axes} canEdit onChange={vi.fn()} />)
+    render(<GroupConfigEditor group={undefined} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={vi.fn()} />)
     const checkbox = screen.getByLabelText(/เปิดใช้งานผลลัพธ์กลุ่ม/) as HTMLInputElement
     expect(checkbox.checked).toBe(false)
     expect(screen.queryByText(/archetype/i)).toBeNull()
@@ -28,7 +28,7 @@ describe('GroupConfigEditor', () => {
 
   it('checking the enable box calls onChange with a minimal default GroupConfig', () => {
     const onChange = vi.fn()
-    render(<GroupConfigEditor group={undefined} axes={axes} canEdit onChange={onChange} />)
+    render(<GroupConfigEditor group={undefined} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={onChange} />)
     fireEvent.click(screen.getByLabelText(/เปิดใช้งานผลลัพธ์กลุ่ม/))
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({ enabled: true }))
     const defaultGroup = onChange.mock.calls[0][0] as GroupConfig
@@ -37,7 +37,7 @@ describe('GroupConfigEditor', () => {
 
   it('renders every archetype row and lets you edit a title', () => {
     const onChange = vi.fn()
-    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit onChange={onChange} />)
+    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={onChange} />)
     const titleInputs = screen.getAllByDisplayValue(/สมดุล|ปนกัน/)
     expect(titleInputs).toHaveLength(2)
     fireEvent.change(titleInputs[0], { target: { value: 'สมดุลใหม่' } })
@@ -48,7 +48,7 @@ describe('GroupConfigEditor', () => {
 
   it('adding an archetype uses a code that does not collide with existing ones', () => {
     const onChange = vi.fn()
-    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit onChange={onChange} />)
+    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={onChange} />)
     fireEvent.click(screen.getByText('＋ เพิ่ม archetype'))
     const call = onChange.mock.calls[0][0] as GroupConfig
     const codes = call.archetypes.map((a) => a.code)
@@ -60,7 +60,7 @@ describe('GroupConfigEditor', () => {
       ...fullGroup,
       archetypes: [{ code: 'dead', title: 'ตาย', body: 'b', minGroupSize: 2, fallback: false }, fullGroup.archetypes[1]],
     }
-    render(<GroupConfigEditor group={deadGroup} axes={axes} canEdit onChange={vi.fn()} />)
+    render(<GroupConfigEditor group={deadGroup} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={vi.fn()} />)
     expect(screen.getByText(/ไม่มีเงื่อนไข.*ไม่มีวันถูกใช้/)).toBeDefined()
   })
 
@@ -73,7 +73,7 @@ describe('GroupConfigEditor', () => {
         fullGroup.archetypes[1],
       ],
     }
-    render(<GroupConfigEditor group={groupWithImage} axes={axes} canEdit onChange={onChange} />)
+    render(<GroupConfigEditor group={groupWithImage} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={onChange} />)
     const imageInput = screen.getByDisplayValue('https://example.com/balanced.png') as HTMLInputElement
     fireEvent.change(imageInput, { target: { value: 'https://example.com/new.png' } })
     expect(onChange).toHaveBeenCalledWith(expect.objectContaining({
@@ -91,7 +91,7 @@ describe('GroupConfigEditor', () => {
       ],
       fallbackArchetype: 'c',
     }
-    render(<GroupConfigEditor group={twoConditionedGroup} axes={axes} canEdit onChange={vi.fn()} />)
+    render(<GroupConfigEditor group={twoConditionedGroup} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={vi.fn()} />)
     const hasAxesInputs = document.querySelectorAll('input[id^="cond-has-axes"]')
     expect(hasAxesInputs).toHaveLength(2)
     const ids = Array.from(hasAxesInputs).map((el) => el.id)
@@ -102,7 +102,7 @@ describe('GroupConfigEditor', () => {
 
   it('unchecking "enable group" on an already-configured group flips enabled without discarding archetypes', () => {
     const onChange = vi.fn()
-    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit onChange={onChange} />)
+    render(<GroupConfigEditor group={fullGroup} axes={axes} canEdit campaignId="c1" activityId="a1" onChange={onChange} />)
     fireEvent.click(screen.getByLabelText(/เปิดใช้งานผลลัพธ์กลุ่ม/))
     expect(onChange).toHaveBeenCalledWith({ ...fullGroup, enabled: false })
   })

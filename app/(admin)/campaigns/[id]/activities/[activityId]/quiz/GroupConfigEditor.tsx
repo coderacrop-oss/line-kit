@@ -1,7 +1,9 @@
 'use client'
 
 import { Button, Field, Note, Panel } from '@/components/ui'
+import { ImageUrlUploadField } from '@/components/quiz/ImageUrlUploadField'
 import type { GroupArchetype, GroupCondition, GroupConfig, QuizAxis } from '@/lib/quiz/schema'
+import { uploadQuizImage } from './actions'
 import { boxStyle, noteStyle, removeAt, replaceAt, rowStyle, smallLabelStyle, uniqueId } from './QuizConfigForm'
 
 const DEFAULT_GROUP: GroupConfig = {
@@ -95,10 +97,14 @@ function ConditionEditor({ condition, index, canEdit, onChange }: {
   )
 }
 
-function ArchetypeRow({ archetype, index, canEdit, onChange, onRemove }: {
+function ArchetypeRow({
+  archetype, index, canEdit, campaignId, activityId, onChange, onRemove,
+}: {
   archetype: GroupArchetype
   index: number
   canEdit: boolean
+  campaignId: string
+  activityId: string
   onChange: (patch: Partial<GroupArchetype>) => void
   onRemove: () => void
 }) {
@@ -156,12 +162,17 @@ function ArchetypeRow({ archetype, index, canEdit, onChange, onRemove }: {
         />
       </Field>
 
-      <Field id={`arch-image-url-${index}`} label="รูปภาพ (ไม่บังคับ)" hint="ใส่ URL รูป ไม่ใส่ก็ได้">
-        <input
-          value={archetype.imageUrl ?? ''} disabled={!canEdit}
-          onChange={(e) => onChange({ imageUrl: e.target.value.trim() === '' ? undefined : e.target.value })}
-        />
-      </Field>
+      <ImageUrlUploadField
+        id={`arch-image-url-${index}`}
+        label="รูปภาพ (ไม่บังคับ)"
+        hint="ใส่ URL รูป หรืออัปโหลดตรงจากปุ่มด้านล่าง ไม่บังคับ"
+        value={archetype.imageUrl ?? ''}
+        disabled={!canEdit}
+        campaignId={campaignId}
+        activityId={activityId}
+        uploadAction={uploadQuizImage}
+        onChange={(url) => onChange({ imageUrl: url.trim() === '' ? undefined : url })}
+      />
 
       {!archetype.fallback && (
         <ConditionEditor
@@ -185,10 +196,12 @@ export type GroupConfigEditorProps = {
   group: GroupConfig | undefined
   axes: QuizAxis[]
   canEdit: boolean
+  campaignId: string
+  activityId: string
   onChange: (group: GroupConfig | undefined) => void
 }
 
-export function GroupConfigEditor({ group, axes: _axes, canEdit, onChange }: GroupConfigEditorProps) {
+export function GroupConfigEditor({ group, axes: _axes, canEdit, campaignId, activityId, onChange }: GroupConfigEditorProps) {
   if (!group) {
     return (
       <Panel style={{ marginTop: 14, padding: 18 }}>
@@ -263,6 +276,8 @@ export function GroupConfigEditor({ group, axes: _axes, canEdit, onChange }: Gro
             archetype={archetype}
             index={index}
             canEdit={canEdit}
+            campaignId={campaignId}
+            activityId={activityId}
             onChange={(patch) => updateArchetype(index, patch)}
             onRemove={() => removeArchetype(index)}
           />

@@ -4,8 +4,9 @@ import { useState } from 'react'
 import type { CSSProperties, FormEvent, ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { Badge, Button, ErrorModal, Field, Note, Panel, STATUS_TONES } from '@/components/ui'
+import { ImageUrlUploadField } from '@/components/quiz/ImageUrlUploadField'
 import { QuizConfig, type QuizAxis, type QuizOption, type QuizQuestion, type QuizResultRule } from '@/lib/quiz/schema'
-import { saveQuizConfigAction } from './actions'
+import { saveQuizConfigAction, uploadQuizImage } from './actions'
 import { GroupConfigEditor } from './GroupConfigEditor'
 import {
   computeDuoCoverage, computeSoloCombos, computeSoloCoverage,
@@ -186,12 +187,16 @@ export const AXIS_EXTRA_FIELDS: { key: AxisExtraField; label: string }[] = [
 ]
 
 /** แถวหนึ่งแกน — แสดงเป็น chip ที่ยุบ/ขยายได้ ปุ่มลบอยู่บนแถบ chip เสมอ (ไม่ต้องขยายก่อนถึงจะลบได้) */
-function AxisRow({ axis, index, canEdit, expanded, activeExtraFields, onToggle, onChange, onRemove }: {
+function AxisRow({
+  axis, index, canEdit, expanded, activeExtraFields, campaignId, activityId, onToggle, onChange, onRemove,
+}: {
   axis: QuizAxis
   index: number
   canEdit: boolean
   expanded: boolean
   activeExtraFields: ReadonlySet<AxisExtraField>
+  campaignId: string
+  activityId: string
   onToggle: () => void
   onChange: (patch: Partial<QuizAxis>) => void
   onRemove: () => void
@@ -270,12 +275,17 @@ function AxisRow({ axis, index, canEdit, expanded, activeExtraFields, onToggle, 
             </Field>
           )}
           {activeExtraFields.has('imageUrl') && (
-            <Field id={`axis-image-${index}`} label="รูปภาพ (ไม่บังคับ)" hint="ใส่ URL รูป ไม่ใส่ก็ได้">
-              <input
-                value={axis.imageUrl ?? ''} disabled={!canEdit}
-                onChange={(e) => onChange({ imageUrl: e.target.value.trim() === '' ? undefined : e.target.value })}
-              />
-            </Field>
+            <ImageUrlUploadField
+              id={`axis-image-${index}`}
+              label="รูปภาพ (ไม่บังคับ)"
+              hint="ใส่ URL รูป หรืออัปโหลดตรงจากปุ่มด้านล่าง ไม่บังคับ"
+              value={axis.imageUrl ?? ''}
+              disabled={!canEdit}
+              campaignId={campaignId}
+              activityId={activityId}
+              uploadAction={uploadQuizImage}
+              onChange={(url) => onChange({ imageUrl: url.trim() === '' ? undefined : url })}
+            />
           )}
           {activeExtraFields.has('order') && (
             <Field id={`axis-order-${index}`} label="ลำดับ (Order)" hint={'เช่น "01" — ใช้จัดลำดับการแสดงผล ไม่บังคับ'}>
@@ -593,12 +603,16 @@ function MiniChecklist({ coverage }: { coverage: SoloCoverage }) {
  * sanitizeForSubmit() ระดับบนสุดตัดสินตอนจะส่งจริงว่าฝั่งไหนว่างให้ถือว่ายังไม่ระบุทั้งคู่
  * (เหตุผลเต็ม: comment เดิมของ setPair ในไฟล์นี้ก่อนรีดีไซน์ — ยังคงพฤติกรรมเดิมเป๊ะ)
  */
-function ResultDetailEditor({ result, index, axes, isDuo, canEdit, onChange, onRemove, onClose }: {
+function ResultDetailEditor({
+  result, index, axes, isDuo, canEdit, campaignId, activityId, onChange, onRemove, onClose,
+}: {
   result: QuizResultRule
   index: number
   axes: QuizAxis[]
   isDuo: boolean
   canEdit: boolean
+  campaignId: string
+  activityId: string
   onChange: (patch: Partial<QuizResultRule>) => void
   onRemove: () => void
   onClose?: () => void
@@ -648,12 +662,17 @@ function ResultDetailEditor({ result, index, axes, isDuo, canEdit, onChange, onR
         />
       </Field>
 
-      <Field id={`res-image-${index}`} label="รูปภาพ (ไม่บังคับ)" hint="ใส่ URL รูป ไม่ใส่ก็ได้">
-        <input
-          value={result.imageUrl ?? ''} disabled={!canEdit}
-          onChange={(e) => onChange({ imageUrl: e.target.value.trim() === '' ? undefined : e.target.value })}
-        />
-      </Field>
+      <ImageUrlUploadField
+        id={`res-image-${index}`}
+        label="รูปภาพ (ไม่บังคับ)"
+        hint="ใส่ URL รูป หรืออัปโหลดตรงจากปุ่มด้านล่าง ไม่บังคับ"
+        value={result.imageUrl ?? ''}
+        disabled={!canEdit}
+        campaignId={campaignId}
+        activityId={activityId}
+        uploadAction={uploadQuizImage}
+        onChange={(url) => onChange({ imageUrl: url.trim() === '' ? undefined : url })}
+      />
 
       {isDuo && (
         <div style={rowStyle}>
@@ -1038,6 +1057,8 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                         canEdit={canEdit}
                         expanded={expandedAxis === index}
                         activeExtraFields={activeAxisFields}
+                        campaignId={campaignId}
+                        activityId={activityId}
                         onToggle={() => setExpandedAxis((current) => (current === index ? null : index))}
                         onChange={(patch) => updateAxis(index, patch)}
                         onRemove={() => removeAxis(index)}
@@ -1103,6 +1124,8 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                                 axes={draft.axes}
                                 isDuo={draft.mode === 'duo'}
                                 canEdit={canEdit}
+                                campaignId={campaignId}
+                                activityId={activityId}
                                 onChange={(patch) => updateResult(index, patch)}
                                 onRemove={() => removeResult(index)}
                                 onClose={isSelected ? () => setSelectedResultCode(null) : undefined}
@@ -1150,6 +1173,8 @@ export function QuizConfigForm({ campaignId, activityId, initial, canEdit }: Qui
                     group={draft.group}
                     axes={draft.axes}
                     canEdit={canEdit}
+                    campaignId={campaignId}
+                    activityId={activityId}
                     onChange={(group) => setDraft((d) => ({ ...d, group }))}
                   />
                 </details>

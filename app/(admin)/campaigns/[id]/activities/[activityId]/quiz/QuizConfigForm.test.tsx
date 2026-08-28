@@ -12,14 +12,19 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh }) }))
 const saveQuizConfigAction = vi.fn(
   async (_campaignId: string, _activityId: string, _formData: FormData) => ({ ok: true as const }),
 )
-// อ้าง saveQuizConfigAction ผ่านฟังก์ชันซ้อน ไม่ใช่ property shorthand ตรงๆ — vi.mock
-// factory ถูก hoist ขึ้นไปบนสุดของไฟล์ อ้าง const ข้างนอกตรงๆ จะชน TDZ ("Cannot access
+const uploadQuizImage = vi.fn(
+  async (_campaignId: string, _activityId: string, _formData: FormData) => ({ ok: true as const, url: 'https://example.com/uploaded.png' }),
+)
+// อ้าง saveQuizConfigAction/uploadQuizImage ผ่านฟังก์ชันซ้อน ไม่ใช่ property shorthand ตรงๆ —
+// vi.mock factory ถูก hoist ขึ้นไปบนสุดของไฟล์ อ้าง const ข้างนอกตรงๆ จะชน TDZ ("Cannot access
 // before initialization") ห่อด้วยฟังก์ชันจึงเลื่อนการอ้างจริงไปจนกว่าจะถูกเรียกใช้ตอน
 // component ทำงาน ซึ่ง const ข้างนอกถูก initialize ไปแล้วแน่นอน (เหมือน `refresh` ด้านบน
 // ที่ปลอดภัยเพราะซ่อนอยู่หลัง `() => ({ refresh })` เหมือนกัน)
 vi.mock('./actions', () => ({
   saveQuizConfigAction: (campaignId: string, activityId: string, formData: FormData) =>
     saveQuizConfigAction(campaignId, activityId, formData),
+  uploadQuizImage: (campaignId: string, activityId: string, formData: FormData) =>
+    uploadQuizImage(campaignId, activityId, formData),
 }))
 
 /** ก้อนที่ page.tsx ส่งมาให้กิจกรรมที่เพิ่งสร้าง — ยังไม่มี axes/questions/results เลย */
