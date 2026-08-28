@@ -11,7 +11,9 @@ export default defineConfig({
     // .claude/worktrees เก็บสำเนารีโปเต็มของ agent ที่ทำงานขนานกัน
     // ไม่กันไว้แล้วเทสต์ของทุก worktree จะถูกกวาดมารันพร้อมกัน ยิงฐานข้อมูล
     // เดียวกัน แล้วแดงเป็นร้อยโดยที่โค้ดไม่ได้พังเลย
-    exclude: ['node_modules/**', '.next/**', '.claude/**'],
+    // liff-template/ เป็นโปรเจกต์ของตัวเอง ไม่ npm install ในรีโปนี้ตามปกติ แต่กันไว้เผื่อ
+    // ใครติดตั้งเพื่อ dev เทมเพลตนั้นตรงๆ — ไม่งั้น node_modules/.next ของมันจะถูกกวาดมาด้วย
+    exclude: ['node_modules/**', '.next/**', '.claude/**', 'liff-template/node_modules/**', 'liff-template/.next/**'],
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, '.') },

@@ -1,0 +1,55 @@
+{
+  "schemaVersion": 1,
+  "quiz": {
+    "mode": "solo",
+    "axes": [
+      { "id": "ei", "label": "E / I", "poles": ["Extrovert", "Introvert"] },
+      { "id": "sn", "label": "S / N", "poles": ["Sensing", "Intuition"] }
+    ],
+    "questions": [
+      {
+        "id": "q1",
+        "text": "Sample question 1?",
+        "options": [
+          { "id": "a", "label": "Option A", "scores": { "ei": 2, "sn": -1 } },
+          { "id": "b", "label": "Option B", "scores": { "ei": -2, "sn": 1 } }
+        ]
+      },
+      {
+        "id": "q2",
+        "text": "Sample question 2?",
+        "options": [
+          { "id": "a", "label": "Option A", "scores": { "ei": 1, "sn": 1 } },
+          { "id": "b", "label": "Option B", "scores": { "ei": -1, "sn": -1 } }
+        ]
+      },
+      {
+        "id": "q3",
+        "text": "Sample question 3?",
+        "options": [
+          { "id": "a", "label": "Option A", "scores": { "ei": 1, "sn": -1 } },
+          { "id": "b", "label": "Option B", "scores": { "ei": -1, "sn": 1 } }
+        ]
+      }
+    ],
+    "results": [
+      { "code": "ES", "title": "Sample result ES", "body": "Sample result body for ES." },
+      { "code": "EN", "title": "Sample result EN", "body": "Sample result body for EN." },
+      { "code": "IS", "title": "Sample result IS", "body": "Sample result body for IS." },
+      { "code": "IN", "title": "Sample result IN", "body": "Sample result body for IN." }
+    ],
+    "fallbackResultCode": "ES",
+    "templateCopy": {
+      "brand": { "name": "Sample Quiz" },
+      "intro": { "title": "Welcome!", "body": "Answer a few questions to find your type.", "ctaLabel": "Start" },
+      "friendGate": { "title": "Add us as a friend first", "body": "Please add this LINE account as a friend to continue.", "ctaLabel": "Add friend" },
+      "openInLine": { "title": "Open in LINE", "body": "Please open this link inside the LINE app." },
+      "rewards": { "milestones": [] },
+      "messages": {
+        "resultCard": { "eyebrow": "Your result", "ctaLabel": "View result" },
+        "keywordCard": { "title": "Play the quiz", "body": "Type this keyword to start.", "ctaLabel": "Start" },
+        "soloShare": { "badge": "My result", "ctaLabel": "Share", "secondaryCtaLabel": "Play again" }
+      }
+    }
+  }
+}
