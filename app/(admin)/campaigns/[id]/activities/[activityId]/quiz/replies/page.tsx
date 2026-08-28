@@ -41,7 +41,12 @@ export default async function QuizRepliesPage({ params }: {
   }
 
   const cardRows = await listCardsForActivity(sql, row.id)
-  const ownedCards = cardRows.map((c) => ({ id: c.id, code: c.code }))
+  // เก็บ CardView เต็มก้อน (ไม่ตัดเหลือแค่ id/code เหมือนเดิม) — ให้ RepliesForm มีข้อมูลพอ
+  // แสดงพรีวิวคร่าวๆ ของการ์ดที่เลือกอยู่ (ชื่อ/ชนิด/มีภาพไหม/ตัวอย่างข้อความหัวการ์ด) โดยใช้
+  // ของที่ summarizeCard()/listCardsForActivity() คำนวณไว้แล้วเดิม ไม่ query เพิ่ม
+  const ownedCards = cardRows.map((c) => ({
+    id: c.id, code: c.code, renderName: c.renderName, hasImage: c.hasImage, previewText: c.previewText,
+  }))
 
   // ตั้งค่าไว้ก่อนที่ owner_activity_id จะมีอยู่ ค่านี้อาจชี้ไปหาการ์ดทั่วไป (หรือของ
   // activity อื่น) ที่ listCardsForActivity ไม่คืนมาให้ — ต้องหามาเติมไว้ในลิสต์เอง
@@ -57,7 +62,7 @@ export default async function QuizRepliesPage({ params }: {
   const canEdit = session.role === 'configurator'
 
   return (
-    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 760, margin: '0 auto' }}>
+    <main style={{ padding: 'var(--page-y) var(--page-x)', maxWidth: 900, margin: '0 auto' }}>
       <a
         href={`/campaigns/${campaign.id}/activities/${row.id}/quiz`}
         style={{ fontSize: 12, color: 'var(--ink-3)' }}

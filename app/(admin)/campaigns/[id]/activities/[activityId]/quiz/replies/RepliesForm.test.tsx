@@ -81,3 +81,61 @@ describe('RepliesForm', () => {
     expect(saved.axes).toEqual(duoConfig.axes)
   })
 })
+
+/**
+ * แถบสรุปบนสุด — จุดที่ส่งข้อความ/ฟรี/Push (docs/superpowers/specs/
+ * 2026-08-28-quiz-config-ux-redesign-design.md §4.4) ระบบนี้มี flow จริงจุดเดียว
+ * (duoMatchNotify) มีผลเฉพาะโหมด duo — solo จึงมี 0 จุดเสมอ
+ */
+describe('แถบสรุป — จำนวนจุดที่ส่งข้อความ / ฟรี / Push', () => {
+  it('โหมด duo — 1 จุดทั้งหมด เป็น push ทั้งหมด (ไม่มีจุดไหนฟรี)', () => {
+    const { container } = render(<RepliesForm campaignId="c1" activityId="a1" initial={duoConfig} cards={cards} canEdit />)
+    expect(container.querySelector('[aria-label="จุดที่ส่งข้อความทั้งหมด 1"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Push 1"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="ฟรี 0"]')).not.toBeNull()
+  })
+
+  it('โหมด solo — 0 จุดทั้งหมด (ยังไม่มี flow ให้ตั้งค่าเลยในโหมดนี้)', () => {
+    const { container } = render(<RepliesForm campaignId="c1" activityId="a1" initial={soloConfig} cards={cards} canEdit />)
+    expect(container.querySelector('[aria-label="จุดที่ส่งข้อความทั้งหมด 0"]')).not.toBeNull()
+    expect(container.querySelector('[aria-label="Push 0"]')).not.toBeNull()
+  })
+})
+
+/** Trigger box — อธิบายเป็นภาษาคนว่าอะไรทำให้ flow นี้ยิงออกไป */
+describe('Trigger box ของ flow แจ้งเตือนตอนจับคู่สำเร็จ', () => {
+  it('อธิบาย trigger ตรงกับพฤติกรรมจริงของ sendDuoMatchNotify (lib/db/quizNotify.ts)', () => {
+    render(<RepliesForm campaignId="c1" activityId="a1" initial={duoConfig} cards={cards} canEdit />)
+    expect(screen.getByText(/B .*ตอบคำถามครบทุกข้อและจับคู่กับ A สำเร็จ/)).toBeDefined()
+  })
+})
+
+/** พรีวิวการ์ด — สะท้อนการ์ดที่เลือกอยู่จริง ไม่ใช่ text ลอยๆ */
+describe('พรีวิวการ์ดที่เลือกอยู่', () => {
+  const cardsWithPreview = [
+    { id: '11111111-1111-4111-8111-111111111111', code: 'notify_card', renderName: 'การ์ดเดี่ยว', hasImage: false, previewText: 'ยินดีด้วย เพื่อนตอบครบแล้ว!' },
+    { id: '22222222-2222-4222-8222-222222222222', code: 'other_card' },
+  ]
+
+  it('ยังไม่ได้เลือกการ์ด — บอกตรงๆ ว่าจะไม่ส่งอะไร', () => {
+    render(<RepliesForm campaignId="c1" activityId="a1" initial={duoConfig} cards={cardsWithPreview} canEdit />)
+    expect(screen.getByText('ยังไม่ได้เลือกการ์ด')).toBeDefined()
+  })
+
+  it('เลือกการ์ดแล้ว — พรีวิวแสดงรหัส/ข้อความตัวอย่าง/ลิงก์แก้ไขของการ์ดนั้น', () => {
+    const initial: QuizConfig = { ...duoConfig, replies: { duoMatchNotifyCardId: '11111111-1111-4111-8111-111111111111' } }
+    const { container } = render(<RepliesForm campaignId="c1" activityId="a1" initial={initial} cards={cardsWithPreview} canEdit />)
+    // "notify_card" ปรากฏทั้งใน <option> ของ select และในพรีวิว — เจาะจงเอาแค่ฝั่งพรีวิว (.code)
+    expect(container.querySelector('.code')?.textContent).toBe('notify_card')
+    expect(screen.getByText('ยินดีด้วย เพื่อนตอบครบแล้ว!')).toBeDefined()
+    const link = screen.getByText('แก้ไขการ์ดนี้ →') as HTMLAnchorElement
+    expect(link.getAttribute('href')).toBe('/campaigns/c1/cards/11111111-1111-4111-8111-111111111111')
+  })
+
+  it('สลับการ์ดที่เลือก — พรีวิวเปลี่ยนตามทันที (สด ไม่ต้องกดบันทึกก่อน)', () => {
+    render(<RepliesForm campaignId="c1" activityId="a1" initial={duoConfig} cards={cardsWithPreview} canEdit />)
+    const select = screen.getByLabelText(/การ์ดแจ้งเตือน/) as HTMLSelectElement
+    fireEvent.change(select, { target: { value: '11111111-1111-4111-8111-111111111111' } })
+    expect(screen.getByText('ยินดีด้วย เพื่อนตอบครบแล้ว!')).toBeDefined()
+  })
+})
